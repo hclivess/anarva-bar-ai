@@ -166,6 +166,7 @@ void OnTaskAdded(IUnitTask@ task)
 
 void OnTaskRemoved(IUnitTask@ task)
 {
+	ForgetTask(task);
 	IFighterTask@ f = cast<IFighterTask>(task);
 	if (f is null)
 		return;
@@ -175,6 +176,45 @@ void OnTaskRemoved(IUnitTask@ task)
 		squadPeak.removeAt(idx);
 		squadStart.removeAt(idx);
 	}
+}
+
+/*
+ * Wave control. The core sizes each gathering squad as max(quota, enemy's 2nd-biggest group threat);
+ * once the enemy has any big blob that bar is unreachable and the army never launches, then gets
+ * ground down at home. Instead we keep ONE gathering task per kind, sized by the Director, and put
+ * every new unit into it. When it reaches its size the core promotes it to an attack/raid and we
+ * start the next wave.
+ */
+IUnitTask@ waveTask = null;
+IUnitTask@ packTask = null;
+float waveSize = 0.f;
+int waves = 0;
+
+IUnitTask@ MakeTask(CCircuitUnit@ unit)
+{
+	const CCircuitDef@ d = unit.circuitDef;
+	if (IsGround(d) && !d.IsRoleAny(Unit::Role::RIOT.mask | Unit::Role::SUPER.mask)) {
+		if (waveTask is null) {
+			waveSize = AiMax(baseAttack, aiMilitaryMgr.quota.attack);
+			@waveTask = aiMilitaryMgr.Enqueue(TaskF::Defend(Task::FightType::ATTACK, waveSize));
+			++waves;
+		}
+		return waveTask;
+	}
+	if (IsRaider(d)) {
+		if (packTask is null)
+			@packTask = aiMilitaryMgr.Enqueue(TaskF::Defend(Task::FightType::RAID, aiMilitaryMgr.quota.raid.min));
+		return packTask;
+	}
+	return null;
+}
+
+void ForgetTask(IUnitTask@ task)
+{
+	if (task is waveTask)
+		@waveTask = null;
+	if (task is packTask)
+		@packTask = null;
 }
 
 float SquadPower(IFighterTask@ task)
@@ -971,20 +1011,176 @@ string Status()
 
 /* ======================================================================== */
 /*
+ * Production chooser: what should this factory make next? Decided from unit abilities read at
+ * runtime (damage vs air / surface / underwater, health, range, speed, cost), never from unit names,
+ * so balance patches change the choice automatically. Candidates are what the factory offers for
+ * each combat role; each is scored against the scouted enemy mix.
+ */
+namespace Production {
+
+array<Type> roles;
+array<int> built(1, 0);  // per def id: how many we've ordered (diminishing returns)
+int choices = 0, builders = 0;
+string last = "";
+
+void Init()
+{
+	roles = {RT::RAIDER, RT::ASSAULT, RT::SKIRM, RT::RIOT, RT::HEAVY, RT::ARTY, RT::AA, RT::AH, RT::AS,
+		RT::SUB, RT::AHA, RT::SUPER, RT::BOMBER};
+	built.resize(ai.GetDefCount() + 1);
+	for (uint i = 0; i < built.length(); ++i)
+		built[i] = 0;
+}
+
+// Desired constructor count: income-driven, scaled by the Director's scout-based scale knob.
+bool NeedBuilder()
+{
+	const float m = aiEconomyMgr.metal.income;
+	const float want = (3.f + m * 0.14f) * Brain::Director::scale;
+	return float(aiBuilderMgr.GetWorkerCount()) < want;
+}
+
+float Score(CCircuitDef@ d, float wAir, float wSurf, float wSub, float wStatic)
+{
+	if (d is null || !d.IsAvailable(ai.frame) || d.costM <= 0.f)
+		return 0.f;
+	const float hp = sqrt(AiMax(1.f, d.health));
+	// damage that can actually land on what the enemy fields
+	float dmg = wAir * d.airThrDmg + wSurf * d.surfThrDmg + wSub * d.waterThrDmg;
+	if (dmg <= 0.f)
+		return 0.f;
+	float s = dmg * hp;
+	const float range = d.GetMaxRange();
+	s *= sqrt(1.f + range / 600.f);                       // reach = fights on our terms
+	if (wStatic > 0.f)
+		s *= 1.f + wStatic * AiMin(2.f, range / 700.f);    // outrange their defences
+	if (ai.frame < 12 * MINUTE)
+		s *= 1.f + AiMin(1.f, d.speed / 120.f) * 0.5f;     // early map control is mobility
+	s /= (d.costM + d.costE / 60.f);                       // per resource spent
+	s /= 1.f + float(built[d.id]) / 14.f;                 // keep the mix varied
+	return s;
+}
+
+IUnitTask@ MakeTask(CCircuitUnit@ fac)
+{
+	if (ai.frame < 6 * MINUTE)
+		return null;  // let the opener run
+	const CCircuitDef@ fdef = fac.circuitDef;
+	if (fdef.IsMobile())
+		return null;
+	if (NeedBuilder()) {
+		++builders;
+		return null;  // core picks and places the right constructor
+	}
+
+	// Scouted enemy mix -> how much each damage domain matters.
+	const float air = aiEnemyMgr.GetEnemyCost(RT::AIR);
+	const float sub = aiEnemyMgr.GetEnemyCost(RT::SUB);
+	const float stat = aiEnemyMgr.GetEnemyThreat(RT::STATIC);
+	const float surf = AiMax(300.f, aiEnemyMgr.GetEnemyCost(RT::RAIDER) + aiEnemyMgr.GetEnemyCost(RT::ASSAULT)
+		+ aiEnemyMgr.GetEnemyCost(RT::SKIRM) + aiEnemyMgr.GetEnemyCost(RT::RIOT) + aiEnemyMgr.GetEnemyCost(RT::HEAVY)
+		+ aiEnemyMgr.GetEnemyCost(RT::ARTY) + aiEnemyMgr.GetEnemyCost(RT::STATIC) * 0.5f);
+	const float total = air + sub + surf;
+	const float wAir = air / total, wSub = sub / total, wSurf = surf / total;
+	const float wStatic = AiMin(1.f, stat / AiMax(1.f, aiEnemyMgr.mobileThreat + stat));
+
+	array<CCircuitDef@> cands;
+	array<float> scores;
+	for (uint i = 0; i < roles.length(); ++i) {
+		CCircuitDef@ d = aiFactoryMgr.GetRoleDef(fdef, roles[i]);
+		if (d is null || !d.IsMobile() || cands.findByRef(d) >= 0)
+			continue;
+		const float s = Score(d, wAir, wSurf, wSub, wStatic);
+		if (s > 0.f) {
+			cands.insertLast(d);
+			scores.insertLast(s * s);  // sharpen toward the best, keep some variety
+		}
+	}
+	if (cands.length() == 0)
+		return null;
+	const int pick = AiDice(scores);
+	if (pick < 0)
+		return null;
+	CCircuitDef@ d = cands[pick];
+	++built[d.id];
+	++choices;
+	last = d.GetName();
+	return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::FIREPOWER, Task::Priority::NORMAL, d,
+		fac.GetPos(ai.frame), 64.f));
+}
+
+string Status() { return "prod=" + choices + "/b" + builders + " last=" + last; }
+
+}  // namespace Production
+
+/* ======================================================================== */
+/*
+ * Eco gate: reasoning, not imitation. A moho/exploiter gives ~+6 m/s over a T1 extractor but costs
+ * ~+17-20 E/s upkeep to run (T1: 3 E/s). An energy stall slows every factory and constructor, so an
+ * upgrade is only worth starting if energy headroom can carry it. We cap concurrent advanced
+ * extractors at (current count + what the headroom carries) by adjusting maxThisUnit; the cap lifts
+ * as energy comes online.
+ */
+namespace Eco {
+
+array<CCircuitDef@> mohoDefs;
+array<int> mohoOrigMax;
+const float MOHO_UPKEEP = 22.f;  // 20 E/s upkeep + margin
+int gated = 0;
+
+void Init()
+{
+	mohoDefs = Defs({"armmoho", "cormoho", "legmoho", "cormexp", "armuwmme", "coruwmme", "leguwmme"});
+	for (uint i = 0; i < mohoDefs.length(); ++i)
+		mohoOrigMax.insertLast(mohoDefs[i].maxThisUnit);
+}
+
+void Update()
+{
+	const SResourceInfo@ e = aiEconomyMgr.energy;
+	const float fill = (e.storage > 0.f) ? e.current / e.storage : 0.f;
+	// Headroom: spare income, plus a little credit for a healthy storage buffer.
+	float headroom = e.income - e.pull + (fill > 0.5f ? 0.02f * e.current : 0.f);
+	if (aiEconomyMgr.isEnergyStalling)
+		headroom = AiMin(headroom, 0.f);
+	const int allowed = AiMax(0, int(headroom / MOHO_UPKEEP));
+	gated = 0;
+	for (uint i = 0; i < mohoDefs.length(); ++i) {
+		CCircuitDef@ d = mohoDefs[i];
+		const int cap = AiMin(mohoOrigMax[i], d.count + allowed);
+		if (cap < mohoOrigMax[i])
+			++gated;
+		d.maxThisUnit = cap;
+	}
+}
+
+string Status()
+{
+	return "mohoGate=" + (gated > 0 ? "on" : "off");
+}
+
+}  // namespace Eco
+
+/* ======================================================================== */
+/*
  * Director: every few seconds, ask "what is the next reasonable move?". It weighs our army against
  * the enemy's known mobile threat, our economy and the clock, picks a posture, and logs why.
  * The other modules read the posture.
  */
 namespace Director {
 
-enum Posture { BOOM = 0, HOLD, BALANCED, PRESSURE, ALLIN }
-array<string> names = {"BOOM", "HOLD", "BALANCED", "PRESSURE", "ALLIN"};
+enum Posture { BOOM = 0, HOLD, BALANCED, PRESSURE, ALLIN, TURTLE }
+array<string> names = {"BOOM", "HOLD", "BALANCED", "PRESSURE", "ALLIN", "TURTLE"};
 
 Posture posture = BOOM;
 Posture pending = BOOM;
 int pendingSince = 0;
 float waveFrac = 0.30f;
 float ratio = 1.f;
+float baseBP = -1.f;     // core's constructor-vs-army knob (economy.buildpower)
+float scale = 1.f;       // multiplier we apply to it
+string scaleWhy = "";
+bool blind = false;
 string reason = "start";
 
 float OurPower() { return Brain::Army::groundPower + Brain::Army::raiderPoolPower; }
@@ -996,21 +1192,50 @@ void Update()
 	const float theirs = AiMax(1.f, aiEnemyMgr.mobileThreat);
 	ratio = ours / theirs;
 	const int enemies = AiMax(1, ai.GetEnemyTeamSize());
+	if (baseBP < 0.f)
+		baseBP = aiFactoryMgr.buildpowerRatio;
+
+	/*
+	 * Scale vs army, decided by scouting. The factory adds a constructor whenever our build power is
+	 * below income * buildpowerRatio, so this one knob is the "more constructors or more units?" call.
+	 */
+	const float enemyStatic = aiEnemyMgr.GetEnemyCost(RT::STATIC);
+	blind = (minute >= 3.f && aiEnemyMgr.mobileThreat <= 1.f && enemyStatic <= 0.f);
+	const float threat = aiEnemyMgr.mobileThreat / AiMax(1.f, ours);
+	if (minute < 3.f)          { scale = 1.3f;  scaleWhy = "opening: expand"; }
+	else if (blind)            { scale = 1.0f;  scaleWhy = "blind: hedge and scout"; }
+	else if (threat < 0.5f)    { scale = 1.45f; scaleWhy = "enemy army small: scale"; }
+	else if (threat < 1.0f)    { scale = 1.1f;  scaleWhy = "safe margin: lean eco"; }
+	else if (threat < 1.5f)    { scale = 0.75f; scaleWhy = "enemy army stronger: build army"; }
+	else                       { scale = 0.45f; scaleWhy = "danger: everything into army"; }
+	aiFactoryMgr.buildpowerRatio = baseBP * scale;
+	aiMilitaryMgr.quota.scout = AiMax(int(aiMilitaryMgr.quota.scout), blind ? 4 : 3);
+	// Greedy enemy (lots of buildings, little army) is unprepared: punish rather than out-boom.
+	float enemyArmyCost = 0.f;  // seen enemy combat-unit metal (roles may overlap: rough)
+	array<Type> combat = {RT::RAIDER, RT::ASSAULT, RT::SKIRM, RT::RIOT, RT::HEAVY, RT::ARTY, RT::SUPER};
+	for (uint i = 0; i < combat.length(); ++i)
+		enemyArmyCost += aiEnemyMgr.GetEnemyCost(combat[i]);
+	const bool greedy = ratio > 0.9f && enemyStatic > 4.f * AiMax(200.f, enemyArmyCost);
 
 	Posture want;
 	string why;
 	if (minute < 4.f) {
 		want = BOOM;
 		why = "opening";
-	} else if (ratio < 0.6f) {
+	// Sun Tzu III.9-10: surround at 10:1, attack at 5:1, divide at 2:1, offer battle if equal,
+	// avoid if slightly inferior, flee if quite unequal.
+	} else if (ratio < 0.4f) {
+		want = TURTLE;
+		why = "quite unequal " + F1(ratio) + "x: everything into army, defend the base";
+	} else if (ratio < 0.75f) {
 		want = HOLD;
-		why = "outgunned " + F1(ratio) + "x: defend, only strike with a big wave";
-	} else if (ratio > 2.5f && minute >= 8.f && ours > 4.f * Brain::Army::baseAttack) {
+		why = "slightly inferior " + F1(ratio) + "x: avoid open battle, strike only with a big wave";
+	} else if (ratio >= 4.f && minute >= 8.f && ours > 4.f * Brain::Army::baseAttack) {
 		want = ALLIN;
-		why = "dominant " + F1(ratio) + "x: keep the pressure rolling";
-	} else if (ratio > 1.3f) {
+		why = "overwhelming " + F1(ratio) + "x: keep the pressure rolling, close the game";
+	} else if (ratio >= 1.6f || (greedy && minute >= 6.f)) {
 		want = PRESSURE;
-		why = "ahead " + F1(ratio) + "x: attack in frequent waves";
+		why = (greedy ? "enemy greedy (buildings >> army)" : "stronger " + F1(ratio) + "x") + ": attack in frequent waves";
 	} else {
 		want = (enemies > 1 && minute < 15.f) ? HOLD : BALANCED;
 		why = "even " + F1(ratio) + "x vs " + enemies + " enemies";
@@ -1020,7 +1245,7 @@ void Update()
 	if (want != pending) {
 		pending = want;
 		pendingSince = ai.frame;
-	} else if (want != posture && ai.frame - pendingSince >= 15 * SECOND) {
+	} else if (want != posture && ai.frame - pendingSince >= 25 * SECOND) {
 		AiLog("[ANV] Director: " + names[posture] + " -> " + names[want] + " (" + why + ")");
 		posture = want;
 		reason = why;
@@ -1032,10 +1257,11 @@ void Update()
 		case BALANCED: waveFrac = 0.30f + 0.20f * AiMin(1.f, AiMax(0.f, (minute - 5.f) / 20.f)); break;
 		case PRESSURE: waveFrac = 0.25f; break;
 		case ALLIN:    waveFrac = 0.15f; break;
+		case TURTLE:   waveFrac = 0.80f; break;
 	}
 }
 
-string Status() { return names[posture] + " r=" + F1(ratio) + " wave=" + F1(waveFrac); }
+string Status() { return names[posture] + " r=" + F1(ratio) + " wave=" + F1(waveFrac) + " bp=" + F1(scale) + "(" + scaleWhy + ")"; }
 
 }  // namespace Director
 
@@ -1068,6 +1294,8 @@ void Init()
 	Recycler::Init();
 	Intel::Init();
 	Strategic::Init();
+	Eco::Init();
+	Production::Init();
 }
 
 void OnFactoryAdded(CCircuitUnit@ unit)
@@ -1104,18 +1332,20 @@ void Update()  // every 30 frames
 	Intel::Update();
 	Director::Update();
 	Army::Update(Intel::jamAlert);
-	if (ai.frame % (2 * SECOND) < SECOND)
+	if (ai.frame % (2 * SECOND) < SECOND) {
 		Recycler::Update();
+		Eco::Update();
+	}
 	if (ai.frame % (10 * SECOND) < SECOND)
 		Strategic::Update(Intel::jamAlert);
 
 	if (ai.frame % MINUTE < SECOND) {
 		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " groundPow=" + F1(Army::groundPower) + " units=" + Army::ground.length()
-			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " recalls=" + Army::recalls + " ft=" + Army::Hist()
+			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " waves=" + Army::waves + " recalls=" + Army::recalls + " ft=" + Army::Hist()
 			+ " quota.attack=" + F1(aiMilitaryMgr.quota.attack) + " raidMin=" + F1(aiMilitaryMgr.quota.raid.min)
 			+ " enemyMob=" + F1(aiEnemyMgr.mobileThreat) + " jamCost=" + F1(Intel::jammerCost)
 			+ " maxHeat=" + F1(Intel::MaxHeat()) + " eyes=" + Intel::eyes.length() + "/" + Intel::eyesOrdered
-			+ " | " + Recycler::Status() + " | " + Strategic::Status()
+			+ " | " + Production::Status() + " | " + Recycler::Status() + " " + Eco::Status() + " | " + Strategic::Status()
 			+ " | E inc=" + F1(aiEconomyMgr.energy.income) + " pull=" + F1(aiEconomyMgr.energy.pull)
 			+ " M inc=" + F1(aiEconomyMgr.metal.income));
 	}

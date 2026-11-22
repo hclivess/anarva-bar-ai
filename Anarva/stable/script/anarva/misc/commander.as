@@ -45,19 +45,12 @@ SOpener@ GetOpenInfo()
 {
 	return SOpener({
 		{Factory::armlab, array<SQueue> = {
-			//raider
-			SQueue(0.4f, {SO(RT::BUILDER), SO(RT::SCOUT, 2), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 5), SO(RT::BUILDER), SO(RT::RAIDER)}),
-			//builder
-			SQueue(0.3f, {SO(RT::BUILDER), SO(RT::SCOUT), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER, 3), SO(RT::RAIDER, 3), SO(RT::SUPPORT), SO(RT::RAIDER)}),
-			//standard
-			SQueue(0.3f, {SO(RT::SCOUT), SO(RT::BUILDER), SO(RT::RAIDER, 3), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER)})
+			// Anarva: constructor-rich opener (pros reach ~27 m/s by min 5 by expanding fast)
+			SQueue(1.0f, {SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER)})
 		}},
 		{Factory::armvp, array<SQueue> = {
-			//standard
-			SQueue(0.4f, {SO(RT::SCOUT), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 3), SO(RT::BUILDER), SO(RT::RAIDER)}),
-			//early scout push
-			SQueue(0.3f, {SO(RT::SCOUT, 2), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER)}),
-			SQueue(0.3f, {SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER)})
+			// Anarva: constructor-rich opener (pros reach ~27 m/s by min 5 by expanding fast)
+			SQueue(1.0f, {SO(RT::BUILDER), SO(RT::SCOUT), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER)})
 		}},
 		{Factory::armalab, array<SQueue> = {
 			SQueue(1.0f, {SO(RT::BUILDER2), SO(RT::RIOT), SO(RT::ASSAULT, 2), SO(RT::BUILDER2), SO(RT::ASSAULT), SO(RT::SKIRM), SO(RT::BUILDER2), SO(RT::AHA, 2), SO(RT::BUILDER2), SO(RT::HEAVY), SO(RT::BUILDER2)})
@@ -76,19 +69,12 @@ SOpener@ GetOpenInfo()
 			SQueue(1.0f, {SO(RT::BUILDER2), SO(RT::SKIRM), SO(RT::BUILDER2), SO(RT::SKIRM), SO(RT::BUILDER2, 2)})
 		}},
 		{Factory::corlab, array<SQueue> = {
-			SQueue(0.3f, {SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 4), SO(RT::BUILDER), SO(RT::RAIDER, 2)}),
-			SQueue(0.3f, {SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::RIOT), SO(RT::BUILDER), SO(RT::RAIDER, 2)}),
-			SQueue(0.4f, {SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER)})
+			// Anarva: constructor-rich opener (pros reach ~27 m/s by min 5 by expanding fast)
+			SQueue(1.0f, {SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER)})
 		}},
 		{Factory::corvp, array<SQueue> = {
-			//standard
-			SQueue(0.4f, {SO(RT::SCOUT), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER, 2)}),
-			// raider serial production
-			SQueue(0.3f, {SO(RT::SCOUT), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 5), SO(RT::BUILDER)}),
-			// scout start
-			//SQueue(0.2f, {SO(RT::SCOUT, 4), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER)}),
-			//defensive eco start
-			SQueue(0.3f, {SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER)})
+			// Anarva: constructor-rich opener (pros reach ~27 m/s by min 5 by expanding fast)
+			SQueue(1.0f, {SO(RT::BUILDER), SO(RT::SCOUT), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER)})
 		}},
 		{Factory::coralab, array<SQueue> = {
 			SQueue(1.0f, {SO(RT::BUILDER2), SO(RT::RAIDER, 3), SO(RT::BUILDER2), SO(RT::RAIDER, 3), SO(RT::BUILDER2), SO(RT::SKIRM), SO(RT::HEAVY), SO(RT::BUILDER2), SO(RT::ASSAULT, 2), SO(RT::BUILDER2)})
@@ -106,19 +92,12 @@ SOpener@ GetOpenInfo()
 			SQueue(1.0f, {SO(RT::BUILDER2), SO(RT::SKIRM), SO(RT::BUILDER2), SO(RT::SKIRM), SO(RT::BUILDER2, 2)})
 		}},
 		{Factory::leglab, array<SQueue> = {
-			SQueue(0.3f, {SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 4), SO(RT::BUILDER), SO(RT::RAIDER, 2)}),
-			SQueue(0.3f, {SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::RIOT), SO(RT::BUILDER), SO(RT::RAIDER, 2)}),
-			SQueue(0.4f, {SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER)})
+			// Anarva: constructor-rich opener (pros reach ~27 m/s by min 5 by expanding fast)
+			SQueue(1.0f, {SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER)})
 		}},
 		{Factory::legvp, array<SQueue> = {
-			//standard
-			SQueue(0.4f, {SO(RT::SCOUT), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER, 2)}),
-			// raider serial production
-			SQueue(0.3f, {SO(RT::SCOUT), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 5), SO(RT::BUILDER)}),
-			// scout start
-			//SQueue(0.2f, {SO(RT::SCOUT, 4), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER)}),
-			//defensive eco start
-			SQueue(0.3f, {SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER)})
+			// Anarva: constructor-rich opener (pros reach ~27 m/s by min 5 by expanding fast)
+			SQueue(1.0f, {SO(RT::BUILDER), SO(RT::SCOUT), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER), SO(RT::RAIDER, 2), SO(RT::BUILDER)})
 		}},
 		{Factory::legalab, array<SQueue> = {
 			SQueue(1.0f, {SO(RT::BUILDER2), SO(RT::RAIDER, 3), SO(RT::BUILDER2), SO(RT::RAIDER, 3), SO(RT::BUILDER2), SO(RT::SKIRM), SO(RT::HEAVY), SO(RT::BUILDER2), SO(RT::ASSAULT, 2), SO(RT::BUILDER2)})

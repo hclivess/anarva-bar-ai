@@ -50,7 +50,7 @@
 			"coruwfus": [50, 100, 35, 600, 2.8]  // efficiency=2.756296
 		},
 
-		"factor": [[6.0, 1], [20, 300], [30, 420], [60.0, 3600]], //desired energy factor at a certain time
+		"factor": [[12.0, 1], [13.0, 480], [16.0, 720], [22.0, 1200], [28.0, 2400]], // Anarva: E:M follows spend - T1 spending needs ~12-16 E per M, T2/fusion-tier 20-25 (measured in 38-55 rated duels: 11->13->16->22). BARb was [[6,1],[20,300],[30,420],[60,3600]] and over-built energy.
 		// desired energy rule #1: e-income >= m-income * factor
 		// income factor for energy, time is in seconds
 		// [[<start_factor>, <start_time>], [<end_factor>, <end_time>]]
@@ -96,10 +96,10 @@
 	"goal_exec": 50.0,  // assign builders till targeted time (in s) to build reached => low value: builders focus on few projects; high value: builder do more task; old values: 45, 50
 	"build_mod": 1000.0,  // default build_mod for UnitDef, if it's not specified
 	"eps_step": 0.2,
-	"buildpower": 1.2, //1.25, 1.5, 1.3
+	"buildpower": 1.4, // Anarva: was 1.2 - more constructors, faster expansion
 	"excess": -1.0, 	// Metal excess to income ratio, -1 to disable
 
-	"ms_pull":  [[0.57, 0.0], [0.66, 0.34]],
+	"ms_pull":  [[0.45, 0.0], [0.52, 0.34]],  // Anarva: was [[0.57, 0.0], [0.66, 0.34]] (BARb starves its factories)
     // AI balances metal spent on tasks for mobile cons / metal spent on tasks for factories. (mobile to static reatio in%)
     // [[<value1>, <start_mex_percent>], [<value2>, <end_mex_percent>]]
     // mex percent = % of mex of whole map 

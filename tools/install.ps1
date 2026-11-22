@@ -19,7 +19,7 @@ Copy-Item -Recurse -Force (Join-Path $src "*") $dst
 Copy-Item -Force (Join-Path $engine.FullName "AI\Skirmish\BARb\stable\SkirmishAI.dll") $dst
 if ($Name -ne "Anarva") {
     $info = Join-Path $dst "AIInfo.lua"
-    $text = [IO.File]::ReadAllText($info).Replace("value  = 'Anarva', -- AI name", "value  = '$Name', -- AI name")
+    $text = [IO.File]::ReadAllText($info).Replace("value  = 'Anarva', -- AI name", "value  = '$Name', -- AI name") -replace "value  = 'Anarv[^']*',\r?\n(\s*desc   = 'human readable name)", "value  = '$Name',`n`$1"
     [IO.File]::WriteAllText($info, $text, (New-Object Text.UTF8Encoding($false)))
 }
 Write-Host "Installed $Name -> $dst (dll from $($engine.Name))"

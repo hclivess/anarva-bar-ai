@@ -1,63 +1,186 @@
-{
-  "project": "Anarvā — Skirmish AI for Beyond All Reason (BARb/CircuitAI core + own AngelScript brain/configs)",
-  "goal": {
-    "statement": "1 Anarva must be able to beat 6 BARb (hard) opponents on all types of maps",
-    "map_types": ["open", "choke", "mixed", "water"],
-    "success_metric": "1v6 vs BARb:hard: win (or decisive points win at 40 min) on every map type, repeated across factions",
-    "status": "in_progress"
-  },
-  "milestones": [
-    {"id": "M1", "desc": "1v1 vs BARb hard: >= 2:1 win ratio across all map types", "status": "in_progress", "result": null},
-    {"id": "M2", "desc": "1v2 vs BARb hard: win majority on all map types", "status": "todo", "result": null},
-    {"id": "M3", "desc": "1v3", "status": "todo", "result": null},
-    {"id": "M4", "desc": "1v6 on all map types", "status": "todo", "result": null}
-  ],
-  "install": {
-    "source": "Anarva/stable",
-    "installed_to": "C:/Hry/Beyond-All-Reason/data/AI/Skirmish/Anarva/stable",
-    "installer": "tools/install.ps1",
-    "profiles": {"anarva": "main", "anarva_b": "A/B test variant (same scripts, config/anarva_b)"}
-  },
-  "features": [
-    {"name": "Army quota scaling", "file": "script/anarva/misc/brain.as (Brain::Army)", "status": "done",
-     "desc": "attack quota = 30%->55% of ground army power; raid gather = max(3 raiders, 40% raider pool)"},
-    {"name": "Broken-squad recall", "status": "done", "desc": "abort raid/attack squads below 40% of peak power -> survivors regroup"},
-    {"name": "Eco recycling", "status": "done", "desc": "reclaim solar/wind/tidal/adv-solar once fusion-tier carries; fusions once 2+ AFUS carry; T1 makers once 4+ T2 makers; blocks rebuild via maxThisUnit=0, restores on energy collapse"},
-    {"name": "Obsolete T1 unit salvage", "status": "done", "desc": "after 22 min with adv factory and m_inc>=30: take idle T1 unit near base out of control and reclaim"},
-    {"name": "Jammer intel", "status": "done", "desc": "enemy jammer role tagging, phantom threat kernel on seen jammers, loss heatmap -> Dragon's Eyes, scout quota + air scouts on alert"},
-    {"name": "Strategic planner", "status": "done", "desc": "anti-nuke (enemy silo or rich), Juno (jammer alert), EMP/tac launcher forward, nuke under AMD, shields over most valuable infra"},
-    {"name": "Economy split rebalance", "status": "testing", "desc": "ms_pull 0.57-0.66 -> 0.45-0.52, buildpower 1.2 -> 1.4 (profile anarva_b)"},
-    {"name": "Counter-response to scouted composition", "status": "todo"},
-    {"name": "Walls / dragon teeth at chokes", "status": "todo"},
-    {"name": "Factory composition tuning from pro replays", "status": "todo"},
-    {"name": "1vN defensive play (chokes, porc where it pays)", "status": "todo"}
-  ],
-  "tools": {
-    "run_match.py": "one headless match, --n1 N opponents",
-    "batch.py": "parallel batch + scoreboard by map type",
-    "run_replay.py": "headless replay playback with analyzer widget",
-    "index_replays.py": "index local replays by skill",
-    "fetch_replays.py": "download high-skill public replays (api.bar-rts.com + OVH storage)",
-    "patch_jammer_roles.py": "tag jammer UnitDefs with enemy role"
-  },
-  "experiments": [
-    {"id": "t1", "desc": "first Anarva build vs BARb hard, Avalanche", "result": "behind at 45m; revealed army power undercount and reclaim-as-loss heat bug (both fixed)"},
-    {"id": "role-hist", "desc": "fight task histogram over 40 min", "result": "ARTY 109, DEFEND 107, ATTACK 0-6, RAID 3-4: armies almost never launch; factory/eco split starves army"},
-    {"id": "b1", "desc": "baseline 12 games 1v1 vs BARb hard, all map types", "result": "running"}
-  ],
-  "findings": [
-    "BARb spends ~57-66% of metal on mobile-constructor (static) tasks; army stays tiny (army_m ~6k vs static ~50k at 40 min).",
-    "Raid squads only end when their leader dies -> survivors raid alone (the 'one by one' trickle).",
-    "Attack squads launch only at quota.attack (60 power) and abort below the quota they were created with.",
-    "BARb never builds Juno, anti-nuke, EMP/tac launcher, nukes, shields or walls (not in any build list it reaches).",
-    "Core reclaims old energy only when a new generator finishes and only within 1000 elmos of base.",
-    "Threat ranges only project for armed units, so jammer phantom threat works through enemy group influence, not the threat map.",
-    "GetFightType() is only on IFighterTask (needs cast<IFighterTask>).",
-    "Lobby hides non-whitelisted AIs: devmode.txt + Settings>Developer>untick simple AI list. Only the bot's owner needs Anarva installed."
-  ],
-  "replay_analysis": {
-    "local_index": "ref/replays.csv (1054 replays)",
-    "public_source": "https://api.bar-rts.com/replays (list/detail) + OVH storage for .sdfz",
-    "status": "fetching top-skill duels; analyzing 6 local top-skill games"
-  }
+﻿{
+    "project":  "AnarvÄ â€” Skirmish AI for Beyond All Reason (BARb/CircuitAI core + own AngelScript brain/configs)",
+    "goal":  {
+                 "statement":  "1 Anarva must be able to beat 6 BARb (hard) opponents on all types of maps",
+                 "map_types":  [
+                                   "open",
+                                   "choke",
+                                   "mixed",
+                                   "water"
+                               ],
+                 "success_metric":  "1v6 vs BARb:hard: win (or decisive points win at 40 min) on every map type, repeated across factions",
+                 "status":  "in_progress"
+             },
+    "milestones":  [
+                       {
+                           "id":  "M1",
+                           "desc":  "1v1 vs BARb hard: \u003e= 2:1 win ratio across all map types",
+                           "status":  "in_progress",
+                           "result":  "baseline 2.33 (mostly points); need decisive wins"
+                       },
+                       {
+                           "id":  "M2",
+                           "desc":  "1v2 vs BARb hard: win majority on all map types",
+                           "status":  "todo",
+                           "result":  null
+                       },
+                       {
+                           "id":  "M3",
+                           "desc":  "1v3",
+                           "status":  "todo",
+                           "result":  null
+                       },
+                       {
+                           "id":  "M4",
+                           "desc":  "1v6 on all map types",
+                           "status":  "todo",
+                           "result":  null
+                       }
+                   ],
+    "install":  {
+                    "source":  "Anarva/stable",
+                    "installed_to":  "C:/Hry/Beyond-All-Reason/data/AI/Skirmish/Anarva/stable",
+                    "installer":  "tools/install.ps1",
+                    "profiles":  {
+                                     "anarva":  "main",
+                                     "anarva_b":  "A/B test variant (same scripts, config/anarva_b)"
+                                 }
+                },
+    "features":  [
+                     {
+                         "name":  "Army quota scaling",
+                         "file":  "script/anarva/misc/brain.as (Brain::Army)",
+                         "status":  "done",
+                         "desc":  "attack quota = 30%-\u003e55% of ground army power; raid gather = max(3 raiders, 40% raider pool)"
+                     },
+                     {
+                         "name":  "Broken-squad recall",
+                         "status":  "done",
+                         "desc":  "abort raid/attack squads below 40% of peak power -\u003e survivors regroup"
+                     },
+                     {
+                         "name":  "Eco recycling",
+                         "status":  "done",
+                         "desc":  "reclaim solar/wind/tidal/adv-solar once fusion-tier carries; fusions once 2+ AFUS carry; T1 makers once 4+ T2 makers; blocks rebuild via maxThisUnit=0, restores on energy collapse"
+                     },
+                     {
+                         "name":  "Obsolete T1 unit salvage",
+                         "status":  "done",
+                         "desc":  "after 22 min with adv factory and m_inc\u003e=30: take idle T1 unit near base out of control and reclaim"
+                     },
+                     {
+                         "name":  "Jammer intel",
+                         "status":  "done",
+                         "desc":  "enemy jammer role tagging, phantom threat kernel on seen jammers, loss heatmap -\u003e Dragon\u0027s Eyes, scout quota + air scouts on alert"
+                     },
+                     {
+                         "name":  "Strategic planner",
+                         "status":  "done",
+                         "desc":  "anti-nuke (enemy silo or rich), Juno (jammer alert), EMP/tac launcher forward, nuke under AMD, shields over most valuable infra"
+                     },
+                     {
+                         "name":  "Economy split rebalance",
+                         "status":  "done",
+                         "desc":  "ms_pull 0.57-0.66 -\u003e 0.45-0.52, buildpower 1.2 -\u003e 1.4 (profile anarva_b)"
+                     },
+                     {
+                         "name":  "Counter-response to scouted composition",
+                         "status":  "done (AA towers + capability-based production)"
+                     },
+                     {
+                         "name":  "Walls / dragon teeth at chokes",
+                         "status":  "todo"
+                     },
+                     {
+                         "name":  "Factory composition tuning from pro replays",
+                         "status":  "todo"
+                     },
+                     {
+                         "name":  "1vN defensive play (chokes, porc where it pays)",
+                         "status":  "todo"
+                     },
+                     {
+                         "name":  "Director (Sun Tzu force-ratio ladder)",
+                         "status":  "done",
+                         "desc":  "TURTLE/HOLD/BALANCED/PRESSURE/ALLIN from power ratio; reasons logged"
+                     },
+                     {
+                         "name":  "Scouting-driven scale vs army",
+                         "status":  "done",
+                         "desc":  "buildpowerRatio from scouted threat ratio; blind -\u003e hedge + scouts; greedy enemy -\u003e pressure"
+                     },
+                     {
+                         "name":  "Wave control",
+                         "status":  "done",
+                         "desc":  "one script-owned gathering task per kind, sized by Director"
+                     },
+                     {
+                         "name":  "Capability-based production",
+                         "status":  "testing",
+                         "desc":  "scores factory role options by dmg vs scouted air/surface/sub mix, hp, range, speed, cost"
+                     },
+                     {
+                         "name":  "Eco gate (moho energy headroom)",
+                         "status":  "done"
+                     },
+                     {
+                         "name":  "Energy factor from reasoning + pro data",
+                         "status":  "testing",
+                         "desc":  "[[12,0],[13,8m],[16,12m],[22,20m],[28,40m]]"
+                     }
+                 ],
+    "tools":  {
+                  "run_match.py":  "one headless match, --n1 N opponents",
+                  "batch.py":  "parallel batch + scoreboard by map type",
+                  "run_replay.py":  "headless replay playback with analyzer widget",
+                  "index_replays.py":  "index local replays by skill",
+                  "fetch_replays.py":  "download high-skill public replays (api.bar-rts.com + OVH storage)",
+                  "patch_jammer_roles.py":  "tag jammer UnitDefs with enemy role"
+              },
+    "experiments":  [
+                        {
+                            "id":  "t1",
+                            "desc":  "first Anarva build vs BARb hard, Avalanche",
+                            "result":  "behind at 45m; revealed army power undercount and reclaim-as-loss heat bug (both fixed)"
+                        },
+                        {
+                            "id":  "role-hist",
+                            "desc":  "fight task histogram over 40 min",
+                            "result":  "ARTY 109, DEFEND 107, ATTACK 0-6, RAID 3-4: armies almost never launch; factory/eco split starves army"
+                        },
+                        {
+                            "id":  "b1",
+                            "desc":  "baseline: first-gen Anarva vs BARb hard 1v1, 12 games all map types",
+                            "result":  "7W 3L 2D (ratio 2.33); open 2-1, choke 3-0, mixed 1-1, water 1-1; mostly points wins at 40m; only 1 commander kill; all losses from team-1 start"
+                        },
+                        {
+                            "id":  "replays-top-duels",
+                            "desc":  "12 player-games, skill 38-55",
+                            "result":  "winners: 54 m/s at 10m, army ~0.9x eco value, little static D; E:M 18-\u003e11-\u003e13-16-\u003e22-25"
+                        },
+                        {
+                            "id":  "b2",
+                            "desc":  "new build (Director, wave control, scout-driven scale, Production chooser, Eco gate, E:M curve) vs BARb hard, 12 games",
+                            "result":  "running"
+                        }
+                    ],
+    "findings":  [
+                     "BARb spends ~57-66% of metal on mobile-constructor (static) tasks; army stays tiny (army_m ~6k vs static ~50k at 40 min).",
+                     "Raid squads only end when their leader dies -\u003e survivors raid alone (the \u0027one by one\u0027 trickle).",
+                     "Attack squads launch only at quota.attack (60 power) and abort below the quota they were created with.",
+                     "BARb never builds Juno, anti-nuke, EMP/tac launcher, nukes, shields or walls (not in any build list it reaches).",
+                     "Core reclaims old energy only when a new generator finishes and only within 1000 elmos of base.",
+                     "Threat ranges only project for armed units, so jammer phantom threat works through enemy group influence, not the threat map.",
+                     "GetFightType() is only on IFighterTask (needs cast\u003cIFighterTask\u003e).",
+                     "Lobby hides non-whitelisted AIs: devmode.txt + Settings\u003eDeveloper\u003euntick simple AI list. Only the bot\u0027s owner needs Anarva installed.",
+                     "Core gathers squads to max(quota, enemy 2nd-biggest group threat): unreachable once enemy blobs -\u003e armies never launch. Fixed by script-owned wave tasks.",
+                     "buildpowerRatio = constructor-vs-army knob (factory adds builder while buildpower \u003c income*ratio).",
+                     "Moho: +6 m/s for +17 E/s upkeep; T1 mex 3 E/s. Upgrades gated by energy headroom.",
+                     "Top duel winners keep army value ~= eco value by 10 min; losers over-invest in static defence."
+                 ],
+    "replay_analysis":  {
+                            "local_index":  "ref/replays.csv (1054 replays)",
+                            "public_source":  "https://api.bar-rts.com/replays (list/detail) + OVH storage for .sdfz",
+                            "status":  "fetching top-skill duels; analyzing 6 local top-skill games"
+                        }
 }

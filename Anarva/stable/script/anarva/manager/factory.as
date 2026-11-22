@@ -55,6 +55,9 @@ float switchLimit = MakeSwitchLimit();
 
 IUnitTask@ AiMakeTask(CCircuitUnit@ unit)
 {
+	IUnitTask@ task = Brain::Production::MakeTask(unit);
+	if (task !is null)
+		return task;
 	return aiFactoryMgr.DefaultMakeTask(unit);
 }
 

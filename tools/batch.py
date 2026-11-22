@@ -33,7 +33,7 @@ def parse(out, tac_team, n1=1):
     for m in STAT.finditer(text):
         teams[int(m.group(4))] = {"frame": int(m.group(2)), "army": int(m.group(6)), "static": int(m.group(7)),
                                  "m_inc": float(m.group(8)), "killed": int(m.group(10)), "lost": int(m.group(11))}
-    res = {"teams": teams, "script_errors": len(re.findall(r"Anarva-stable>.*(?:rror|xception)", text))}
+    res = {"teams": teams, "script_errors": len(re.findall(r"Anarva\w*-stable>.*(?:rror|xception)", text))}
     w = re.search(r"\[HARNESS\] RESULT winners=([\d,]*)", text)
     if w:
         winners = [int(x) for x in w.group(1).split(",") if x]
@@ -43,7 +43,10 @@ def parse(out, tac_team, n1=1):
         op = {k: sum(v[k] for t, v in teams.items() if t != tac_team) for k in ("army", "static", "killed", "lost", "frame")}
         op["frame"] = me["frame"]
         mv, ov = me["army"] + me["static"], op["army"] + op["static"]
-        res["result"] = "pts_win" if mv > 1.25 * ov else ("pts_loss" if ov > 1.25 * mv else "pts_draw")
+        if me["frame"] < 25 * 60 * 30:
+            res["result"] = "incomplete"  # cut by the wall-clock limit too early to judge
+        else:
+            res["result"] = "pts_win" if mv > 1.25 * ov else ("pts_loss" if ov > 1.25 * mv else "pts_draw")
     else:
         res["result"] = "crash"
     return res
@@ -53,7 +56,7 @@ def run_one(args, i):
     m = args.maps[i % len(args.maps)]
     tac_team = 0 if args.n1 > 1 else ((i // len(args.maps)) % 2 if args.games > len(args.maps) else i % 2)
     out = os.path.join(args.out, f"g{i:02d}")
-    ai = ["Anarva:anarva", args.opp]
+    ai = [args.me, args.opp]
     if tac_team == 1:
         ai.reverse()
     subprocess.run([sys.executable, "-I", os.path.join(HERE, "run_match.py"), out, "--ai0", ai[0], "--ai1", ai[1],
@@ -74,9 +77,10 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--games", type=int, default=8)
     ap.add_argument("--par", type=int, default=4)
+    ap.add_argument("--me", default="Anarva:anarva", help="AI under test, shortName:profile")
     ap.add_argument("--opp", default="BARb:hard")
     ap.add_argument("--maps", default=",".join(DEFAULT_MAPS))
-    ap.add_argument("--minutes", type=float, default=16.0)
+    ap.add_argument("--minutes", type=float, default=30.0)
     args = ap.parse_args()
     args.maps = [x.strip() for x in args.maps.split(",") if x.strip()]
     os.makedirs(args.out, exist_ok=True)
