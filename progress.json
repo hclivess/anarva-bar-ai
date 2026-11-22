@@ -190,12 +190,32 @@
                         },
                         {
                             "id":  "h5",
-                            "desc":  "first-gen configs+opener, all new modules vs first-gen",
-                            "result":  "running"
+                            "desc":  "first-gen configs+opener, all modules vs first-gen (6 games, stopped)",
+                            "result":  "1W 4L 1D"
                         },
                         {
                             "id":  "h6",
-                            "desc":  "first-gen configs+opener, only first-gen modules vs first-gen (harness sanity)",
+                            "desc":  "first-gen configs, modules mostly off vs first-gen (6 games)",
+                            "result":  "0W 5L 1D -\u003e always-on scouting/AA/recall/fusion-recycle hurt"
+                        },
+                        {
+                            "id":  "h7",
+                            "desc":  "SANITY: everything new off (incl. scouting, AA, new recall, fusrec) vs first-gen",
+                            "result":  "5W 3L (1.67): harness sane; this is the new default"
+                        },
+                        {
+                            "id":  "h8",
+                            "desc":  "h7 + reasoning modules (prod, scale, waves, quota, ecogate, fortify, waste, tech, redirect)",
+                            "result":  "3W 4L 1D -\u003e bundle still net negative; test one at a time"
+                        },
+                        {
+                            "id":  "h9",
+                            "desc":  "default + waves+quota",
+                            "result":  "running"
+                        },
+                        {
+                            "id":  "h10",
+                            "desc":  "default + production chooser (+rez)",
                             "result":  "running"
                         }
                     ],
@@ -213,7 +233,9 @@
                      "Moho: +6 m/s for +17 E/s upkeep; T1 mex 3 E/s. Upgrades gated by energy headroom.",
                      "Top duel winners keep army value ~= eco value by 10 min; losers over-invest in static defence.",
                      "Config changes since first-gen (opener, ms_pull/buildpower, commander hide) are shared by every variant and must be bisected separately (profile anarva_fg, flag F_OPENER).",
-                     "Geothermals are a core fallback only (energy planner ranks anywhere-placeable energy); script cannot see vents."
+                     "Geothermals are a core fallback only (energy planner ranks anywhere-placeable energy); script cannot see vents.",
+                     "Side/map confound: with games==maps each map is played from one side only; compare variants paired, and move to both-sides (16 games) for final numbers.",
+                     "Method: modules ship ON only after winning head-to-head vs first-gen; defaults = best-measured config."
                  ],
     "replay_analysis":  {
                             "local_index":  "ref/replays.csv (1054 replays)",

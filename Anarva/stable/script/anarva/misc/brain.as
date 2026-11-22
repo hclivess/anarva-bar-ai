@@ -14,22 +14,26 @@
 
 namespace Brain {
 
-// Feature flags: tools/install.ps1 -Flags "F_PROD=false,..." flips them in an installed copy so each
-// module can be A/B-tested head-to-head. A module ships on only if it proves itself.
-const bool F_WAVES = true;     // script-owned wave/pack gathering
+// Feature flags: tools/install.ps1 -Flags "F_PROD=true,..." flips them in an installed copy so each
+// module can be A/B-tested head-to-head against the first-gen build. A module ships ON only after it\n// has measurably won; defaults below are the best-measured configuration (bisect round 4: 5-3 vs first-gen).
+const bool F_WAVES = false;     // script-owned wave/pack gathering
 const bool F_RECALL = true;    // broken-squad recall
-const bool F_PROD = true;      // capability-based production chooser (incl. rez bots)
-const bool F_SCALE = true;     // Director drives buildpowerRatio
-const bool F_ECOGATE = true;   // moho energy-headroom gate
+const bool F_PROD = false;      // capability-based production chooser (incl. rez bots)
+const bool F_SCALE = false;     // Director drives buildpowerRatio
+const bool F_ECOGATE = false;   // moho energy-headroom gate
 const bool F_RECYCLE = true;   // eco recycling + T1 salvage
 const bool F_STRAT = true;     // strategic structures + AA counter
-const bool F_FORTIFY = true;   // turrets + teeth at hot fronts
-const bool F_WASTE = true;     // overflow: nanos + converters
-const bool F_TECH = true;      // payback-based tech gate
-const bool F_REDIRECT = true;  // assist factories by army deficit
+const bool F_FORTIFY = false;   // turrets + teeth at hot fronts
+const bool F_WASTE = false;     // overflow: nanos + converters
+const bool F_TECH = false;      // payback-based tech gate
+const bool F_REDIRECT = false;  // assist factories by army deficit
 const bool F_INTEL = true;     // eyes, scouting, phantom threat
-const bool F_QUOTA = true;
-const bool F_OPENER = true;    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
+const bool F_QUOTA = false;
+const bool F_OPENER = false;
+const bool F_SCOUT = false;     // scout quota >=3 and timed scout recruits (keep sight)
+const bool F_AA = false;        // static AA counter
+const bool F_FUSREC = false;
+const bool F_NEWRECALL = false; // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -260,7 +264,9 @@ void CheckSquads()
 		const bool isRaid = task.GetFightType() == Task::FightType::RAID;
 		const float fresh = isRaid ? aiMilitaryMgr.quota.raid.min : aiMilitaryMgr.quota.attack;
 		// Recall once the squad has bled and is now weaker than what we'd send fresh, scaled by how well we trade.
-		if (p < squadPeak[i] && p < fresh * AiMin(1.f, Brain::Assess::trade)) {
+		const bool recall = F_NEWRECALL ? (p < squadPeak[i] && p < fresh * AiMin(1.f, Brain::Assess::trade))
+			: (p < 0.4f * squadPeak[i] && p < fresh);  // first-gen rule
+		if (recall) {
 			++recalls;
 			AiLog("[ANV] Army: recalling broken " + (isRaid ? "raid" : "attack") + " squad power "
 				+ F1(p) + "/" + F1(squadPeak[i]) + " (" + task.GetUnits().length() + " units)");
@@ -571,7 +577,7 @@ void Update()
 	}
 
 	// --- plain fusions once 2+ advanced fusions carry the grid ---
-	if (AfusCount() >= 2 && AfusMake() >= 0.7f * income && fill > 0.6f && !aiEconomyMgr.isEnergyStalling) {
+	if (F_FUSREC && AfusCount() >= 2 && AfusMake() >= 0.7f * income && fill > 0.6f && !aiEconomyMgr.isEnergyStalling) {
 		CCircuitUnit@ cand = PickCandidate(Fusions());
 		if (cand !is null) {
 			const float surplus = income - EnergyMake(cand.circuitDef) - e.pull;
@@ -754,7 +760,7 @@ void Update()
 	// Real line of sight beats radar dots: a blip has no type, so no real threat, counter or target.
 	// Keep eyes on the enemy: planes on a timer, more when blind or jammed; ground scouts as fallback.
 	const bool blind = Brain::Director::blind;
-	const int interval = (jamAlert || blind) ? 90 * SECOND : 3 * MINUTE;
+	const int interval = (jamAlert || blind) ? 90 * SECOND : (F_SCOUT ? 3 * MINUTE : 1 << 30);
 	if (ai.frame - lastScoutFrame > interval && Brain::Army::scouts.length() < uint((jamAlert || blind) ? 4 : 2)) {
 		array<CCircuitUnit@>@ facs = airFactories.length() > 0 ? airFactories : allFactories;
 		if (facs.length() > 0) {
@@ -996,6 +1002,8 @@ void InitCounter()
 
 void CounterUpdate()
 {
+	if (!F_AA)
+		return;
 	const float air = aiEnemyMgr.GetEnemyCost(RT::AIR);
 	if (air < 300.f || infra.length() == 0 || ai.frame - lastAAOrder < 20 * SECOND)
 		return;
@@ -1699,7 +1707,8 @@ void Update()
 	}
 	if (F_SCALE)
 		aiFactoryMgr.buildpowerRatio = baseBP * scale;
-	aiMilitaryMgr.quota.scout = AiMax(int(aiMilitaryMgr.quota.scout), blind ? 4 : 3);
+	if (F_SCOUT)
+		aiMilitaryMgr.quota.scout = AiMax(int(aiMilitaryMgr.quota.scout), blind ? 4 : 3);
 
 	// Waves are sized to win: the gather completes when it holds the power needed.
 	waveFrac = (Brain::Army::groundPower > 0.f) ? AiMin(1.f, needPower / Brain::Army::groundPower) : 1.f;

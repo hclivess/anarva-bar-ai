@@ -40,6 +40,19 @@ widget or gadget), **planned**.
   in proportion to the artillery share. Real dodging uses projectile speed and flight time in the
   widget (§7).
 
+## 1c. Legion napalm (planned / limit)
+
+Legion napalm leaves burning ground that keeps damaging everything standing in or walking through it.
+
+- **Area denial over time:** clumped blobs and slow units suffer most. Waves shouldn't path through
+  fire.
+- **Composition (planned, stats only):** against napalm-heavy Legion armies, weight speed and health
+  per metal (pass through fire quickly), and range that outreaches the fire.
+- **Limit:** burn zones are gadget effects the script can't see. Routing around them belongs in the
+  companion widget (§7).
+- **Test gap:** the harness runs with Legion disabled (it's behind a modoption), so Legion matchups
+  still need their own test pool.
+
 ## 2. Concentration and engagement (done)
 
 - **Waves gather to the power needed to win:** known enemy army + the army guessed under jammers,
