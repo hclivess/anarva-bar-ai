@@ -27,17 +27,25 @@ AngelScript brain and configs on top.
 
 ## Install
 
-1. Copy the `stable` folder to `Beyond-All-Reason\data\AI\Skirmish\Anarva\stable\`.
-   It must contain `SkirmishAI.dll`. If you got this without the DLL, copy it from
-   `data\engine\<newest recoil>\AI\Skirmish\BARb\stable\SkirmishAI.dll`.
-2. The BAR lobby only lists its built-in AIs by default. To show Anarvā:
-   - create an empty file `Beyond-All-Reason\data\devmode.txt`
+1. Download `anarva-<version>-windows-x64.zip` or `anarva-<version>-linux-x64.tar.gz` from the
+   [latest release](https://github.com/hclivess/anarva-bar-ai/releases/latest) and extract it.
+2. Run the installer: double-click `install.cmd` on Windows, or run `./install.sh` on Linux. It finds
+   your BAR data folder (or asks for it) and copies `Anarva/stable` to
+   `data/AI/Skirmish/Anarva/stable/`. It also adds BARb's `SkirmishAI.dll` / `libSkirmishAI.so` from
+   your newest engine (`data/engine/<newest recoil>/AI/Skirmish/BARb/stable/`).
+3. The BAR lobby only lists its built-in AIs by default. To show Anarvā:
+   - create an empty file `devmode.txt` in the BAR data folder (the installer offers to do this)
    - restart the lobby
    - open **Settings → Developer** and untick the **simple AI list** option.
 
    Anarvā then appears as **"Anarva stable"** in the Add AI list.
-3. When the game engine updates, copy the new `SkirmishAI.dll` from the BARb folder again. The
-   `tools\install.ps1` script does both steps for you.
+4. When the game engine updates, run the installer again to pick up the new library.
+   `install.cmd -Uninstall` / `./install.sh --uninstall` removes Anarvā.
+
+No installer? Copy the `stable` folder to `data/AI/Skirmish/Anarva/stable/` yourself and put the
+library from the BARb folder above next to `AIInfo.lua`. Developers working from a checkout use
+`tools/install.ps1`. Windows "not safe" warnings and the missing macOS build are explained in the
+[main README](../README.md#windows-says-the-script-is-not-safe).
 
 ## Playing online with friends
 

@@ -1,0 +1,4 @@
+# installers must keep their native line endings whatever core.autocrlf says
+*.sh  text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf

@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 # shipped by BAR; install.ps1 copies it from the engine
 Anarva/stable/SkirmishAI.dll
+Anarva/stable/libSkirmishAI.so
+# build.py output
+dist/
+build/

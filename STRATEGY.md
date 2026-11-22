@@ -101,6 +101,81 @@ randomized wave timing and attack axes.
 At 40 minutes BARb-style play is often far ahead and still hasn't won. A dominant force ratio switches
 to ALLIN, so advantage turns into a decision before the enemy recovers.
 
+## 10. Line of sight over radar dots
+
+A radar blip has no type, so it has no real threat, no counter and no good target. Only sight gives those.
+
+- **Implemented:**
+  - We keep sight continuously: air scouts on a timer whenever an air plant exists (every 3 min, every
+    90 s when blind or jammed), and ground scouts from any factory when there's no air plant.
+  - The scout quota is at least 3 (4 when blind).
+  - Dragon's Eyes go where we die.
+  - When blind, the Director hedges instead of scaling (see §1).
+- **Core behaviour:** the core keeps radar-only contacts as unknown types with a generic threat range.
+
+## 11. Inferring the army behind a jammer from its projectiles
+
+You usually judge what's behind a jammer by what is shooting at you from there.
+
+- **Core (BARb, already active):** when a unit is hit by something unseen, the core takes the weapon
+  that hit it (its range and the unit types that carry it), projects back along the shot direction,
+  and places a **phantom enemy** of that type at the estimated firing position. Mobile phantoms last 1
+  minute, static ones 20, and they feed the threat map, pathing and attack decisions.
+- **Anarvā adds:**
+  - Seen jammers make their whole cluster count as defended before the first shot.
+  - The loss heatmap persists after the phantoms expire, and drives Dragon's Eyes and Fortify.
+  - Junos and scouts turn the guess back into sight.
+- **Limit:** the script API has no per-hit damage event, so the projection itself can't be tuned from
+  script.
+
+## 12. Spam and screening
+
+Cheap units do two jobs: scouting, and soaking enemy firepower (spam).
+
+- **Implemented** (`Brain::Production::Score`):
+  - Cheap units (under 150 metal) get a screening bonus scaled by the heavy and artillery share of the
+    seen enemy army. Big, slow shots spent on fodder are wasted.
+  - It's computed from stats, never from unit names.
+- **Core behaviour:** once we field T3, BARb marks enemy T1 spam (Pawns, Grunts, Fleas…) as ignored
+  for target choice, so expensive units don't chase fodder. Decoy commanders are detected by the core.
+
+## 13. Target priority against a mixed army
+
+Some units exist only to distract: decoys, spam, scouts.
+
+- **What we steer:**
+  - which enemy *group* a wave commits to (strength vs our wave, `thr_mod`, distance)
+  - ignore flags for fodder and decoys
+  - per-unit threat weighting in `behaviour.json`
+- **Limit:** per-shot targeting inside a fight is done by the engine's unit AI; BARb's script API can't
+  set it. True priority (shoot the artillery before the Pawns) needs a game-side gadget.
+
+## 14. Projectile and AoE evasion (micro)
+
+Sidestepping slow projectiles, and spreading out against splash, are per-unit micro.
+
+- **Limit:** the script API gives no per-unit move orders, and the BARb core doesn't dodge.
+- **Design for later:** a companion LuaUI widget or gadget that, for units we own, predicts slow
+  projectiles (artillery shells, missiles) heading at them and issues a short perpendicular move. It
+  would also keep a minimum spacing in squads that face enemy AoE (artillery, area weapons). This has
+  to live on the game side and can't be done from the AI scripts.
+
+## 15. Data, not imitation
+
+- **Reference curves from top players** come from `tools/fetch_replays.py`, `run_replay.py` and
+  `analyze_replays.py`, separately per format (1v1, ≤4v4, >4v4), because formats differ. Top duel
+  findings (12 player-games, rated 38-55):
+  - winners keep army value close to eco value by minute 10
+  - losers over-build static defence
+  - energy:metal runs 11 → 13-16 → 22-25 as the spend mix shifts
+- **Lesson (b2):** copying that E:M ratio was a mistake. In this engine energy income also *unlocks
+  tech*: fusion needs about 840 E/s of income before the core may build it. A lower energy target left
+  b2 with zero fusions and 750 E/s at 30 minutes, and it lost every open map. Pros can run 11-16 E:M
+  because their metal income is huge. We keep BARb's energy curve and recover metal efficiency
+  elsewhere: the army share, the moho gate and recycling.
+- **Unit choices** come from capabilities read at runtime (damage against air, surface and underwater,
+  health, range, speed, cost), so a balance patch changes the choice automatically.
+
 ## Planned
 
 - Walls and dragon's teeth at chokes, in front of defence lines (Sun Tzu's terrain chapters; HOLD and

@@ -7,7 +7,7 @@ water). Machine-readable state is in [`progress.json`](progress.json).
 
 | # | Target | Status |
 |---|--------|--------|
-| M1 | 1v1 vs BARb hard, at least a 2:1 win ratio on all map types | in progress |
+| M1 | 1v1 vs BARb hard, at least a 2:1 win ratio on all map types | baseline 7–3 (2.33), mostly points; testing new build |
 | M2 | 1v2, winning a majority on all map types | todo |
 | M3 | 1v3 | todo |
 | M4 | **1v6 on all map types** | todo |
@@ -52,15 +52,39 @@ water). Machine-readable state is in [`progress.json`](progress.json).
 4. It never builds Juno, anti-nuke, tactical/EMP launchers, nukes, shields or walls.
 5. Its old-energy reclaim only fires when a new generator finishes, and only within 1000 elmos of base.
 
+## Added since the first build
+
+- **Director:** postures follow Sun Tzu's force-ratio ladder (TURTLE, HOLD, BALANCED, PRESSURE,
+  ALLIN), with the reasons logged.
+- **Scouting decides scale vs army:** the core's constructor-vs-army knob (`buildpowerRatio`) is set
+  from the scouted threat. When blind, it hedges and sends scouts; a greedy enemy gets punished.
+- **Wave control:** the core's own squad thresholds were unreachable, so armies never launched.
+  Waves are now script-owned and sized by the Director.
+- **Capability-based production:** units are scored from runtime stats (damage against air, surface
+  and underwater, health, range, speed, cost) against the scouted enemy mix, plus a screening value
+  against heavy and artillery armies. Robust to balance patches.
+- **Eco gate:** moho upgrades (+6 m/s for +17-20 E/s upkeep) only start when energy headroom carries
+  them.
+- **Energy:metal curve:** tried a lower, pro-derived curve and reverted it. Energy income also gates tech here (see STRATEGY.md §15).
+- **Commander safety:** it starts hiding from minute 3 at a lower threat and a wider danger radius.
+- **Fortify:** in HOLD or TURTLE, turrets plus dragon's teeth go up at the hottest front cell.
+- **Continuous scouting** for real line of sight, not radar dots.
+- **AA counter:** static anti-air over infrastructure, scaled to the enemy air metal we've seen.
+- **Docs:** `STRATEGY.md` maps every principle to the code, and lists the limits (per-shot target
+  priority, projectile and AoE dodging).
+
 ## In progress / next
 
-- [ ] Baseline batch b1 (12 games, 1v1, all map types)
-- [ ] A/B: economy split rebalance (`anarva_b`)
-- [ ] Reference curves from top players (local plus public high-skill replays)
-- [ ] Factory composition and timing tuned from those curves
-- [ ] Counter-response to scouted enemy composition
-- [ ] Walls and dragon teeth at chokes
-- [ ] 1vN play: hold chokes, scale the economy, then break out
+- [x] Baseline batch b1 (12 games, 1v1, all map types)
+- [x] Economy split rebalance (now in the main profile)
+- [x] Reference curves from top duels (team-game curves pending playback)
+- [x] Factory composition from capabilities (Production chooser)
+- [x] Counter-response to scouted composition (AA towers, production scoring)
+- [x] Walls and dragon's teeth at the front (Fortify)
+- [ ] b2: measure the new build vs the baseline
+- [ ] 1v2 → 1v3 → 1v6 on the big-map pool (`batch.py --pool big --n1 N`)
+- [ ] Release packaging and installers (Windows and Linux) per the house standard
+- [ ] Companion widget for projectile/AoE dodging (game side, see STRATEGY.md §14)
 
 ## Experiment log
 
@@ -68,4 +92,7 @@ water). Machine-readable state is in [`progress.json`](progress.json).
 |----|------|--------|
 | t1 | first build vs BARb hard (Avalanche) | behind at 45 min; found army-power undercount and the reclaim-as-loss bug (both fixed) |
 | role-hist | fight-task histogram | armies almost never launch |
-| b1 | baseline, 12 games 1v1 | running |
+| b1 | baseline, 12 games 1v1 | 7W 3L 2D, ratio 2.33; all losses from the team-1 start; only one commander kill |
+| replays | top duels, rated 38-55 | winners: 54 m/s and army close to eco value at 10 min; losers over-build defence |
+| b2 | new build vs BARb hard | stopped after 3 losses: the lower energy curve locked out fusion (0 fusions, 750 E/s at 30 min); reverted |
+| b3 | new build with BARb's energy curve, 12 games | running |

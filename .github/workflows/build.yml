@@ -1,0 +1,129 @@
+name: Build release archives
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and attach the archives to (for example v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  selftest:
+    name: selftest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Self-test (configs, includes, profiles, installer files)
+        run: python -I build.py --selftest
+
+      - name: Installer syntax (Linux)
+        if: runner.os == 'Linux'
+        run: bash -n installer/linux/install.sh
+
+      - name: Installer syntax (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\installer\windows\install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Error $_.ToString() }; exit 1 }
+
+  release:
+    name: package and attach
+    needs: selftest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve tag and version
+        id: meta
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${GITHUB_REF#refs/tags/}"; fi
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "Tag $TAG does not match VERSION file ($VERSION): bump VERSION or fix the tag" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build archives
+        run: python -I build.py
+
+      - name: Smoke-test the Linux installer against a fake BAR data folder
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/smoke && tar xzf dist/*.tar.gz -C /tmp/smoke
+          DATA="/tmp/smoke/Beyond All Reason"
+          mkdir -p "$DATA/engine/recoil_2026.9.3/AI/Skirmish/BARb/stable" "$DATA/engine/recoil_2026.10.1/AI/Skirmish/BARb/stable"
+          echo old > "$DATA/engine/recoil_2026.9.3/AI/Skirmish/BARb/stable/libSkirmishAI.so"
+          echo new > "$DATA/engine/recoil_2026.10.1/AI/Skirmish/BARb/stable/libSkirmishAI.so"
+          INSTALLER="$(echo /tmp/smoke/anarva-*-linux-x64/install.sh)"
+          "$INSTALLER" "$DATA" < /dev/null
+          test "$(cat "$DATA/AI/Skirmish/Anarva/stable/libSkirmishAI.so")" = new
+          test -f "$DATA/AI/Skirmish/Anarva/stable/AIInfo.lua"
+          "$INSTALLER" --uninstall "$DATA" < /dev/null
+          test ! -e "$DATA/AI/Skirmish/Anarva"
+
+      - name: Write release notes
+        run: |
+          V="${{ steps.meta.outputs.version }}"
+          cat > "$RUNNER_TEMP/notes.md" <<NOTES
+          - Download \`anarva-$V-windows-x64.zip\` or \`anarva-$V-linux-x64.tar.gz\`, extract it and run \`install.cmd\` (Windows) or \`./install.sh\` (Linux). Needs Beyond All Reason installed and started at least once.
+          - The installer copies BARb's SkirmishAI library from your newest engine, so Anarva always matches your game; run it again after an engine update.
+          - To see Anarva in the lobby: create \`devmode.txt\` in the BAR data folder (the installer offers to), restart the lobby, Settings > Developer > untick "simple AI list".
+          - Each archive has a \`.sha256\` beside it. No macOS build: BAR itself has none.
+          NOTES
+          cat "$RUNNER_TEMP/notes.md"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anarva-${{ steps.meta.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          gh release create "$TAG" --title "Anarva $TAG" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Verify the release has every asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          V: ${{ steps.meta.outputs.version }}
+        run: |
+          assets="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          echo "$assets"
+          missing=0
+          for f in "anarva-$V-windows-x64.zip" "anarva-$V-windows-x64.zip.sha256" \
+                   "anarva-$V-linux-x64.tar.gz" "anarva-$V-linux-x64.tar.gz.sha256"; do
+            if ! grep -qxF "$f" <<< "$assets"; then echo "MISSING from release $TAG: $f" >&2; missing=1; fi
+          done
+          exit "$missing"
