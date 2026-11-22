@@ -61,6 +61,11 @@ local options = {
 				name = 'Anarva (test variant)',
 				desc = 'Development A/B variant',
 			},
+			{
+				key  = 'anarva_fg',
+				name = 'Anarva (first-gen configs)',
+				desc = 'Development: first-gen configs with the current brain, for bisecting',
+			},
 		},
 	},
 }

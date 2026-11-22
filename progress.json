@@ -160,7 +160,42 @@
                         },
                         {
                             "id":  "b2",
-                            "desc":  "new build (Director, wave control, scout-driven scale, Production chooser, Eco gate, E:M curve) vs BARb hard, 12 games",
+                            "desc":  "new build vs BARb",
+                            "result":  "stopped: lower E:M curve locked out fusion; reverted"
+                        },
+                        {
+                            "id":  "b3",
+                            "desc":  "new build (BARb E curve) vs BARb hard, 12 games",
+                            "result":  "3W 8L (0.38) - eco death spiral: Production starved constructors + scale knob cut eco when behind"
+                        },
+                        {
+                            "id":  "h1",
+                            "desc":  "all modules vs first-gen Anarva (head-to-head, 8 maps)",
+                            "result":  "3W 4L 1D"
+                        },
+                        {
+                            "id":  "h2",
+                            "desc":  "PROD+SCALE off vs first-gen",
+                            "result":  "2W 4L 2D (worse than h1 -\u003e those modules help after starvation fix)"
+                        },
+                        {
+                            "id":  "h3",
+                            "desc":  "all modules + strategic gated on ratio vs first-gen",
+                            "result":  "1W 5L 2D"
+                        },
+                        {
+                            "id":  "h4",
+                            "desc":  "no STRAT/FORTIFY vs first-gen",
+                            "result":  "0W 6L 2D; early commander deaths on Altair; mixed+water lost in all variants"
+                        },
+                        {
+                            "id":  "h5",
+                            "desc":  "first-gen configs+opener, all new modules vs first-gen",
+                            "result":  "running"
+                        },
+                        {
+                            "id":  "h6",
+                            "desc":  "first-gen configs+opener, only first-gen modules vs first-gen (harness sanity)",
                             "result":  "running"
                         }
                     ],
@@ -176,7 +211,9 @@
                      "Core gathers squads to max(quota, enemy 2nd-biggest group threat): unreachable once enemy blobs -\u003e armies never launch. Fixed by script-owned wave tasks.",
                      "buildpowerRatio = constructor-vs-army knob (factory adds builder while buildpower \u003c income*ratio).",
                      "Moho: +6 m/s for +17 E/s upkeep; T1 mex 3 E/s. Upgrades gated by energy headroom.",
-                     "Top duel winners keep army value ~= eco value by 10 min; losers over-invest in static defence."
+                     "Top duel winners keep army value ~= eco value by 10 min; losers over-invest in static defence.",
+                     "Config changes since first-gen (opener, ms_pull/buildpower, commander hide) are shared by every variant and must be bisected separately (profile anarva_fg, flag F_OPENER).",
+                     "Geothermals are a core fallback only (energy planner ranks anywhere-placeable energy); script cannot see vents."
                  ],
     "replay_analysis":  {
                             "local_index":  "ref/replays.csv (1054 replays)",

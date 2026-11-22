@@ -28,7 +28,8 @@ const bool F_WASTE = true;     // overflow: nanos + converters
 const bool F_TECH = true;      // payback-based tech gate
 const bool F_REDIRECT = true;  // assist factories by army deficit
 const bool F_INTEL = true;     // eyes, scouting, phantom threat
-const bool F_QUOTA = true;     // attack/raid quotas sized from needed power
+const bool F_QUOTA = true;
+const bool F_OPENER = true;    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -274,6 +275,7 @@ void CheckSquads()
 void Update(bool jamAlert)
 {
 	// A wave must be able to win what it will meet (Director: needed power, incl. jammer guesses).
+	// If we can't reach it, the wave doesn't launch: the gathered army defends at home, where trades are better.
 	aiMilitaryMgr.quota.attack = AiMax(baseAttack, Brain::Director::needPower);
 
 	// A raid pack must beat the raiders that will answer it (their raider threat at our trade rate).
@@ -947,6 +949,9 @@ void Update(bool jamAlert)
 		Order(0, junoDef, basePos, Task::Priority::HIGH, SQUARE_SIZE * 32);
 		return;
 	}
+	// Everything below is an investment that doesn't fight today: only when our army covers what we need.
+	if (Brain::Director::ratio < 1.f)
+		return;
 	// Shields over the most valuable uncovered infrastructure (they drain ~560 E/s recharging).
 	const uint wantShields = uint(AiMin(6.f, AiMax(0.f, (m - 30.f) / 25.f)));
 	if (minute >= 14 && e >= 1500.f && shields.length() < wantShields && Ready(4, shieldDef)) {
@@ -1113,7 +1118,7 @@ array<CCircuitDef@> rezDefs;       // resurrect/reclaim bots (facts: canresurrec
 array<CCircuitUnit@> rezBots;
 int rezOrders = 0;
 array<int> built(1, 0);  // per def id: how many we've ordered (diminishing returns)
-int choices = 0, builders = 0;
+int choices = 0, builders = 0, lastDump = 0;
 string last = "";
 
 void Init()
@@ -1136,11 +1141,12 @@ bool NeedBuilder()
 }
 
 // Our current army, as the candidates would join it (Lanchester: strength ~ total damage x total health).
-float armyH = 0.f, armyD = 0.f, armyCost = 0.f, armyRange = 0.f, armyLos = 0.f;
+float armyH = 0.f, armyD = 0.f, armyCost = 0.f, armyRange = 0.f, armyLos = 0.f, armySpeed = 0.f, wArty = 0.f;
 
 void MeasureArmy(float wAir, float wSurf, float wSub)
 {
-	armyH = 0.f; armyD = 0.f; armyCost = 0.f; armyRange = 0.f; armyLos = 0.f;
+	armyH = 0.f; armyD = 0.f; armyCost = 0.f; armyRange = 0.f; armyLos = 0.f; armySpeed = 0.f;
+	int n = 0;
 	array<CCircuitUnit@>@ pools = Brain::Army::ground;
 	for (int pass = 0; pass < 2; ++pass) {
 		if (pass == 1)
@@ -1153,9 +1159,12 @@ void MeasureArmy(float wAir, float wSurf, float wSub)
 			armyCost += u.costM;
 			armyRange += u.GetMaxRange() * dmg;   // damage-weighted reach
 			armyLos = AiMax(armyLos, u.losRadius);
+			armySpeed += u.speed;
+			++n;
 		}
 	}
 	armyRange = (armyD > 0.f) ? armyRange / armyD : 0.f;
+	armySpeed = (n > 0) ? armySpeed / n : 0.f;
 }
 
 float Score(CCircuitDef@ d, float wAir, float wSurf, float wSub, float wStatic, float wHeavy)
@@ -1167,9 +1176,11 @@ float Score(CCircuitDef@ d, float wAir, float wSurf, float wSub, float wStatic, 
 	if (dmg <= 0.f)
 		return 0.f;
 	const float hp = AiMax(1.f, d.health);
-	// Lanchester square law: adding (dmg, hp) to an army (D, H) raises D*H by dmg*H + hp*D (+dmg*hp).
-	// So the chooser buys what the army lacks: damage for a tanky army, bodies for a glass cannon.
-	float s = dmg * armyH + hp * armyD + dmg * hp;
+	// Lanchester square law: strength ~ D*H. The relative gain from adding (dmg, hp) is
+	// d(DH)/DH = dmg/D + hp/H: scale-free (threat-damage and health use different units), and it buys
+	// what the army lacks: damage for a tanky army, bodies for a glass cannon.
+	const float D = AiMax(armyD, dmg), Hh = AiMax(armyH, hp);
+	float s = dmg / D + hp / Hh;
 	const float range = d.GetMaxRange();
 	// Reach: a unit that extends our army's reach fights on our terms; against defences even more.
 	if (armyRange > 0.f)
@@ -1177,6 +1188,9 @@ float Score(CCircuitDef@ d, float wAir, float wSurf, float wSub, float wStatic, 
 	// Sight: if our army outranges its own sight it shoots at nothing; long-sight units close that gap.
 	if (armyRange > armyLos && armyRange > 0.f)
 		s *= 1.f + (armyRange - armyLos) / armyRange * AiMin(1.f, d.losRadius / armyRange);
+	// Slow shells miss moving targets: against an artillery-heavy enemy, speed is survival.
+	if (armySpeed > 0.f)
+		s *= 1.f + wArty * d.speed / armySpeed;
 	// Screens: vs heavies/artillery, hp per metal soaks expensive shots (relative to our army's).
 	if (armyCost > 0.f && armyH > 0.f)
 		s *= 1.f + wHeavy * (hp / d.costM) / (armyH / armyCost);
@@ -1242,6 +1256,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	const float wHeavy = AiMin(1.f, (aiEnemyMgr.GetEnemyCost(RT::HEAVY) + aiEnemyMgr.GetEnemyCost(RT::ARTY)) / surf);
 
 	MeasureArmy(wAir, wSurf, wSub);
+	wArty = AiMin(1.f, aiEnemyMgr.GetEnemyCost(RT::ARTY) / surf);
 	array<CCircuitDef@> cands;
 	array<float> scores;
 	for (uint i = 0; i < roles.length(); ++i) {
@@ -1256,6 +1271,13 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	}
 	if (cands.length() == 0)
 		return null;
+	if (ai.frame - lastDump > 3 * MINUTE) {  // audit trail: what the chooser weighed
+		lastDump = ai.frame;
+		string s = "[ANV] Production @" + fdef.GetName() + " army(D=" + int(armyD) + " H=" + int(armyH) + " rng=" + int(armyRange) + " los=" + int(armyLos) + "):";
+		for (uint i = 0; i < cands.length(); ++i)
+			s += " " + cands[i].GetName() + "=" + formatFloat(scores[i], "", 0, 3);
+		AiLog(s);
+	}
 	const int pick = AiDice(scores);
 	if (pick < 0)
 		return null;

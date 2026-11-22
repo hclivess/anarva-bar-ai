@@ -29,6 +29,17 @@ widget or gadget), **planned**.
 - **Abilities, not names.** Every input is read from the unit defs at runtime, so balance patches
   change the choice automatically.
 
+## 1b. Armor classes and projectile speed (partial / limit)
+
+- **Armor classes.** BAR weapons deal different damage per armor class (commanders, vtol, subs,
+  shields, nanos, standard…). The core folds this into each unit's threat-damage **per domain** (air,
+  surface, underwater), and the chooser weighs exactly that. Finer per-class tables are not exposed to
+  the script. The companion widget can read them from the weapon defs.
+- **Projectile speed.** Not exposed to the script either, and BARb's threat model ignores it. As a
+  proxy, slow shells miss moving targets: against an artillery-heavy enemy, unit speed gains value
+  in proportion to the artillery share. Real dodging uses projectile speed and flight time in the
+  widget (§7).
+
 ## 2. Concentration and engagement (done)
 
 - **Waves gather to the power needed to win:** known enemy army + the army guessed under jammers,

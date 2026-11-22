@@ -2,7 +2,9 @@
 
 ## What "Anarvā" means
 
-*Anarvā* comes from the Sanskrit *anarvan*: unrestrained, boundless, irresistible. The name is the
+*Anarvā* comes from the Sanskrit *anarvan*: unrestrained, boundless, irresistible. In the Bhāgavata
+Purāṇa (6.10), Anarvā is one of the generals who served under Vṛtrāsura, among the asura commanders
+(with Namuci, Śambara, Puloma and others) who led his armies against Indra's devas. The name is the
 design. BARb plays by arbitrary constraints: hand-tuned cutoffs, fixed timers, gathering thresholds it
 can never reach, a factory mix that ignores what it sees. Anarvā removes them. Nothing it does is
 "because the number says so". Every choice is argued from the situation in front of it.

@@ -236,6 +236,29 @@ trees and plants for energy. They cost 130 metal, move at speed 78 and have 200 
   API can't send unit commands. The nearest lever is task priority. Real toggles belong in the same
   game-side widget as dodging (§14).
 
+## 19b. Geothermal (gap)
+
+A T1 geo (~560 M) gives about 300 E/s, worth about 4.3 m/s at the converter rate, so it pays back in
+about 2 minutes, far better than solars or wind. Advanced geos are better still but explode violently,
+so nearby infrastructure counts against them as risk.
+
+- **Core behaviour:** geos are a **last resort**. A geo spot is tried only when no other energy build
+  is wanted, and BARb's config comments geos out of the energy list. Regular energy tasks can't place
+  onto geo spots, and the script can't see geo-spot positions.
+- **Why it's weak:** the core's energy planner ranks only energy buildings that can be placed
+  anywhere. Geos, which need a vent, sit outside the comparison and appear only when no energy is
+  wanted at all. That's backwards: a safe vent is often the *best* energy choice.
+- **Disadvantages to weigh:**
+  - fixed vent location, often contested and outside our cover, so a prime raid target
+  - they explode when destroyed, advanced geos massively, so one loss can wipe the cluster around it
+  - concentration risk: one big source dies at once and can stall the whole economy
+  - energy only, with a big up-front cost locked to one spot
+- **Decision to implement:** payback against the horizon, weighed against **exposure** (threat and
+  loss heat at the vent) and **blast cost** (the value of our infrastructure inside the explosion
+  radius). Advanced geos get spacing from that blast cost, not a fixed distance.
+- **Planned:** drive the core's geo-spot task through its fallback path, by making "no other energy
+  wanted" true while an open safe geo spot exists, or by adding script access to geo spots.
+
 ## 20. Travel distance and front labs (planned)
 
 Production far from the fight wastes army-time on the walk. A forward lab saves (travel time ×
