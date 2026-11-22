@@ -14,6 +14,22 @@
 
 namespace Brain {
 
+// Feature flags: tools/install.ps1 -Flags "F_PROD=false,..." flips them in an installed copy so each
+// module can be A/B-tested head-to-head. A module ships on only if it proves itself.
+const bool F_WAVES = true;     // script-owned wave/pack gathering
+const bool F_RECALL = true;    // broken-squad recall
+const bool F_PROD = true;      // capability-based production chooser (incl. rez bots)
+const bool F_SCALE = true;     // Director drives buildpowerRatio
+const bool F_ECOGATE = true;   // moho energy-headroom gate
+const bool F_RECYCLE = true;   // eco recycling + T1 salvage
+const bool F_STRAT = true;     // strategic structures + AA counter
+const bool F_FORTIFY = true;   // turrets + teeth at hot fronts
+const bool F_WASTE = true;     // overflow: nanos + converters
+const bool F_TECH = true;      // payback-based tech gate
+const bool F_REDIRECT = true;  // assist factories by army deficit
+const bool F_INTEL = true;     // eyes, scouting, phantom threat
+const bool F_QUOTA = true;     // attack/raid quotas sized from needed power
+
 CCircuitDef@ Def(const string& in name)
 {
 	return ai.GetCircuitDef(name);
@@ -192,6 +208,8 @@ int waves = 0;
 
 IUnitTask@ MakeTask(CCircuitUnit@ unit)
 {
+	if (!F_WAVES)
+		return null;
 	const CCircuitDef@ d = unit.circuitDef;
 	if (IsGround(d) && !d.IsRoleAny(Unit::Role::RIOT.mask | Unit::Role::SUPER.mask)) {
 		if (waveTask is null) {
@@ -228,6 +246,8 @@ float SquadPower(IFighterTask@ task)
 
 void CheckSquads()
 {
+	if (!F_RECALL)
+		return;
 	for (int i = int(squads.length()) - 1; i >= 0; --i) {
 		IFighterTask@ task = squads[i];
 		const float p = SquadPower(task);
@@ -238,7 +258,8 @@ void CheckSquads()
 		// Keep a squad that is still bigger than what we'd send out fresh.
 		const bool isRaid = task.GetFightType() == Task::FightType::RAID;
 		const float fresh = isRaid ? aiMilitaryMgr.quota.raid.min : aiMilitaryMgr.quota.attack;
-		if (p < 0.4f * squadPeak[i] && p < fresh) {
+		// Recall once the squad has bled and is now weaker than what we'd send fresh, scaled by how well we trade.
+		if (p < squadPeak[i] && p < fresh * AiMin(1.f, Brain::Assess::trade)) {
 			++recalls;
 			AiLog("[ANV] Army: recalling broken " + (isRaid ? "raid" : "attack") + " squad power "
 				+ F1(p) + "/" + F1(squadPeak[i]) + " (" + task.GetUnits().length() + " units)");
@@ -252,20 +273,11 @@ void CheckSquads()
 
 void Update(bool jamAlert)
 {
-	// Share of the army a wave must reach before launching: set by the Director's posture.
-	const float frac = Brain::Director::waveFrac;
-	float target = frac * groundPower;
-	if (jamAlert)
-		target *= 1.25f;  // we can't see what's waiting: go in heavier
-	const float cap = AiMax(baseAttack, 0.75f * groundPower);
-	aiMilitaryMgr.quota.attack = AiMin(cap, AiMax(baseAttack, target));
+	// A wave must be able to win what it will meet (Director: needed power, incl. jammer guesses).
+	aiMilitaryMgr.quota.attack = AiMax(baseAttack, Brain::Director::needPower);
 
-	// Raiders hunt in packs: at least 3, growing to ~40% of the raider pool, capped at ~10.
-	float raidMin = AiMax(3.f * raiderPower, 0.4f * raiderPoolPower);
-	raidMin = AiMax(baseRaidMin, AiMin(raidMin, 10.f * raiderPower));
-	if (jamAlert)
-		raidMin *= 1.5f;
-	aiMilitaryMgr.quota.raid.min = raidMin;
+	// A raid pack must beat the raiders that will answer it (their raider threat at our trade rate).
+	float raidMin = AiMax(baseRaidMin, aiEnemyMgr.GetEnemyThreat(RT::RAIDER) / AiMax(0.25f, Brain::Assess::trade));	aiMilitaryMgr.quota.raid.min = raidMin;
 	// raid.avg caps how big a raid may grow by joining; never below the gather size
 	aiMilitaryMgr.quota.raid.avg = AiMax(aiMilitaryMgr.quota.raid.avg, raidMin * 1.5f);
 
@@ -604,6 +616,7 @@ array<CCircuitDef@> eyesDefs;
 CCircuitDef@ eyesDef = null;
 array<CCircuitUnit@> eyes;
 array<CCircuitUnit@> airFactories;
+array<CCircuitUnit@> allFactories;
 
 float jammerCost = 0.f;
 bool jamAlert = false;
@@ -699,10 +712,12 @@ void OnDestroyed(CCircuitUnit@ unit)
 {
 	RemoveUnit(eyes, unit);
 	RemoveUnit(airFactories, unit);
+	RemoveUnit(allFactories, unit);
 }
 
 void OnFactory(CCircuitUnit@ unit)
 {
+	allFactories.insertLast(unit);
 	CCircuitDef@ scout = aiFactoryMgr.GetRoleDef(unit.circuitDef, RT::SCOUT);
 	if (scout !is null && scout.IsAbleToFly())
 		airFactories.insertLast(unit);
@@ -728,20 +743,27 @@ void Update()
 	if (jamAlert != wasAlert)
 		AiLog("[ANV] Intel: jammer alert " + (jamAlert ? "ON" : "OFF") + " (known jammer metal=" + F1(jammerCost) + ")");
 
-	if (ai.frame < 4 * MINUTE || !HasBase())
+	if (ai.frame < 3 * MINUTE || !HasBase())
 		return;
 
 	if (ai.frame % (5 * SECOND) < SECOND)
 		OrderVision();
 
-	if (jamAlert && ai.frame - lastScoutFrame > 2 * MINUTE && Brain::Army::scouts.length() < 3 && airFactories.length() > 0) {
-		CCircuitUnit@ fac = airFactories[AiRandom(0, int(airFactories.length()) - 1)];
-		CCircuitDef@ scout = aiFactoryMgr.GetRoleDef(fac.circuitDef, RT::SCOUT);
-		if (scout !is null && scout.IsAvailable(ai.frame)) {
-			aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::FIREPOWER, Task::Priority::HIGH,
-				scout, fac.GetPos(ai.frame), 64.f));
-			lastScoutFrame = ai.frame;
-			AiLog("[ANV] Intel: recruiting air scout " + scout.GetName() + " vs jammers");
+	// Real line of sight beats radar dots: a blip has no type, so no real threat, counter or target.
+	// Keep eyes on the enemy: planes on a timer, more when blind or jammed; ground scouts as fallback.
+	const bool blind = Brain::Director::blind;
+	const int interval = (jamAlert || blind) ? 90 * SECOND : 3 * MINUTE;
+	if (ai.frame - lastScoutFrame > interval && Brain::Army::scouts.length() < uint((jamAlert || blind) ? 4 : 2)) {
+		array<CCircuitUnit@>@ facs = airFactories.length() > 0 ? airFactories : allFactories;
+		if (facs.length() > 0) {
+			CCircuitUnit@ fac = facs[AiRandom(0, int(facs.length()) - 1)];
+			CCircuitDef@ scout = aiFactoryMgr.GetRoleDef(fac.circuitDef, RT::SCOUT);
+			if (scout !is null && scout.IsAvailable(ai.frame)) {
+				aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::FIREPOWER, Task::Priority::HIGH,
+					scout, fac.GetPos(ai.frame), 64.f));
+				lastScoutFrame = ai.frame;
+				AiLog("[ANV] Intel: scouting with " + scout.GetName() + (jamAlert ? " (jammers)" : (blind ? " (blind)" : " (keep sight)")));
+			}
 		}
 	}
 }
@@ -832,6 +854,7 @@ void Init()
 	siloDefs   = Defs({"armsilo", "corsilo", "legsilo"});
 	shieldDefs = Defs({"armgate", "corgate", "legdeflector"});
 	InitCounter();
+	InitFortify();
 }
 
 void OnFinished(CCircuitUnit@ u)
@@ -907,6 +930,7 @@ void Update(bool jamAlert)
 	if (!HasBase())
 		return;
 	CounterUpdate();
+	Fortify();
 	const float m = aiEconomyMgr.metal.income;
 	const float e = aiEconomyMgr.energy.income;
 	const int minute = Minute();
@@ -1001,9 +1025,75 @@ void CounterUpdate()
 	AiLog("[ANV] Counter: enemy air " + F1(air) + "m seen -> " + d.GetName() + " (" + aaTowers.length() + "/" + want + ")");
 }
 
+/*
+ * Fortify (HOLD/TURTLE): when outnumbered, fight where the enemy has to come to us. The loss
+ * heatmap shows where fights happen; we put a turret there (tier by income) with a short row of
+ * dragon's teeth in front of it, toward the threat, so attackers stall under fire.
+ */
+CCircuitDef@ turT1, turT2, turT3, wallDef;
+int lastFortify = 0, forts = 0;
+
+void InitFortify()
+{
+	@turT1 = Side("armllt", "corllt", "leglht");
+	@turT2 = Side("armhlt", "corhlt", "legmg");
+	@turT3 = Side("armpb", "corvipe", "legbastion");
+	@wallDef = Side("armdrag", "cordrag", "legdrag");
+}
+
+void Fortify()
+{
+	if (!F_FORTIFY)
+		return;
+	const int p = Brain::Director::posture;
+	if ((p != Brain::Director::HOLD && p != Brain::Director::TURTLE) || ai.frame < 5 * MINUTE
+		|| ai.frame - lastFortify < 30 * SECOND)
+		return;
+	const float m = aiEconomyMgr.metal.income;
+	if (forts >= int(4.f + m / 6.f))
+		return;
+	// hottest cell that is a real front: not our base core, not deep in enemy land
+	int best = -1;
+	float bestHeat = 150.f;
+	for (uint c = 0; c < Brain::Intel::heat.length(); ++c) {
+		const float h = Brain::Intel::heat[c];
+		if (h <= bestHeat)
+			continue;
+		const float d = Brain::Intel::CellCenter(c).distance2D(basePos);
+		if (d < 600.f || d > 2600.f)
+			continue;
+		bestHeat = h;
+		best = int(c);
+	}
+	if (best < 0)
+		return;
+	CCircuitDef@ tur = (m >= 45.f && turT3 !is null && turT3.IsAvailable(ai.frame)) ? turT3
+		: ((m >= 18.f && turT2 !is null && turT2.IsAvailable(ai.frame)) ? turT2 : turT1);
+	if (tur is null || !tur.IsAvailable(ai.frame))
+		return;
+	const AIFloat3 hot = Brain::Intel::CellCenter(best);
+	AIFloat3 dir = hot - basePos;
+	dir.y = 0.f;
+	const float len = AiMax(1.f, dir.Length2D());
+	dir = dir / len;
+	// turret a bit on our side of the hotspot
+	const AIFloat3 tpos = basePos + dir * AiMax(500.f, len - 250.f);
+	lastFortify = ai.frame;
+	++forts;
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, tpos, SQUARE_SIZE * 8, true, 3 * MINUTE));
+	if (wallDef !is null && wallDef.IsAvailable(ai.frame)) {
+		const AIFloat3 side(-dir.z, 0.f, dir.x);
+		for (int k = -2; k <= 2; ++k) {
+			const AIFloat3 wpos = tpos + dir * 140.f + side * (48.f * k);
+			aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, wallDef, wpos, 0.f, true, 3 * MINUTE));
+		}
+	}
+	AiLog("[ANV] Fortify: " + tur.GetName() + " + teeth at (" + int(tpos.x) + "," + int(tpos.z) + ") facing heat " + F1(bestHeat));
+}
+
 string Status()
 {
-	return "aa=" + aaTowers.length() + " juno=" + junos.length() + " amd=" + amds.length() + " tac=" + tacs.length() + " silo=" + silos.length()
+	return "forts=" + forts + " aa=" + aaTowers.length() + " juno=" + junos.length() + " amd=" + amds.length() + " tac=" + tacs.length() + " silo=" + silos.length()
 		+ " shield=" + shields.length() + " infra=" + infra.length() + " orders=" + orders;
 }
 
@@ -1019,6 +1109,9 @@ string Status()
 namespace Production {
 
 array<Type> roles;
+array<CCircuitDef@> rezDefs;       // resurrect/reclaim bots (facts: canresurrect)
+array<CCircuitUnit@> rezBots;
+int rezOrders = 0;
 array<int> built(1, 0);  // per def id: how many we've ordered (diminishing returns)
 int choices = 0, builders = 0;
 string last = "";
@@ -1027,20 +1120,22 @@ void Init()
 {
 	roles = {RT::RAIDER, RT::ASSAULT, RT::SKIRM, RT::RIOT, RT::HEAVY, RT::ARTY, RT::AA, RT::AH, RT::AS,
 		RT::SUB, RT::AHA, RT::SUPER, RT::BOMBER};
+	rezDefs = Defs({"armrectr", "cornecro", "legrezbot", "armrecl", "correcl"});
 	built.resize(ai.GetDefCount() + 1);
 	for (uint i = 0; i < built.length(); ++i)
 		built[i] = 0;
 }
 
-// Desired constructor count: income-driven, scaled by the Director's scout-based scale knob.
+// The core's own rule: build power should be income * buildpowerRatio (the Director sets the ratio).
+// A T1 constructor brings ~85 workertime = ~4.25 build_speed units (unit facts), so that many workers.
+const float BUILD_SPEED_PER_WORKER = 4.25f;
 bool NeedBuilder()
 {
-	const float m = aiEconomyMgr.metal.income;
-	const float want = (3.f + m * 0.14f) * Brain::Director::scale;
+	const float want = aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio / BUILD_SPEED_PER_WORKER;
 	return float(aiBuilderMgr.GetWorkerCount()) < want;
 }
 
-float Score(CCircuitDef@ d, float wAir, float wSurf, float wSub, float wStatic)
+float Score(CCircuitDef@ d, float wAir, float wSurf, float wSub, float wStatic, float wHeavy)
 {
 	if (d is null || !d.IsAvailable(ai.frame) || d.costM <= 0.f)
 		return 0.f;
@@ -1056,13 +1151,39 @@ float Score(CCircuitDef@ d, float wAir, float wSurf, float wSub, float wStatic)
 		s *= 1.f + wStatic * AiMin(2.f, range / 700.f);    // outrange their defences
 	if (ai.frame < 12 * MINUTE)
 		s *= 1.f + AiMin(1.f, d.speed / 120.f) * 0.5f;     // early map control is mobility
+	// Screens: vs slow, hard-hitting enemies (heavies, artillery) cheap bodies waste their shots.
+	const float cheap = AiMin(1.f, AiMax(0.f, (150.f - d.costM) / 150.f));
+	s *= 1.f + 2.f * wHeavy * cheap;
 	s /= (d.costM + d.costE / 60.f);                       // per resource spent
 	s /= 1.f + float(built[d.id]) / 14.f;                 // keep the mix varied
 	return s;
 }
 
+void OnFinished(CCircuitUnit@ u) { if (InList(rezDefs, u.circuitDef)) rezBots.insertLast(u); }
+void OnDestroyed(CCircuitUnit@ u) { RemoveUnit(rezBots, u); }
+
+// Wrecks are the fastest metal on the map: about half the metal of what died recently lies there
+// (Assess windows decay as it gets harvested or goes stale). Keep adding rez bots while that pool is
+// worth more than the rez fleet we already have: a bot pays for itself if there's more than its cost to take.
+CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
+{
+	const float pool = 0.5f * (Brain::Assess::lostNear + Brain::Assess::lostFar + Brain::Assess::killed);
+	float fleet = 0.f;
+	for (uint i = 0; i < rezBots.length(); ++i)
+		fleet += rezBots[i].circuitDef.costM;
+	// which lab builds which rez bot (unit facts: buildoptions); the API can't list buildoptions
+	const string fn = fdef.GetName();
+	CCircuitDef@ d = (fn == "armlab") ? Def("armrectr") : ((fn == "corlab") ? Def("cornecro")
+		: ((fn == "leglab") ? Def("legrezbot") : ((fn == "armsy") ? Def("armrecl") : ((fn == "corsy") ? Def("correcl") : null))));
+	if (d !is null && d.IsAvailable(ai.frame) && pool > fleet + d.costM)
+		return d;
+	return null;
+}
+
 IUnitTask@ MakeTask(CCircuitUnit@ fac)
 {
+	if (!F_PROD || aiEconomyMgr.isEnergyStalling)
+		return null;  // energy stall: the core's first answer is energy; don't queue power-hungry units
 	if (ai.frame < 6 * MINUTE)
 		return null;  // let the opener run
 	const CCircuitDef@ fdef = fac.circuitDef;
@@ -1071,6 +1192,13 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	if (NeedBuilder()) {
 		++builders;
 		return null;  // core picks and places the right constructor
+	}
+	CCircuitDef@ rez = RezToBuild(fdef);
+	if (rez !is null) {
+		++rezOrders;
+		last = rez.GetName();
+		return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, rez,
+			fac.GetPos(ai.frame), 64.f));
 	}
 
 	// Scouted enemy mix -> how much each damage domain matters.
@@ -1083,6 +1211,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	const float total = air + sub + surf;
 	const float wAir = air / total, wSub = sub / total, wSurf = surf / total;
 	const float wStatic = AiMin(1.f, stat / AiMax(1.f, aiEnemyMgr.mobileThreat + stat));
+	const float wHeavy = AiMin(1.f, (aiEnemyMgr.GetEnemyCost(RT::HEAVY) + aiEnemyMgr.GetEnemyCost(RT::ARTY)) / surf);
 
 	array<CCircuitDef@> cands;
 	array<float> scores;
@@ -1090,7 +1219,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		CCircuitDef@ d = aiFactoryMgr.GetRoleDef(fdef, roles[i]);
 		if (d is null || !d.IsMobile() || cands.findByRef(d) >= 0)
 			continue;
-		const float s = Score(d, wAir, wSurf, wSub, wStatic);
+		const float s = Score(d, wAir, wSurf, wSub, wStatic, wHeavy);
 		if (s > 0.f) {
 			cands.insertLast(d);
 			scores.insertLast(s * s);  // sharpen toward the best, keep some variety
@@ -1109,7 +1238,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		fac.GetPos(ai.frame), 64.f));
 }
 
-string Status() { return "prod=" + choices + "/b" + builders + " last=" + last; }
+string Status() { return "prod=" + choices + "/b" + builders + " rez=" + rezBots.length() + "/" + rezOrders + " last=" + last; }
 
 }  // namespace Production
 
@@ -1163,6 +1292,304 @@ string Status()
 
 /* ======================================================================== */
 /*
+ * Waste: income that hits full storage is thrown away.
+ *  - metal overflowing  -> we lack spending power: more constructors (Director scale), factory assist,
+ *                          and nanos at a factory.
+ *  - energy overflowing -> convert it: metal makers turn energy into metal (T1 ~70 E per 1 M, T2
+ *                          better) and only run while energy storage is high, so surplus is their fuel.
+ */
+namespace Waste {
+
+int metalSec = 0, energySec = 0;
+bool metalOverflow = false, energyOverflow = false;
+int lastNano = 0, lastMaker = 0, nanos = 0, makers = 0;
+CCircuitDef@ nanoDef, makerT1, makerT2;
+
+void Init()
+{
+	@nanoDef = Brain::Strategic::Side("armnanotc", "cornanotc", "legnanotc");
+	@makerT1 = Brain::Strategic::Side("armmakr", "cormakr", "legeconv");
+	@makerT2 = Brain::Strategic::Side("armmmkr", "cormmkr", "legadveconv");
+}
+
+void Update()  // every second
+{
+	const SResourceInfo@ m = aiEconomyMgr.metal;
+	const SResourceInfo@ e = aiEconomyMgr.energy;
+	metalSec = (m.storage > 0.f && m.current >= 0.95f * m.storage && m.income > m.pull) ? metalSec + 1 : 0;
+	energySec = (e.storage > 0.f && e.current >= 0.92f * e.storage && e.income > e.pull) ? energySec + 1 : 0;
+	const bool wasM = metalOverflow, wasE = energyOverflow;
+	metalOverflow = metalSec >= 8;
+	energyOverflow = energySec >= 15;
+	if (metalOverflow && !wasM)
+		AiLog("[ANV] Waste: metal overflowing (" + int(m.income - m.pull) + " m/s spare): more build power + assist");
+	if (energyOverflow && !wasE)
+		AiLog("[ANV] Waste: energy overflowing (" + int(e.income - e.pull) + " E/s spare): convert it");
+	if (!HasBase() || Brain::Intel::allFactories.length() == 0)
+		return;
+
+	if (metalOverflow && ai.frame - lastNano > 45 * SECOND && nanoDef !is null && nanoDef.IsAvailable(ai.frame)) {
+		lastNano = ai.frame;
+		++nanos;
+		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::NANO, Task::Priority::HIGH, nanoDef,
+			Brain::Intel::allFactories[AiRandom(0, int(Brain::Intel::allFactories.length()) - 1)].GetPos(ai.frame), SQUARE_SIZE * 12, true, 2 * MINUTE));
+	}
+	if (energyOverflow && !metalOverflow && ai.frame - lastMaker > 30 * SECOND) {
+		const float spare = e.income - e.pull;
+		CCircuitDef@ mk = (aiEconomyMgr.metal.income >= 35.f && makerT2 !is null && makerT2.IsAvailable(ai.frame)) ? makerT2 : makerT1;
+		if (mk !is null && mk.IsAvailable(ai.frame) && spare > 70.f) {
+			lastMaker = ai.frame;
+			const int n = AiMin(4, int(spare / (mk is makerT2 ? 600.f : 70.f)) + 1);
+			for (int i = 0; i < n; ++i)
+				aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::CONVERT, Task::Priority::NORMAL, mk, basePos,
+					SQUARE_SIZE * 40, true, 2 * MINUTE));
+			makers += n;
+			AiLog("[ANV] Waste: +" + n + " " + mk.GetName() + " to convert " + int(spare) + " E/s surplus");
+		}
+	}
+}
+
+string Status()
+{
+	return "waste(m/e)=" + metalSec + "/" + energySec + "s nanos+" + nanos + " makers+" + makers;
+}
+
+}  // namespace Waste
+
+/* ======================================================================== */
+/*
+ * Economist: the shared valuation every decision uses. No hand-picked cutoffs: investments are judged
+ * by payback time against a planning horizon derived from the live situation, and energy is priced in
+ * metal at the exchange rate of the converters we can build (read from their defs).
+ */
+namespace Economist {
+
+array<CCircuitDef@> mexDefs;
+array<CCircuitUnit@> mexes;
+CCircuitDef@ mexT1, mexT2, makerDef;
+float energyPerMetal = 0.f;   // converter exchange rate, from defs
+// Game facts the script API doesn't expose (from unitdefs: extractsmetal / energyupkeep). Not tunables.
+const float MEX_T1_EXTRACT = 1.f, MEX_T2_EXTRACT = 4.f, MEX_T1_UPKEEP_E = 3.f, MEX_T2_UPKEEP_E = 20.f;
+float lastEnemySeen = 0.f;    // for when we're blind
+
+void Init()
+{
+	mexDefs = Defs({"armmex", "cormex", "legmex", "armamex", "armmoho", "cormoho", "legmoho", "cormexp", "armuwmex",
+		"coruwmex", "armuwmme", "coruwmme"});
+	@mexT1 = Brain::Strategic::Side("armmex", "cormex", "legmex");
+	@mexT2 = Brain::Strategic::Side("armmoho", "cormoho", "legmoho");
+	@makerDef = Brain::Strategic::Side("armmakr", "cormakr", "legeconv");
+	if (makerDef !is null) {
+		const float mm = aiEconomyMgr.GetMetalMake(makerDef);
+		const float em = aiEconomyMgr.GetEnergyMake(makerDef);
+		if (mm > 0.f && em < 0.f)
+			energyPerMetal = -em / mm;
+	}
+	if (energyPerMetal <= 0.f)
+		energyPerMetal = 70.f;  // game fact for T1 makers when the defs don't expose it
+	AiLog("[ANV] Economist: converter rate " + F1(energyPerMetal) + " E per M");
+}
+
+void OnFinished(CCircuitUnit@ u) { if (InList(mexDefs, u.circuitDef)) mexes.insertLast(u); }
+void OnDestroyed(CCircuitUnit@ u) { RemoveUnit(mexes, u); }
+
+float MetalValue(const CCircuitDef@ d) { return d.costM + d.costE / energyPerMetal; }
+
+// Planning horizon (s): with no other information the expected remaining game is about the time
+// already played (Lindy), scaled by how safe we are: 2P/(P+T) is 1 at parity, ->0 when overwhelmed.
+float Horizon()
+{
+	const float P = Brain::Director::OurPower();
+	const float T = EnemyThreat();
+	const float elapsed = AiMax(float(ai.frame) / SECOND, 60.f);
+	return elapsed * 2.f * P / AiMax(1.f, P + T);
+}
+
+// Enemy mobile threat; when we see nothing, assume they grew at least as fast as we did.
+float EnemyThreat()
+{
+	const float seen = aiEnemyMgr.mobileThreat;
+	if (seen > 1.f)
+		lastEnemySeen = seen;
+	return Brain::Director::blind ? AiMax(lastEnemySeen, Brain::Director::OurPower()) : seen;
+}
+
+// Payback of upgrading every extractor we own: (lab + mohos) / (extra metal - upkeep priced in metal)
+float MohoPayback(const CCircuitDef@ lab)
+{
+	if (mexT1 is null || mexT2 is null || mexes.length() == 0)
+		return 1e9f;
+	const float n = float(mexes.length());
+	const float perMex = aiEconomyMgr.metal.income / n;  // upper bound: includes reclaim/makers
+	const float extraM = perMex * (MEX_T2_EXTRACT / MEX_T1_EXTRACT - 1.f);
+	const float upkeepM = (MEX_T2_UPKEEP_E - MEX_T1_UPKEEP_E) / energyPerMetal;
+	const float gain = n * (extraM - upkeepM);
+	if (gain <= 0.f)
+		return 1e9f;
+	return (MetalValue(lab) + n * MetalValue(mexT2)) / gain;
+}
+
+}  // namespace Economist
+
+/* ======================================================================== */
+/*
+ * Redirect build power: the share of constructor build power that should serve the army equals the
+ * army deficit (1 - ours/needed). Those builders get guard (assist) tasks on factories, so production
+ * speeds up exactly as much as the deficit demands; with a surplus they return to eco work.
+ */
+namespace Redirect {
+
+array<IUnitTask@> guards;
+array<int> guardUntil;
+int issued = 0;
+const int GUARD_SPAN = 45 * SECOND;  // re-evaluated every update; this is only the task lifetime
+
+void Update()
+{
+	for (int i = int(guards.length()) - 1; i >= 0; --i) {
+		if (ai.frame > guardUntil[i]) {
+			guards.removeAt(i);
+			guardUntil.removeAt(i);
+		}
+	}
+	const array<CCircuitUnit@>@ facs = Brain::Intel::allFactories;
+	if (facs.length() == 0 || aiEconomyMgr.isMetalEmpty || aiEconomyMgr.isEnergyStalling)
+		return;  // assisting with an empty bank (or no energy) only slows everything down
+	const float deficit = AiMax(0.f, 1.f - Brain::Director::ratio);
+	const int want = int(float(aiBuilderMgr.GetWorkerCount()) * deficit + 0.5f);
+	while (int(guards.length()) < want) {
+		CCircuitUnit@ fac = facs[AiRandom(0, int(facs.length()) - 1)];
+		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, GUARD_SPAN));
+		if (g is null)
+			break;
+		guards.insertLast(g);
+		guardUntil.insertLast(ai.frame + GUARD_SPAN);
+		++issued;
+	}
+}
+
+string Status() { return "assist=" + guards.length() + "/" + issued; }
+
+}  // namespace Redirect
+
+/* ======================================================================== */
+/*
+ * Tech gate: T2/T3 is an investment that pays later and costs army now. Weighed against the
+ * situation and the clock: income able to carry the tier, not being pushed back, holding parity,
+ * game time, and whether the enemy has teched already (then we must follow).
+ */
+namespace Tech {
+
+int lastLog = 0;
+
+bool Allowed(const CCircuitDef@ facDef)
+{
+	if (!F_TECH)
+		return true;
+	const int attr = Factory::userData[facDef.id].attr;
+	const bool t3 = (attr & Factory::Attr::T3) != 0;
+	const bool t2 = (attr & Factory::Attr::T2) != 0;
+	if (!t2 && !t3)
+		return true;
+	const float H = Brain::Economist::Horizon();
+	string why;
+	bool ok;
+	if (t2) {
+		// T2 pays through moho upgrades on the extractors we actually own; if the enemy has teched,
+		// our T1 army is losing value and teching becomes a necessity, not an investment.
+		const float payback = Brain::Economist::MohoPayback(facDef);
+		const bool forced = aiEnemyMgr.GetEnemyCost(RT::HEAVY) > 0.f && Brain::Director::ratio < 1.f;
+		ok = payback < H || forced || Brain::Waste::metalOverflow;
+		why = "payback " + int(payback) + "s vs horizon " + int(H) + "s" + (forced ? ", enemy teched" : "");
+	} else {
+		// T3: when T2 production can no longer absorb our income (it overflows), or the enemy fields
+		// super units while we're not ahead and must answer in kind.
+		const bool enemySuper = aiEnemyMgr.GetEnemyCost(RT::SUPER) > 0.f && Brain::Director::ratio < 1.f;
+		ok = Brain::Waste::metalOverflow || enemySuper;
+		why = Brain::Waste::metalOverflow ? "income overflows T2 production" : (enemySuper ? "enemy fields super units" : "T2 still absorbs our income");
+	}
+	if (ai.frame - lastLog > MINUTE || ok) {
+		lastLog = ai.frame;
+		AiLog("[ANV] Tech: " + (ok ? "building " : "not yet ") + facDef.GetName() + " (" + why + ")");
+	}
+	return ok;
+}
+}  // namespace Tech
+
+/* ======================================================================== */
+/*
+ * Assessment: how are we doing? Pushing or being pushed back, trading efficiently or not,
+ * investing well or stalling. Feeds the Director.
+ *  - front: where our losses happen (near base = pushed back, far = pushing), EMA of loss distance
+ *  - trade: metal we lose vs the drop in the enemy's known value over the same window (kill proxy;
+ *           the script API has no enemy-death event)
+ *  - investing: metal income growth over the last 3 minutes
+ */
+namespace Assess {
+
+float lostNear = 0.f, lostFar = 0.f, killed = 0.f, frontDist = 0.f;
+float enemyPrev = -1.f;
+array<float> incomeHist;  // one sample per minute
+float growth = 0.f;
+bool pushedBack = false, pushing = false;
+float trade = 1.f;
+
+float EnemyValue()
+{
+	float v = aiEnemyMgr.GetEnemyCost(RT::STATIC);
+	array<Type> rs = {RT::RAIDER, RT::ASSAULT, RT::SKIRM, RT::RIOT, RT::HEAVY, RT::ARTY, RT::AA, RT::SUPER, RT::AIR, RT::BUILDER};
+	for (uint i = 0; i < rs.length(); ++i)
+		v += aiEnemyMgr.GetEnemyCost(rs[i]);
+	return v;
+}
+
+void OnLoss(CCircuitUnit@ unit)
+{
+	const CCircuitDef@ d = unit.circuitDef;
+	// generators/makers the core recycles "die" too; never count them
+	if (!d.IsMobile() && d.defDmg <= 0.f && aiEconomyMgr.GetEnergyMake(d) > 0.f)
+		return;
+	const float dist = HasBase() ? basePos.distance2D(unit.GetPos(ai.frame)) : 0.f;
+	if (dist < 1500.f)
+		lostNear += d.costM;
+	else
+		lostFar += d.costM;
+	if (d.IsMobile())
+		frontDist = 0.9f * frontDist + 0.1f * dist;
+}
+
+void Update()  // every second
+{
+	lostNear *= 0.992f;  // half-life ~85 s
+	lostFar *= 0.992f;
+	killed *= 0.992f;
+	const float ev = EnemyValue();
+	if (enemyPrev >= 0.f && ev < enemyPrev)
+		killed += AiMin(enemyPrev - ev, 3000.f);  // drops in known enemy value ~ our kills
+	enemyPrev = ev;
+	const float lost = lostNear + lostFar;
+	trade = (killed + 50.f) / (lost + 50.f);
+	pushedBack = lostNear > 300.f && lostNear > 1.5f * lostFar;
+	pushing = lostFar > 300.f && lostFar > 2.f * lostNear && frontDist > 1800.f;
+
+	if (ai.frame % MINUTE < SECOND) {
+		incomeHist.insertLast(aiEconomyMgr.metal.income);
+		const uint n = incomeHist.length();
+		if (n >= 4)
+			growth = (incomeHist[n - 1] - incomeHist[n - 4]) / AiMax(1.f, incomeHist[n - 4]);
+	}
+}
+
+string Status()
+{
+	return (pushedBack ? "PUSHED-BACK" : (pushing ? "PUSHING" : "holding")) + " trade=" + F1(trade)
+		+ " lost(n/f)=" + int(lostNear) + "/" + int(lostFar) + " front=" + int(frontDist) + " growth3m=" + int(growth * 100.f) + "%";
+}
+
+}  // namespace Assess
+
+/* ======================================================================== */
+/*
  * Director: every few seconds, ask "what is the next reasonable move?". It weighs our army against
  * the enemy's known mobile threat, our economy and the clock, picks a posture, and logs why.
  * The other modules read the posture.
@@ -1185,82 +1612,59 @@ string reason = "start";
 
 float OurPower() { return Brain::Army::groundPower + Brain::Army::raiderPoolPower; }
 
+float needPower = 0.f;   // army power needed to win against what we know (and guess) is out there
+
 void Update()
 {
-	const float minute = float(ai.frame) / MINUTE;
 	const float ours = OurPower();
-	const float theirs = AiMax(1.f, aiEnemyMgr.mobileThreat);
-	ratio = ours / theirs;
-	const int enemies = AiMax(1, ai.GetEnemyTeamSize());
 	if (baseBP < 0.f)
 		baseBP = aiFactoryMgr.buildpowerRatio;
+	const float enemyStatic = aiEnemyMgr.GetEnemyCost(RT::STATIC);
+	blind = aiEnemyMgr.mobileThreat <= 1.f && enemyStatic <= 0.f;
+
+	// What we must be able to beat: the known (or, when blind, assumed) enemy army plus the army we
+	// guess is hidden under seen jammers, divided by how efficiently we are actually trading.
+	const float theirs = Brain::Economist::EnemyThreat() + aiEnemyMgr.GetEnemyThreat(RT::JAMMER);
+	needPower = theirs / AiMax(0.25f, Brain::Assess::trade);  // 0.25: numeric guard, not a tuning knob
+	ratio = ours / AiMax(1.f, needPower);
 
 	/*
-	 * Scale vs army, decided by scouting. The factory adds a constructor whenever our build power is
-	 * below income * buildpowerRatio, so this one knob is the "more constructors or more units?" call.
+	 * Constructors vs army, continuously: surplus power over what we need goes into scaling, a deficit
+	 * into army. The factory adds a constructor while buildpower < income * buildpowerRatio.
+	 * Income spilling out of full storage means we lack spending power: more builders.
 	 */
-	const float enemyStatic = aiEnemyMgr.GetEnemyCost(RT::STATIC);
-	blind = (minute >= 3.f && aiEnemyMgr.mobileThreat <= 1.f && enemyStatic <= 0.f);
-	const float threat = aiEnemyMgr.mobileThreat / AiMax(1.f, ours);
-	if (minute < 3.f)          { scale = 1.3f;  scaleWhy = "opening: expand"; }
-	else if (blind)            { scale = 1.0f;  scaleWhy = "blind: hedge and scout"; }
-	else if (threat < 0.5f)    { scale = 1.45f; scaleWhy = "enemy army small: scale"; }
-	else if (threat < 1.0f)    { scale = 1.1f;  scaleWhy = "safe margin: lean eco"; }
-	else if (threat < 1.5f)    { scale = 0.75f; scaleWhy = "enemy army stronger: build army"; }
-	else                       { scale = 0.45f; scaleWhy = "danger: everything into army"; }
-	aiFactoryMgr.buildpowerRatio = baseBP * scale;
-	aiMilitaryMgr.quota.scout = AiMax(int(aiMilitaryMgr.quota.scout), blind ? 4 : 3);
-	// Greedy enemy (lots of buildings, little army) is unprepared: punish rather than out-boom.
-	float enemyArmyCost = 0.f;  // seen enemy combat-unit metal (roles may overlap: rough)
-	array<Type> combat = {RT::RAIDER, RT::ASSAULT, RT::SKIRM, RT::RIOT, RT::HEAVY, RT::ARTY, RT::SUPER};
-	for (uint i = 0; i < combat.length(); ++i)
-		enemyArmyCost += aiEnemyMgr.GetEnemyCost(combat[i]);
-	const bool greedy = ratio > 0.9f && enemyStatic > 4.f * AiMax(200.f, enemyArmyCost);
-
-	Posture want;
-	string why;
-	if (minute < 4.f) {
-		want = BOOM;
-		why = "opening";
-	// Sun Tzu III.9-10: surround at 10:1, attack at 5:1, divide at 2:1, offer battle if equal,
-	// avoid if slightly inferior, flee if quite unequal.
-	} else if (ratio < 0.4f) {
-		want = TURTLE;
-		why = "quite unequal " + F1(ratio) + "x: everything into army, defend the base";
-	} else if (ratio < 0.75f) {
-		want = HOLD;
-		why = "slightly inferior " + F1(ratio) + "x: avoid open battle, strike only with a big wave";
-	} else if (ratio >= 4.f && minute >= 8.f && ours > 4.f * Brain::Army::baseAttack) {
-		want = ALLIN;
-		why = "overwhelming " + F1(ratio) + "x: keep the pressure rolling, close the game";
-	} else if (ratio >= 1.6f || (greedy && minute >= 6.f)) {
-		want = PRESSURE;
-		why = (greedy ? "enemy greedy (buildings >> army)" : "stronger " + F1(ratio) + "x") + ": attack in frequent waves";
+	// A deficit far from home is no reason to starve the economy (the only way back); only a deficit at
+	// home is. So we cut scaling only while pushed back, and add to it with surplus.
+	if (Brain::Assess::pushedBack) {
+		scale = AiMin(1.f, AiMax(0.35f, ratio));
+		scaleWhy = "pushed back with a deficit: army first";
 	} else {
-		want = (enemies > 1 && minute < 15.f) ? HOLD : BALANCED;
-		why = "even " + F1(ratio) + "x vs " + enemies + " enemies";
+		scale = AiMin(2.f, AiMax(1.f, ratio));
+		scaleWhy = blind ? "blind: assume enemy kept pace" : (ratio >= 1.f ? "surplus power: scale" : "deficit away from home: keep the economy growing");
 	}
+	if (Brain::Waste::metalOverflow) {
+		scale = AiMin(2.f, AiMax(scale, 1.f) * (1.f + float(Brain::Waste::metalSec) / 60.f));
+		scaleWhy = "metal overflowing: more build power";
+	}
+	if (F_SCALE)
+		aiFactoryMgr.buildpowerRatio = baseBP * scale;
+	aiMilitaryMgr.quota.scout = AiMax(int(aiMilitaryMgr.quota.scout), blind ? 4 : 3);
 
-	// Hysteresis: a posture must persist 15 s before we switch.
+	// Waves are sized to win: the gather completes when it holds the power needed.
+	waveFrac = (Brain::Army::groundPower > 0.f) ? AiMin(1.f, needPower / Brain::Army::groundPower) : 1.f;
+
+	// Posture is now only a label for the logs (and "can't win an open fight" for Fortify).
+	Posture want = ratio < 0.5f ? TURTLE : (ratio < 1.f ? HOLD : (ratio < 1.5f ? BALANCED : (ratio < 3.f ? PRESSURE : ALLIN)));
 	if (want != pending) {
 		pending = want;
 		pendingSince = ai.frame;
-	} else if (want != posture && ai.frame - pendingSince >= 25 * SECOND) {
-		AiLog("[ANV] Director: " + names[posture] + " -> " + names[want] + " (" + why + ")");
-		posture = want;
-		reason = why;
 	}
-
-	switch (posture) {
-		case BOOM:     waveFrac = 0.30f; break;
-		case HOLD:     waveFrac = 0.65f; break;
-		case BALANCED: waveFrac = 0.30f + 0.20f * AiMin(1.f, AiMax(0.f, (minute - 5.f) / 20.f)); break;
-		case PRESSURE: waveFrac = 0.25f; break;
-		case ALLIN:    waveFrac = 0.15f; break;
-		case TURTLE:   waveFrac = 0.80f; break;
+	if (want != posture && ai.frame - pendingSince >= 10 * SECOND) {  // log hygiene only
+		AiLog("[ANV] Director: " + names[posture] + " -> " + names[want] + " (power " + int(ours) + " vs needed " + int(needPower)
+			+ ", trade " + F1(Brain::Assess::trade) + (Brain::Assess::pushedBack ? ", pushed back" : "") + (blind ? ", blind" : "") + ")");
+		posture = want;
 	}
 }
-
 string Status() { return names[posture] + " r=" + F1(ratio) + " wave=" + F1(waveFrac) + " bp=" + F1(scale) + "(" + scaleWhy + ")"; }
 
 }  // namespace Director
@@ -1296,6 +1700,8 @@ void Init()
 	Strategic::Init();
 	Eco::Init();
 	Production::Init();
+	Waste::Init();
+	Economist::Init();
 }
 
 void OnFactoryAdded(CCircuitUnit@ unit)
@@ -1314,38 +1720,49 @@ void OnUnitFinished(CCircuitUnit@ unit)
 	Recycler::OnFinished(unit);
 	Intel::OnFinished(unit);
 	Strategic::OnFinished(unit);
+	Economist::OnFinished(unit);
+	Production::OnFinished(unit);
 }
 
 void OnUnitDestroyed(CCircuitUnit@ unit)
 {
 	const bool recycled = Recycler::OnDestroyed(unit);
-	if (!recycled)
+	if (!recycled) {
 		Intel::OnLoss(unit);
+		Assess::OnLoss(unit);
+	}
 	Intel::OnDestroyed(unit);
 	Strategic::OnDestroyed(unit);
+	Economist::OnDestroyed(unit);
+	Production::OnDestroyed(unit);
 	if (!unit.circuitDef.IsMobile() && (Factory::userData[unit.circuitDef.id].attr & (Factory::Attr::T2 | Factory::Attr::T3)) != 0)
 		Recycler::advFactories = AiMax(0, Recycler::advFactories - 1);
 }
 
 void Update()  // every 30 frames
 {
-	Intel::Update();
+	if (F_INTEL) Intel::Update();
+	Assess::Update();
+	if (F_WASTE) Waste::Update();
 	Director::Update();
-	Army::Update(Intel::jamAlert);
+	if (F_QUOTA) Army::Update(Intel::jamAlert);
+	else Army::CheckSquads();
 	if (ai.frame % (2 * SECOND) < SECOND) {
-		Recycler::Update();
-		Eco::Update();
+		if (F_RECYCLE) Recycler::Update();
+		if (F_ECOGATE) Eco::Update();
 	}
-	if (ai.frame % (10 * SECOND) < SECOND)
+	if (F_REDIRECT && ai.frame % (5 * SECOND) < SECOND)
+		Redirect::Update();
+	if (F_STRAT && ai.frame % (10 * SECOND) < SECOND)
 		Strategic::Update(Intel::jamAlert);
 
 	if (ai.frame % MINUTE < SECOND) {
-		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " groundPow=" + F1(Army::groundPower) + " units=" + Army::ground.length()
+		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | groundPow=" + F1(Army::groundPower) + " units=" + Army::ground.length()
 			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " waves=" + Army::waves + " recalls=" + Army::recalls + " ft=" + Army::Hist()
 			+ " quota.attack=" + F1(aiMilitaryMgr.quota.attack) + " raidMin=" + F1(aiMilitaryMgr.quota.raid.min)
 			+ " enemyMob=" + F1(aiEnemyMgr.mobileThreat) + " jamCost=" + F1(Intel::jammerCost)
 			+ " maxHeat=" + F1(Intel::MaxHeat()) + " eyes=" + Intel::eyes.length() + "/" + Intel::eyesOrdered
-			+ " | " + Production::Status() + " | " + Recycler::Status() + " " + Eco::Status() + " | " + Strategic::Status()
+			+ " | " + Production::Status() + " | " + Waste::Status() + " " + Redirect::Status() + " | " + Recycler::Status() + " " + Eco::Status() + " | " + Strategic::Status()
 			+ " | E inc=" + F1(aiEconomyMgr.energy.income) + " pull=" + F1(aiEconomyMgr.energy.pull)
 			+ " M inc=" + F1(aiEconomyMgr.metal.income));
 	}

@@ -35,7 +35,8 @@ void AiUpdateEconomy()
 	// NOTE: Default energy-to-metal conversion TeamRulesParam "mmLevel" = 0.75
 	aiEconomyMgr.isEnergyFull = energy.current > energy.storage * 0.88f;
 
-	aiFactoryMgr.isAssistRequired = (metal.current > metal.storage * 0.2f) && !aiEconomyMgr.isEnergyStalling;
+	aiFactoryMgr.isAssistRequired = ((metal.current > metal.storage * 0.2f) && !aiEconomyMgr.isEnergyStalling)
+		|| Brain::Waste::metalOverflow;  // never let income spill: assist factories
 }
 
 }  // namespace Economy

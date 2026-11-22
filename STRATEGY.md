@@ -176,6 +176,72 @@ Sidestepping slow projectiles, and spreading out against splash, are per-unit mi
 - **Unit choices** come from capabilities read at runtime (damage against air, surface and underwater,
   health, range, speed, cost), so a balance patch changes the choice automatically.
 
+## 16. Doctrine: no static thresholds
+
+No hand-picked cutoffs like "if minute ≥ 9 and income ≥ 30". Every decision compares the live marginal
+value of its alternatives. Only **game facts** (unit costs, upkeep, extraction, converter rates,
+build power per constructor) and plain unit conversions may be constants. The shared model lives in
+`Brain::Economist`:
+
+- **Planning horizon H.** The expected remaining game is about the time already played (Lindy),
+  scaled by how safe we are (2P/(P+T)).
+- **Energy priced in metal** at the converter exchange rate.
+- **Investments** are made when their payback is shorter than H. T2 example: (lab + moho upgrades of
+  our *actual* extractor count) ÷ (extra metal − upkeep priced in metal). If the enemy has teched while
+  we're behind, our T1 army is losing value, which forces the move.
+- **Needed power** = known enemy army + the army guessed under seen jammers, divided by our measured
+  trade efficiency. Waves gather to it, and production splits between eco and army on our power ÷ needed.
+
+**Tunables that remain** (debt, to be replaced by measured or derived values):
+- the opener window (6 min)
+- Fortify's heat floor and its distance band
+- the Recycler's surplus margins
+- Strategic's income conditions
+- Intel's eyes heat floor
+- the 0.5 wreck fraction
+- the Production score shape (range, speed and screening factors)
+
+## 17. Starvation is fatal
+
+An energy stall slows every constructor and factory at once, and a metal shortfall stalls production.
+Build power must follow metal income.
+
+- Constructor need follows the core's own rule: build power = income × buildpowerRatio. A T1
+  constructor is about 4.25 build-speed units (85 workertime).
+- **Lesson (b3):** cutting constructors whenever we were behind produced a death spiral: income fell
+  from 20 to 8 m/s while BARb grew to 50. Now the economy is only cut while we're *pushed back at home*.
+  A deficit far from home keeps the economy growing.
+- During an energy stall:
+  - Production defers to the core, whose first response is energy.
+  - Redirect stops assisting.
+  - The moho gate blocks new upkeep.
+  - Converters switch off below their storage level.
+
+## 18. Wrecks are the fastest metal
+
+Rez bots (Lazarus, Necro, Legion rez bot) reclaim wrecks, resurrect them into free units, and reclaim
+trees and plants for energy. They cost 130 metal, move at speed 78 and have 200 build power.
+
+- **BARb's flaw:** its factory weights almost never build them, and Cortex sends its Necros scouting.
+- **Anarvā:** fresh wrecks ≈ half the metal of recent losses and kills (decaying windows). A rez bot
+  is built while that pool is worth more than the rez fleet already harvesting it. The lab-to-rez-bot
+  map comes from unit facts, because the API can't list build options.
+
+## 19. Redirecting build power, and priority toggles
+
+- **Redirect:** the share of constructor build power that should serve the army equals the army
+  deficit. Those constructors get guard (assist) tasks on factories. With a surplus they go back to
+  eco work.
+- **Limit:** BAR's build-priority toggles are unit commands handled by a game gadget, and the script
+  API can't send unit commands. The nearest lever is task priority. Real toggles belong in the same
+  game-side widget as dodging (§14).
+
+## 20. Travel distance and front labs (planned)
+
+Production far from the fight wastes army-time on the walk. A forward lab saves (travel time ×
+production rate) of army presence, against the risk of losing it, which is measured from threat and
+loss heat near the site. The same trade decides where rally points and the next lab go.
+
 ## Planned
 
 - Walls and dragon's teeth at chokes, in front of defence lines (Sun Tzu's terrain chapters; HOLD and

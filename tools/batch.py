@@ -18,8 +18,15 @@ MAP_POOLS = {
     "mixed": ["Eye Of Horus 1.7.1", "Quicksilver Remake 1.24", "Red Comet Remake 1.8"],
     "water": ["Altair_Crossing_V4.1", "Supreme Isthmus v2.1"],
 }
+BIG_POOLS = {  # 7+ start positions, for 1vN
+    "open": ["Throne_V8", "Colorado_V2 1.1", "Taldarim_V3"],
+    "choke": ["Hera Planum 0.9.2", "Feast of Hades 1.0.1", "Esker Creek 1.3"],
+    "mixed": ["Eight Horses 1.2", "Plains and Passes v1.0", "Stronghold v5.0.1"],
+    "water": ["Jade Empress 1.41", "Red River Estuary v1.1", "Tropical Assault v3.0"],
+}
 DEFAULT_MAPS = [m for pool in MAP_POOLS.values() for m in pool]
-MAP_KIND = {m: k for k, pool in MAP_POOLS.items() for m in pool}
+BIG_MAPS = [m for pool in BIG_POOLS.values() for m in pool]
+MAP_KIND = {m: k for pools in (MAP_POOLS, BIG_POOLS) for k, pool in pools.items() for m in pool}
 STAT = re.compile(r"\[HARNESS\] (final|timeout|stats) f=(\d+) dead=(\w+) team=(\d) units=(\d+) army_m=(\d+) static_m=(\d+) "
                   r"m_inc=([\d.]+) e_inc=(\d+) .* killed_m=(\d+) lost_m=(\d+)")
 
@@ -79,9 +86,13 @@ def main():
     ap.add_argument("--par", type=int, default=4)
     ap.add_argument("--me", default="Anarva:anarva", help="AI under test, shortName:profile")
     ap.add_argument("--opp", default="BARb:hard")
-    ap.add_argument("--maps", default=",".join(DEFAULT_MAPS))
+    ap.add_argument("--n1", type=int, default=1, help="opponents (allied); >1 keeps Anarva on team 0")
+    ap.add_argument("--maps", default=None)
+    ap.add_argument("--pool", default="std", choices=["std", "big"])
     ap.add_argument("--minutes", type=float, default=30.0)
     args = ap.parse_args()
+    if args.maps is None:
+        args.maps = ",".join(BIG_MAPS if args.pool == "big" else DEFAULT_MAPS)
     args.maps = [x.strip() for x in args.maps.split(",") if x.strip()]
     os.makedirs(args.out, exist_ok=True)
     with ThreadPoolExecutor(args.par) as ex:

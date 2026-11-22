@@ -139,7 +139,7 @@ bool AiIsSwitchTime(int lastSwitchFrame)
 
 bool AiIsSwitchAllowed(CCircuitDef@ facDef)
 {
-	return true;
+	return Brain::Tech::Allowed(facDef);
 }
 
 CCircuitDef@ AiGetFactoryToBuild(const AIFloat3& in pos, bool isStart, bool isReset)

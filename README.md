@@ -1,16 +1,51 @@
 # Anarvā — a smarter Skirmish AI for Beyond All Reason
 
-Anarvā runs on BARb's C++ core (CircuitAI) and adds its own AngelScript brain and tuned configs:
+Anarvā runs on BARb's C++ core (CircuitAI) and adds its own AngelScript brain and configs. Its rule is
+**no static thresholds**: every choice compares the live marginal value of the alternatives, worked out
+from game facts (unit costs, upkeep, converter rates) and live measurements (force ratio, trade
+efficiency, front movement, income growth, overflow).
 
-- massed attack waves with a posture-driven Director (boom, hold, balanced, pressure, all-in)
-- broken-squad recall, so armies don't trickle in one by one
-- eco recycling: solars and winds → fusions → advanced fusions, plus T1 makers and obsolete T1 units
-- jammer hunting: phantom threat on seen jammers, Dragon's Eyes where we die unseen, Junos
-- strategic buildings BARb never makes: anti-nuke, tactical/EMP launchers, nukes, shields over key
-  infrastructure, and anti-air placed when air is scouted
+What it does:
 
-**Goal:** one Anarvā beats six BARb (hard) opponents on every map type. Status is in
-[PROGRESS.md](PROGRESS.md) and [progress.json](progress.json).
+- **Director.** Works out the army power needed to win, from the scouted enemy army plus the army we
+  guess is hidden under jammers, divided by how efficiently we're trading. It sizes attack waves to
+  that, and splits production between constructors and army from the surplus or deficit. It only cuts
+  the economy when pushed back at home.
+- **Assessment.** Tracks whether we're pushing or being pushed back, how well we trade, and whether
+  the economy is still growing.
+- **Economist.** Prices energy in metal at the converter rate. Investments (T2, moho upgrades) are
+  judged by payback time against a planning horizon set by how safe we are.
+- **Production.** Picks each unit from its live abilities (damage against air, surface and
+  underwater, health, range, speed, cost) against the scouted enemy mix, plus a screening value against
+  heavy armies. It builds rez bots while the wreck pool from recent fights is worth more than the rez
+  fleet.
+- **Waves and recall.** Squads gather until they can win, then launch together. A squad that's no
+  longer winning comes home to regroup instead of trickling in.
+- **Economy:**
+  - recycles obsolete eco: solars and winds, then fusions once advanced fusions carry the grid, T1
+    makers, and idle T1 units late in the game
+  - gates moho upgrades on energy headroom
+  - spends overflowing metal through nanos and assists, and converts overflowing energy with makers
+- **Intel:**
+  - keeps real sight with continuous scouting, because radar dots carry no type
+  - treats seen jammers as a hidden army
+  - builds Dragon's Eyes where we die unseen, and a Juno against jammers
+- **Strategic:**
+  - anti-nuke when an enemy silo appears
+  - a tactical or EMP launcher placed forward
+  - a nuke once our anti-nuke covers us
+  - shields over the most valuable infrastructure
+  - anti-air scaled to the air we've seen
+  - turrets and dragon's teeth at contested fronts when outgunned
+
+**Goal:** one Anarvā beats six BARb (hard) opponents on every map type.
+
+**Honest status:** the first build beat BARb-hard 7-3 in 1v1, mostly on points. The bundle of new
+modules added since then lost 3-8, mainly because the economy starved. Every module now sits behind a
+feature flag and is being A/B-tested head-to-head against the first build. A module ships only if it
+measurably helps. Details are in [PROGRESS.md](PROGRESS.md), [progress.json](progress.json) and
+[STRATEGY.md](STRATEGY.md), which maps every principle (Sun Tzu, Clausewitz, Napoleon, top-player
+replay data) to the code that implements it.
 
 ## Install
 

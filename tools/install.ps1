@@ -2,7 +2,8 @@
 #   -Name AnarvaDev   installs a side-by-side copy under another shortName (for testing / A-B vs Anarva)
 param(
     [string]$BarData = "C:\Hry\Beyond-All-Reason\data",
-    [string]$Name = "Anarva"
+    [string]$Name = "Anarva",
+    [string]$Flags = ""   # e.g. "F_PROD=false,F_SCALE=false" for A/B variants
 )
 $ErrorActionPreference = "Stop"
 $src = Join-Path $PSScriptRoot "..\Anarva\stable"
@@ -21,5 +22,16 @@ if ($Name -ne "Anarva") {
     $info = Join-Path $dst "AIInfo.lua"
     $text = [IO.File]::ReadAllText($info).Replace("value  = 'Anarva', -- AI name", "value  = '$Name', -- AI name") -replace "value  = 'Anarv[^']*',\r?\n(\s*desc   = 'human readable name)", "value  = '$Name',`n`$1"
     [IO.File]::WriteAllText($info, $text, (New-Object Text.UTF8Encoding($false)))
+}
+if ($Flags) {
+    $brain = Join-Path $dst "script\anarva\misc\brain.as"
+    $text = [IO.File]::ReadAllText($brain)
+    foreach ($kv in $Flags.Split(",")) {
+        $k, $v = $kv.Split("=")
+        $new = [regex]::Replace($text, "const bool $k = (true|false);", "const bool $k = $v;")
+        if ($new -eq $text) { throw "unknown flag $k" }
+        $text = $new
+    }
+    [IO.File]::WriteAllText($brain, $text, (New-Object Text.UTF8Encoding($false)))
 }
 Write-Host "Installed $Name -> $dst (dll from $($engine.Name))"
