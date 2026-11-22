@@ -84,7 +84,9 @@ water). Machine-readable state is in [`progress.json`](progress.json).
 - [ ] b2: measure the new build vs the baseline
 - [ ] 1v2 → 1v3 → 1v6 on the big-map pool (`batch.py --pool big --n1 N`)
 - [ ] Release packaging and installers (Windows and Linux) per the house standard
-- [ ] Companion widget for projectile/AoE dodging (game side, see STRATEGY.md §14)
+- [ ] Companion widget for projectile/AoE dodging and build-priority toggles (game side, see TACTICS.md §7)
+- [ ] Front labs and rally points by travel time vs risk (TACTICS.md §8)
+- [ ] Final: record the best games in the real client and add GIFs to the README
 
 ## Experiment log
 

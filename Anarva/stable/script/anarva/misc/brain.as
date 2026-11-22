@@ -1135,30 +1135,58 @@ bool NeedBuilder()
 	return float(aiBuilderMgr.GetWorkerCount()) < want;
 }
 
+// Our current army, as the candidates would join it (Lanchester: strength ~ total damage x total health).
+float armyH = 0.f, armyD = 0.f, armyCost = 0.f, armyRange = 0.f, armyLos = 0.f;
+
+void MeasureArmy(float wAir, float wSurf, float wSub)
+{
+	armyH = 0.f; armyD = 0.f; armyCost = 0.f; armyRange = 0.f; armyLos = 0.f;
+	array<CCircuitUnit@>@ pools = Brain::Army::ground;
+	for (int pass = 0; pass < 2; ++pass) {
+		if (pass == 1)
+			@pools = Brain::Army::raiders;
+		for (uint i = 0; i < pools.length(); ++i) {
+			const CCircuitDef@ u = pools[i].circuitDef;
+			const float dmg = wAir * u.airThrDmg + wSurf * u.surfThrDmg + wSub * u.waterThrDmg;
+			armyH += u.health;
+			armyD += dmg;
+			armyCost += u.costM;
+			armyRange += u.GetMaxRange() * dmg;   // damage-weighted reach
+			armyLos = AiMax(armyLos, u.losRadius);
+		}
+	}
+	armyRange = (armyD > 0.f) ? armyRange / armyD : 0.f;
+}
+
 float Score(CCircuitDef@ d, float wAir, float wSurf, float wSub, float wStatic, float wHeavy)
 {
 	if (d is null || !d.IsAvailable(ai.frame) || d.costM <= 0.f)
 		return 0.f;
-	const float hp = sqrt(AiMax(1.f, d.health));
 	// damage that can actually land on what the enemy fields
-	float dmg = wAir * d.airThrDmg + wSurf * d.surfThrDmg + wSub * d.waterThrDmg;
+	const float dmg = wAir * d.airThrDmg + wSurf * d.surfThrDmg + wSub * d.waterThrDmg;
 	if (dmg <= 0.f)
 		return 0.f;
-	float s = dmg * hp;
+	const float hp = AiMax(1.f, d.health);
+	// Lanchester square law: adding (dmg, hp) to an army (D, H) raises D*H by dmg*H + hp*D (+dmg*hp).
+	// So the chooser buys what the army lacks: damage for a tanky army, bodies for a glass cannon.
+	float s = dmg * armyH + hp * armyD + dmg * hp;
 	const float range = d.GetMaxRange();
-	s *= sqrt(1.f + range / 600.f);                       // reach = fights on our terms
-	if (wStatic > 0.f)
-		s *= 1.f + wStatic * AiMin(2.f, range / 700.f);    // outrange their defences
-	if (ai.frame < 12 * MINUTE)
-		s *= 1.f + AiMin(1.f, d.speed / 120.f) * 0.5f;     // early map control is mobility
-	// Screens: vs slow, hard-hitting enemies (heavies, artillery) cheap bodies waste their shots.
-	const float cheap = AiMin(1.f, AiMax(0.f, (150.f - d.costM) / 150.f));
-	s *= 1.f + 2.f * wHeavy * cheap;
-	s /= (d.costM + d.costE / 60.f);                       // per resource spent
-	s /= 1.f + float(built[d.id]) / 14.f;                 // keep the mix varied
-	return s;
+	// Reach: a unit that extends our army's reach fights on our terms; against defences even more.
+	if (armyRange > 0.f)
+		s *= 1.f + (1.f + wStatic) * AiMax(0.f, range - armyRange) / armyRange;
+	// Sight: if our army outranges its own sight it shoots at nothing; long-sight units close that gap.
+	if (armyRange > armyLos && armyRange > 0.f)
+		s *= 1.f + (armyRange - armyLos) / armyRange * AiMin(1.f, d.losRadius / armyRange);
+	// Screens: vs heavies/artillery, hp per metal soaks expensive shots (relative to our army's).
+	if (armyCost > 0.f && armyH > 0.f)
+		s *= 1.f + wHeavy * (hp / d.costM) / (armyH / armyCost);
+	// Time is a resource: a unit is worth the share of the planning horizon it actually spends fighting.
+	const float H = Brain::Economist::Horizon();
+	const float dist = Brain::Assess::frontDist > 0.f ? Brain::Assess::frontDist : AiTerrainDiagonal() * 0.5f;
+	const float travel = dist / AiMax(1.f, d.speed);
+	s *= AiMax(0.f, 1.f - travel / AiMax(1.f, H));
+	return s / Brain::Economist::MetalValue(d);  // per metal, energy priced at the converter rate
 }
-
 void OnFinished(CCircuitUnit@ u) { if (InList(rezDefs, u.circuitDef)) rezBots.insertLast(u); }
 void OnDestroyed(CCircuitUnit@ u) { RemoveUnit(rezBots, u); }
 
@@ -1213,6 +1241,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	const float wStatic = AiMin(1.f, stat / AiMax(1.f, aiEnemyMgr.mobileThreat + stat));
 	const float wHeavy = AiMin(1.f, (aiEnemyMgr.GetEnemyCost(RT::HEAVY) + aiEnemyMgr.GetEnemyCost(RT::ARTY)) / surf);
 
+	MeasureArmy(wAir, wSurf, wSub);
 	array<CCircuitDef@> cands;
 	array<float> scores;
 	for (uint i = 0; i < roles.length(); ++i) {
@@ -1222,7 +1251,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		const float s = Score(d, wAir, wSurf, wSub, wStatic, wHeavy);
 		if (s > 0.f) {
 			cands.insertLast(d);
-			scores.insertLast(s * s);  // sharpen toward the best, keep some variety
+			scores.insertLast(s);  // proportional pick: Lanchester marginal value already balances the mix
 		}
 	}
 	if (cands.length() == 0)

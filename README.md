@@ -1,5 +1,14 @@
 # Anarvā — a smarter Skirmish AI for Beyond All Reason
 
+## What "Anarvā" means
+
+*Anarvā* comes from the Sanskrit *anarvan*: unrestrained, boundless, irresistible. The name is the
+design. BARb plays by arbitrary constraints: hand-tuned cutoffs, fixed timers, gathering thresholds it
+can never reach, a factory mix that ignores what it sees. Anarvā removes them. Nothing it does is
+"because the number says so". Every choice is argued from the situation in front of it.
+
+## How it works
+
 Anarvā runs on BARb's C++ core (CircuitAI) and adds its own AngelScript brain and configs. Its rule is
 **no static thresholds**: every choice compares the live marginal value of the alternatives, worked out
 from game facts (unit costs, upkeep, converter rates) and live measurements (force ratio, trade
