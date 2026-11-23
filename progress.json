@@ -358,6 +358,21 @@
    "id": "e2-ecobundle",
    "desc": "1v2: anarva_e live energy + F_CONVERT + F_REZ (rez pool had the killedTotal bug)",
    "result": "0-6 both; value share 0.25 vs 0.31 base, 2 outright losses: not shipped; rez to be retested alone after the fix"
+  },
+  {
+   "id": "s2-stake",
+   "desc": "1v2: F_STAKE (trade weighted by army at stake)",
+   "result": "value share 0.15 vs 0.24: off"
+  },
+  {
+   "id": "c2-commzone",
+   "desc": "1v2, 12 games each: F_COMMSAFE+F_COMMZONE (commander only where nothing died)",
+   "result": "value share 0.11 vs 0.36, commander deaths 4 vs 1: rejected"
+  },
+  {
+   "id": "c2-base",
+   "desc": "current build (turret by power/metal, wreck hold share, lead-time anti-nuke), 1v2 x12",
+   "result": "0W 10L 2 points-draws, value share 0.36, best games 0.86/0.94"
   }
  ],
  "findings": [
