@@ -205,6 +205,22 @@ build power per constructor) and plain unit conversions may be constants. The sh
 - the 0.5 wreck fraction
 - the Production score shape (range, speed and screening factors)
 
+### Judgment numbers still in the code (debt, to remove)
+
+These are not game facts. They are numbers I chose, so they break the no-thresholds rule until replaced:
+
+- Energy plant lead time assumes half our builders work on it (`workers * 0.5`).
+- The rez wreck pool counts far-away wrecks at half.
+- Turret tier at the choke is picked by income 18 / 45 metal/s.
+- Our own nuke silo timing (minute 30, 90 metal/s), the Juno and tactical-launcher gates.
+- The `infra` list counts buildings of ≥ 250 metal as infrastructure.
+- Commander safety values in the configs (time 180, threat 5, radius 2000/1200).
+- `CORE_BUILDER_SHARE = 30`, the posture labels' ratio bands (logging only).
+
+Game facts read from unit files (converter rate, 75% conversion level, constructor build rate, build
+times, mine and silo costs) are not on this list: they are what the game *is*, and they get regenerated
+after a balance patch.
+
 ## 17. Starvation is fatal
 
 An energy stall slows every constructor and factory at once, and a metal shortfall stalls production.
@@ -439,6 +455,28 @@ what one more of it adds, as long as one more still repays its cost:
 
 Scale changes during the game: map size, number of players, game time, how much has died. So the
 counts are recomputed every update, never fixed at start.
+
+## 29. Just in time: army only when the enemy will actually arrive
+
+From the owner, describing top players: they build no units until they're needed. They expand and let
+the enemy walk all the way to them, while their economy compounds. When the enemy arrives they produce
+one tier above the enemy's units, push back, harvest the wrecks and end the game. It's one strategy
+among several, and the reasoning is what transfers:
+
+- **Every unit built early is metal not compounding.** Army (and defence) bought before the threat
+  arrives costs the growth it would have bought.
+- **The decision is lead time against arrival time.** Start producing when the time to produce the
+  answer is at least the enemy's time to arrive. Producing the answer means one tier up, at our real
+  production rate (factory and assist build power, banked metal plus income), plus tech time if we
+  aren't there yet. Arrival is the distance of the enemy force seen on radar or LoS, divided by its
+  speed. Scouting therefore decides when the switch happens, not just what to build.
+- **A tier up wins the exchange.** T2 against T1 trades several times better per metal, so the lab must
+  be ready *before* arrival. The T2 timing follows from the expected contact time.
+- **Over-defending is the same mistake.** Turrets sized to an army that hasn't come yet were measured
+  worse (F_DEFSIZE, off).
+- **Limit:** the script can't list enemy units with positions, so arrival time can only be estimated
+  (path length ÷ speed, radar contact via losses near home). Exact contact timing needs the C++ path
+  (§21).
 
 ## Planned
 
