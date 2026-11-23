@@ -50,7 +50,7 @@ def parse(out, tac_team, n1=1):
         op = {k: sum(v[k] for t, v in teams.items() if t != tac_team) for k in ("army", "static", "killed", "lost", "frame")}
         op["frame"] = me["frame"]
         mv, ov = me["army"] + me["static"], op["army"] + op["static"]
-        if me["frame"] < 25 * 60 * 30:
+        if me["frame"] < 20 * 60 * 30:
             res["result"] = "incomplete"  # cut by the wall-clock limit too early to judge
         else:
             res["result"] = "pts_win" if mv > 1.25 * ov else ("pts_loss" if ov > 1.25 * mv else "pts_draw")
@@ -89,7 +89,7 @@ def main():
     ap.add_argument("--n1", type=int, default=1, help="opponents (allied); >1 keeps Anarva on team 0")
     ap.add_argument("--maps", default=None)
     ap.add_argument("--pool", default="std", choices=["std", "big"])
-    ap.add_argument("--minutes", type=float, default=30.0)
+    ap.add_argument("--minutes", type=float, default=60.0)
     args = ap.parse_args()
     if args.maps is None:
         args.maps = ",".join(BIG_MAPS if args.pool == "big" else DEFAULT_MAPS)

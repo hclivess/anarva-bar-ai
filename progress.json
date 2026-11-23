@@ -210,12 +210,22 @@
                         },
                         {
                             "id":  "h9",
-                            "desc":  "default + waves+quota",
-                            "result":  "running"
+                            "desc":  "default + waves+quota vs first-gen",
+                            "result":  "2W 1L 1D, 3 incomplete (wall clock) - slightly positive, inconclusive"
                         },
                         {
                             "id":  "h10",
-                            "desc":  "default + production chooser (+rez)",
+                            "desc":  "default + production(+rez) vs first-gen",
+                            "result":  "3W 2L, 3 incomplete; decisive EoH win where base only won on points - neutral/positive"
+                        },
+                        {
+                            "id":  "r6a",
+                            "desc":  "base+prod+waves+quota vs base, 16 games both sides",
+                            "result":  "running"
+                        },
+                        {
+                            "id":  "r6b",
+                            "desc":  "base+prod vs base, 16 games both sides",
                             "result":  "running"
                         }
                     ],
@@ -235,7 +245,8 @@
                      "Config changes since first-gen (opener, ms_pull/buildpower, commander hide) are shared by every variant and must be bisected separately (profile anarva_fg, flag F_OPENER).",
                      "Geothermals are a core fallback only (energy planner ranks anywhere-placeable energy); script cannot see vents.",
                      "Side/map confound: with games==maps each map is played from one side only; compare variants paired, and move to both-sides (16 games) for final numbers.",
-                     "Method: modules ship ON only after winning head-to-head vs first-gen; defaults = best-measured config."
+                     "Method: modules ship ON only after winning head-to-head vs first-gen; defaults = best-measured config.",
+                     "Harness: games capped at 30 game-min, points verdict from min 20, 60 min wall; variants tested directly vs base (paired) on both sides."
                  ],
     "replay_analysis":  {
                             "local_index":  "ref/replays.csv (1054 replays)",

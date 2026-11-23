@@ -9,7 +9,7 @@ function widget:GetInfo()
 	}
 end
 
-local MAX_FRAMES = tonumber(Spring.GetConfigString("HarnessMaxFrames", "")) or (40 * 60 * 30)
+local MAX_FRAMES = tonumber(Spring.GetConfigString("HarnessMaxFrames", "")) or (30 * 60 * 30)
 local SPEED = 60
 
 local function teamLine(teamID)
