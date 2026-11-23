@@ -26,6 +26,7 @@ build. Status as of this commit:
 | Jammer intel: phantom threat on seen jammers, loss heatmap → Dragon's Eyes, Juno on jammer alert | **on** | first build |
 | Strategic: anti-nuke when an enemy silo appears; EMP/tactical launcher, nuke under anti-nuke cover and shields, only while our army covers what we need | **on** | first build; luxury spending is now gated on the force ratio |
 | Broken-squad recall (first-gen rule) | **on** | first build |
+| Constructor-rich opener (constructors alternate with raider escorts) | **on** | **13–2–1 vs the previous build** (round 8) |
 | Production chooser: units scored from live abilities (Lanchester damage × health, reach, sight gap, screening, travel time vs horizon); rez bots from the wreck pool; constructors left to the core's mix | testing, leading | 3–0 vs base in the first games of round 7 |
 | Director-sized waves and quotas (army needed to win = enemy + jammer guess ÷ trade efficiency) | off | net negative so far: holds units back, costs map control |
 | Director scale knob (constructors vs army from surplus/deficit) | off | untested on its own since the starvation fixes |

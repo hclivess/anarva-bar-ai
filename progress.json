@@ -16,7 +16,7 @@
                            "id":  "M1",
                            "desc":  "1v1 vs BARb hard: \u003e= 2:1 win ratio across all map types",
                            "status":  "in_progress",
-                           "result":  "first build 2.33 vs BARb (points); improving module by module"
+                           "result":  "first build 2.33 vs BARb; opener build beats that build 13-2-1 head-to-head"
                        },
                        {
                            "id":  "M2",
@@ -140,8 +140,8 @@
                      {
                          "name":  "Constructor-rich opener",
                          "flag":  "F_OPENER",
-                         "default":  "off",
-                         "evidence":  "part of regressed bundle"
+                         "default":  "on",
+                         "evidence":  "r8: 13-2-1 vs base"
                      }
                  ],
     "tools":  {
@@ -260,8 +260,8 @@
                         },
                         {
                             "id":  "r8",
-                            "desc":  "base+constructor-rich opener vs base, 16 games",
-                            "result":  "running"
+                            "desc":  "base + constructor-rich opener vs base, 16 games both sides",
+                            "result":  "13W 2L 1D (6.5) - 4 commander kills; open 3-1, choke 2-1, mixed 4-0, water 4-0 -\u003e SHIPPED ON"
                         }
                     ],
     "findings":  [

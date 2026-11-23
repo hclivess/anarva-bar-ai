@@ -29,7 +29,7 @@ const bool F_TECH = false;      // payback-based tech gate
 const bool F_REDIRECT = false;  // assist factories by army deficit
 const bool F_INTEL = true;     // eyes, scouting, phantom threat
 const bool F_QUOTA = false;
-const bool F_OPENER = false;
+const bool F_OPENER = true;
 const bool F_SCOUT = false;     // scout quota >=3 and timed scout recruits (keep sight)
 const bool F_AA = false;        // static AA counter
 const bool F_FUSREC = false;
