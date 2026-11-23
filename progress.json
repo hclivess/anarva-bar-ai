@@ -393,6 +393,11 @@
    "id": "t2-tech",
    "desc": "1v2, 8x45min: F_TECH alone",
    "result": "0-8; share 0.05, survival 34.0 vs base 0.13/38.6: rejected"
+  },
+  {
+   "id": "d2-detail45",
+   "desc": "1v2, 8x45min: F_DETAIL+F_WAVES+F_QUOTA (the bundle behind the only 1v2 win)",
+   "result": "0-8, all outright losses, survival 30.2 vs base 38.6 min: rejected; the Throne win was an outlier"
   }
  ],
  "findings": [
