@@ -62,7 +62,8 @@ else is off pending tests (see the status table in [README.md](README.md)).
 - [x] Round 7: production chooser vs base. Even (4–1–4), not yet a gain.
 - [x] Round 8: constructor-rich opener alone: 13–2–1, shipped
 - [ ] Map analysis: offline per-map profile (extractors, base distance, paths and chokes, water, geo vents) loaded at game start
-- [ ] Next one-at-a-time tests on the new base: scale knob, then production again
+- [x] Scale knob: 9–4–3, shipped
+- [ ] Round 10: production + map-driven constructor share
 - [ ] Rework waves: launch when the gathered force can win *its* fight, and don't hold units at home
   while the map is lost.
 - [ ] One-at-a-time tests: scale knob, tech gate, moho gate, waste, redirect, fortify.
@@ -101,3 +102,5 @@ else is off pending tests (see the status table in [README.md](README.md)).
 | perf | throughput | 7 parallel engines run below real time with idle CPU; now 1 variant × 4 games in parallel |
 | team replays | top ≤4v4 team games | boom harder and T2 5–6 min earlier than duels |
 | r8 | default + constructor-rich opener vs default, 16 games | **13W 2L 1D (6.5)**, 4 commander kills, all map types: **shipped on** |
+| r9 | + scale knob vs default (with opener), 16 games | **9W 4L 3D (2.25): shipped on** |
+| r10 | + production + map-driven constructor share | running |

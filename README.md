@@ -29,7 +29,7 @@ build. Status as of this commit:
 | Constructor-rich opener (constructors alternate with raider escorts) | **on** | **13–2–1 vs the previous build** (round 8) |
 | Production chooser: units scored from live abilities (Lanchester damage × health, reach, sight gap, screening, travel time vs horizon); rez bots from the wreck pool; constructors left to the core's mix | testing, leading | 3–0 vs base in the first games of round 7 |
 | Director-sized waves and quotas (army needed to win = enemy + jammer guess ÷ trade efficiency) | off | net negative so far: holds units back, costs map control |
-| Director scale knob (constructors vs army from surplus/deficit) | off | untested on its own since the starvation fixes |
+| Director scale knob (constructors vs army from scouted surplus/deficit; the economy is cut only when pushed back at home) | **on** | **9–4–3 vs the previous build** (round 9) |
 | Payback-based tech gate, moho energy gate, overflow handling (nanos, converters), assist redirect, fortify (turrets + teeth) | off | untested individually yet |
 | Forced continuous scouting, static AA counter, need-based recall, fusion recycling | off | measured harmful as always-on behaviour (round 3 → 4) |
 

@@ -19,7 +19,7 @@ namespace Brain {
 const bool F_WAVES = false;     // script-owned wave/pack gathering
 const bool F_RECALL = true;    // broken-squad recall
 const bool F_PROD = false;      // capability-based production chooser (incl. rez bots)
-const bool F_SCALE = false;     // Director drives buildpowerRatio
+const bool F_SCALE = true;     // Director drives buildpowerRatio
 const bool F_ECOGATE = false;   // moho energy-headroom gate
 const bool F_RECYCLE = true;   // eco recycling + T1 salvage
 const bool F_STRAT = true;     // strategic structures + AA counter

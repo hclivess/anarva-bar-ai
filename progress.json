@@ -104,8 +104,8 @@
                      {
                          "name":  "Scale knob (buildpowerRatio from surplus/deficit)",
                          "flag":  "F_SCALE",
-                         "default":  "off",
-                         "evidence":  "untested alone"
+                         "default":  "on",
+                         "evidence":  "r9: 9-4-3 vs base"
                      },
                      {
                          "name":  "Payback tech gate",
@@ -262,6 +262,16 @@
                             "id":  "r8",
                             "desc":  "base + constructor-rich opener vs base, 16 games both sides",
                             "result":  "13W 2L 1D (6.5) - 4 commander kills; open 3-1, choke 2-1, mixed 4-0, water 4-0 -\u003e SHIPPED ON"
+                        },
+                        {
+                            "id":  "r9",
+                            "desc":  "base(+opener) + scale knob vs base, 16 games",
+                            "result":  "9W 4L 3D (2.25) -\u003e SHIPPED ON; losses: EoH, Altair commander deaths from T1 start"
+                        },
+                        {
+                            "id":  "r10",
+                            "desc":  "base(+opener+scale) + production + map-driven constructor share vs base",
+                            "result":  "running"
                         }
                     ],
     "findings":  [
