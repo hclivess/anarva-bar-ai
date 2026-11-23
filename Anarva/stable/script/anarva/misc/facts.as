@@ -70,6 +70,58 @@ dictionary buildOptions = {
 // legmoho extracts=0.004 upkeepE=20.0
 // cormexp extracts=0.004 upkeepE=20.0
 
+// energy converters: E/s consumed, metal per energy, cost, build time (customparams)
+class SConv { float capE; float eff; float costM; float costE; float buildTime; }
+dictionary converters;
+void InitConverters()
+{
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 3000; c.costE = 30000; c.buildTime = 75000; converters.set("armcomlvl2", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 4000; c.costE = 40000; c.buildTime = 85000; converters.set("armcomlvl3", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 5000; c.costE = 50000; c.buildTime = 94800; converters.set("armcomlvl4", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 6000; c.costE = 60000; c.buildTime = 111600; converters.set("armcomlvl5", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 7000; c.costE = 70000; c.buildTime = 128400; converters.set("armcomlvl6", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 8000; c.costE = 80000; c.buildTime = 145200; converters.set("armcomlvl7", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 9000; c.costE = 90000; c.buildTime = 162000; converters.set("armcomlvl8", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 10000; c.costE = 100000; c.buildTime = 178000; converters.set("armcomlvl9", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.01429; c.costM = 1; c.costE = 1150; c.buildTime = 2600; converters.set("armfmkr", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.01429; c.costM = 1; c.costE = 1150; c.buildTime = 2600; converters.set("armmakr", @c); }
+	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 380; c.costE = 21000; c.buildTime = 35000; converters.set("armmmkr", @c); }
+	{ SConv c; c.capE = 6000; c.eff = 0.02; c.costM = 9000; c.costE = 550000; c.buildTime = 350000; converters.set("armmmkrt3", @c); }
+	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 380; c.costE = 21000; c.buildTime = 35000; converters.set("armuwmmm", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 11000; c.costE = 110000; c.buildTime = 240000; converters.set("corcomlvl10", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 3000; c.costE = 30000; c.buildTime = 112500; converters.set("corcomlvl2", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 4000; c.costE = 40000; c.buildTime = 120000; converters.set("corcomlvl3", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 5000; c.costE = 50000; c.buildTime = 140000; converters.set("corcomlvl4", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 6000; c.costE = 60000; c.buildTime = 154800; converters.set("corcomlvl5", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 7000; c.costE = 70000; c.buildTime = 182000; converters.set("corcomlvl6", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 8000; c.costE = 80000; c.buildTime = 210000; converters.set("corcomlvl7", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 9000; c.costE = 90000; c.buildTime = 230000; converters.set("corcomlvl8", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 10000; c.costE = 100000; c.buildTime = 240000; converters.set("corcomlvl9", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.01429; c.costM = 1; c.costE = 1250; c.buildTime = 2680; converters.set("corfmkr", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.01429; c.costM = 1; c.costE = 1250; c.buildTime = 2680; converters.set("cormakr", @c); }
+	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 370; c.costE = 21000; c.buildTime = 31300; converters.set("cormmkr", @c); }
+	{ SConv c; c.capE = 6000; c.eff = 0.02; c.costM = 9000; c.costE = 550000; c.buildTime = 350000; converters.set("cormmkrt3", @c); }
+	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 370; c.costE = 21000; c.buildTime = 31300; converters.set("coruwmmm", @c); }
+	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 370; c.costE = 21000; c.buildTime = 31300; converters.set("legadveconv", @c); }
+	{ SConv c; c.capE = 6000; c.eff = 0.02; c.costM = 9000; c.costE = 550000; c.buildTime = 350000; converters.set("legadveconvt3", @c); }
+	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 370; c.costE = 21000; c.buildTime = 31300; converters.set("leganavaleconv", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 11000; c.costE = 110000; c.buildTime = 264000; converters.set("legcomlvl10", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 6000; c.costE = 60000; c.buildTime = 187500; converters.set("legcomlvl5", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 7000; c.costE = 70000; c.buildTime = 187500; converters.set("legcomlvl6", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 8000; c.costE = 80000; c.buildTime = 192000; converters.set("legcomlvl7", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 9000; c.costE = 90000; c.buildTime = 216000; converters.set("legcomlvl8", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 10000; c.costE = 100000; c.buildTime = 240000; converters.set("legcomlvl9", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 1; c.costE = 1150; c.buildTime = 2600; converters.set("legeconv", @c); }
+	{ SConv c; c.capE = 70; c.eff = 0.01429; c.costM = 1; c.costE = 1250; c.buildTime = 2680; converters.set("legfeconv", @c); }
+}
+SConv@ Converter(const string& in name)
+{
+	SConv@ c;
+	if (converters.get(name, @c))
+		return c;
+	return null;
+}
+
 array<string> BuildOptions(const string& in fac)
 {
 	array<string>@ o;

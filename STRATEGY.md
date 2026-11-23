@@ -381,6 +381,43 @@ BAR's single-player scenarios ship BARb setups that are designed to be hard to b
 Humans clear them with focused plans, such as rushing T2 bombers to kill commanders. They're the target
 validation suite for Anarvā's adaptive strategy (issue tracker: "scenarios").
 
+## 27. Command, not a library of tactics
+
+From notes by a friend of the project ("The problem of command"). A bot with a perfect routine for every
+maneuver still fails when several opportunities and threats arrive at once. Then the question is
+**which concern comes first, and why**. Any fixed priority order loses to a situation that reverses it.
+What wins is one continuous process of **interpretation → prioritization → anticipation → decision →
+revision**.
+
+How Anarvā takes this on:
+
+- **One currency, one arbiter.** Every option (an extractor, a turret on high ground, a converter, a
+  wave, a retreat, a raid) is valued as expected metal-equivalent gained over the planning horizon,
+  minus risk. The Director compares the options; no module wins by being earlier in a rule list. This
+  is why there are no static thresholds: a threshold is a frozen priority.
+- **Value depends on what comes next.** A target's worth includes what killing it enables. The radar
+  that sights for a turret line, the anti-nuke that covers the base, the AA screen over the eco: each is
+  worth the follow-up it opens, not its own cost. Sequenced attacks are an argument in several moves
+  (issue: attack sequencing).
+- **Refusing a fight can win it.** Giving up extractors to keep the army, when help or a better
+  battlefield is coming, is a present loss for a later gain. The recall and HOLD/TURTLE postures are
+  the start of that; the value of territory has to be weighed against the army that defends it.
+- **Losing trades can be strategic.** Cheap raids that force the enemy to build counters and delay its
+  economy succeed even at bad local trades. Raids are judged by the enemy's production response, not
+  only by kills.
+- **Probes are experiments.** A limited attack measures the type and size of the resistance and updates
+  the enemy model. The enemy's behaviour is evidence of a plan: concentration means an attack is coming,
+  weak response means weak defence, or bait.
+- **Terrain is possibility, not a score.** The same hill is a refuge, a trap or a route. Walls can
+  leave a corridor open on purpose and lead attackers into a kill zone. Map analysis gives the
+  geometry; its meaning comes from the armies and the timing (§25).
+- **Timing is judgment.** Slow heavy rockets must land together on a commander, or the first hit warns
+  it. EMP is worth what is done during the stun: stopping a T3 push, opening a nuke window on an
+  anti-nuke. A commander's D-gun charge is unacceptable risk normally and the best move in a
+  catastrophic breakthrough.
+- **Restraint.** Knowing when *not* to use a clever tactic. A kill zone may never be visited; a probe
+  may reveal more about us than about them.
+
 ## Planned
 
 - Walls and dragon's teeth at chokes, in front of defence lines (Sun Tzu's terrain chapters; HOLD and

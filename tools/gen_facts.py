@@ -30,6 +30,11 @@ def scan(units_dir):
             d["paralyzer"] = bool(re.search(r"\bparalyzer\s*=\s*true", text, re.I))
             d["crawl"] = bool(re.search(r'explodeas\s*=\s*"crawl_', text, re.I)) or bool(
                 re.search(r'selfdestructas\s*=\s*"crawl', text, re.I))
+            cap = re.search(r"energyconv_capacity\s*=\s*([\d.]+)", text)
+            eff = re.search(r"energyconv_efficiency\s*=\s*([\d.]+)(\s*/\s*([\d.]+))?", text)
+            if cap and eff:
+                e = float(eff.group(1)) / (float(eff.group(3)) if eff.group(3) else 1.0)
+                d["conv"] = (float(cap.group(1)), e)
             bo = re.search(r"\bbuildoptions\s*=\s*\{(.*?)\}", text, re.S | re.I)
             d["buildoptions"] = re.findall(r'"([a-z0-9_]+)"', bo.group(1)) if bo else []
             defs[name] = d
@@ -71,6 +76,24 @@ def main():
     for n in ("armmex", "cormex", "legmex", "armmoho", "cormoho", "legmoho", "cormexp"):
         d = defs.get(n, {})
         lines.append("// %s extracts=%s upkeepE=%s" % (n, d.get("extractsmetal"), d.get("energyupkeep")))
+    lines.append("")
+    lines.append("// energy converters: E/s consumed, metal per energy, cost, build time (customparams)")
+    lines.append("class SConv { float capE; float eff; float costM; float costE; float buildTime; }")
+    lines.append("dictionary converters;")
+    lines.append("void InitConverters()")
+    lines.append("{")
+    for n, d in sorted(defs.items()):
+        if "conv" in d and "metalcost" in d:
+            lines.append('	{ SConv c; c.capE = %g; c.eff = %g; c.costM = %g; c.costE = %g; c.buildTime = %g; converters.set("%s", @c); }'
+                         % (d["conv"][0], d["conv"][1], d["metalcost"], d.get("energycost", 0), d.get("buildtime", 0), n))
+    lines.append("}")
+    lines.append("SConv@ Converter(const string& in name)")
+    lines.append("{")
+    lines.append("	SConv@ c;")
+    lines.append("	if (converters.get(name, @c))")
+    lines.append("		return c;")
+    lines.append("	return null;")
+    lines.append("}")
     lines.append("")
     lines.append("array<string> BuildOptions(const string& in fac)")
     lines.append("{")

@@ -38,6 +38,8 @@ const bool F_MAPECO = false;    // constructor share from free extractor spots (
 const bool F_COMMSAFE = false;  // commander only works inside the zone our army protects
 const bool F_DETAIL = false;    // 1vN: defeat in detail - size against one opponent's army, not their sum
 const bool F_TERRAIN = true;    // fortify the choke from the high ground (map analysis)
+const bool F_CONVERT = false;   // wasted energy -> converters, chosen by payback incl. build time
+const bool F_EXPAND = false;    // constructors from the free extractor spots (marginal value), not from income
 const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
 
 CCircuitDef@ Def(const string& in name)
@@ -1344,8 +1346,37 @@ CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 	return null;
 }
 
+// Constructors the expansion rule asks for, recruited directly: the core gates its own constructor
+// choice behind a coin flip once a factory is "active", which throttles expansion exactly when it pays.
+array<string> T1_CONS = {"armck", "armcv", "corck", "corcv", "legck", "legcv", "armcs", "corcs", "legnavyconship"};
+int expandOrders = 0;
+IUnitTask@ ExpandTask(CCircuitUnit@ fac)
+{
+	if (!F_EXPAND || Brain::Assess::pushedBack || aiEconomyMgr.isEnergyStalling)
+		return null;
+	const float income = aiEconomyMgr.metal.income;
+	const float want = Brain::Director::expandWant + income * Brain::Director::baseBP / BUILD_SPEED_PER_WORKER;
+	if (float(aiBuilderMgr.GetWorkerCount()) >= want)
+		return null;
+	const array<string>@ opts = Facts::BuildOptions(fac.circuitDef.GetName());
+	for (uint i = 0; i < opts.length(); ++i) {
+		if (T1_CONS.find(opts[i]) < 0)
+			continue;
+		CCircuitDef@ con = ai.GetCircuitDef(opts[i]);
+		if (con is null || !con.IsAvailable(ai.frame))
+			continue;
+		++expandOrders;
+		return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, con,
+			fac.GetPos(ai.frame), 64.f));
+	}
+	return null;
+}
+
 IUnitTask@ MakeTask(CCircuitUnit@ fac)
 {
+	IUnitTask@ ex = ExpandTask(fac);
+	if (ex !is null)
+		return ex;
 	if (!F_PROD || aiEconomyMgr.isEnergyStalling)
 		return null;  // energy stall: the core's first answer is energy; don't queue power-hungry units
 	if (ai.frame < 6 * MINUTE)
@@ -1545,6 +1576,129 @@ string Status()
 }
 
 }  // namespace Waste
+
+/* ======================================================================== */
+/*
+ * Convert: energy that hits full storage is thrown away; a converter turns it into metal. Which
+ * converter, and how many, is a live comparison, not a rule:
+ *  - spare  = energy income - pull - what converters already ordered will consume
+ *  - for each converter we can build (facts from the unit files: E/s capacity, metal per E, cost,
+ *    build time): n = how many the spare runs, gain = n * capacity * efficiency (M/s),
+ *    time to repay = n * cost (metal + energy priced at the converter rate) / gain
+ *                    + time to finish (build time at one constructor's work rate: nothing pays until built)
+ *  - build the quickest-repaying one, if it repays within the planning horizon.
+ * Cheap T1 converters win when space and build time are free; dense T2 ones when the spare is large.
+ */
+namespace Convert {
+
+array<CCircuitDef@> defs;
+array<Facts::SConv@> facts;
+float pendingE = 0.f;
+int pendingUntil = 0, ordered = 0, built = 0, lastLog = 0;
+const float CON_WORK = 85.f;  // T1 constructor workertime (unit facts), the rate one builder adds
+
+void Init()
+{
+	Facts::InitConverters();
+	array<string> names = {"armmakr", "cormakr", "legeconv", "armmmkr", "cormmkr", "legadveconv"};
+	for (uint i = 0; i < names.length(); ++i) {
+		CCircuitDef@ d = ai.GetCircuitDef(names[i]);
+		Facts::SConv@ c = Facts::Converter(names[i]);
+		if (d !is null && c !is null) {
+			defs.insertLast(d);
+			facts.insertLast(c);
+		}
+	}
+}
+
+void OnFinished(CCircuitUnit@ u)
+{
+	for (uint i = 0; i < defs.length(); ++i)
+		if (u.circuitDef is defs[i]) {
+			pendingE = AiMax(0.f, pendingE - facts[i].capE);
+			++built;
+		}
+}
+
+void Update()  // every second
+{
+	if (!HasBase() || ai.frame % (5 * SECOND) != 0)
+		return;
+	if (ai.frame > pendingUntil)
+		pendingE = 0.f;  // orders expired or were dropped
+	const SResourceInfo@ e = aiEconomyMgr.energy;
+	// energy is wasted only when storage is (nearly) full and still not drained
+	if (!aiEconomyMgr.isEnergyFull || aiEconomyMgr.isMetalFull)
+		return;
+	const float spare = e.income - e.pull - pendingE;
+	if (spare <= 0.f)
+		return;
+	int best = -1, bestN = 0;
+	float bestPay = 1e9f;
+	for (uint i = 0; i < defs.length(); ++i) {
+		if (!defs[i].IsAvailable(ai.frame))
+			continue;
+		const int n = int(spare / facts[i].capE);
+		if (n < 1)
+			continue;
+		const float gain = n * facts[i].capE * facts[i].eff;
+		const float cost = n * (facts[i].costM + facts[i].costE / Economist::energyPerMetal);
+		const float pay = cost / gain + facts[i].buildTime / CON_WORK;
+		if (pay < bestPay) {
+			bestPay = pay;
+			best = int(i);
+			bestN = n;
+		}
+	}
+	if (best < 0)
+		return;
+	const float horizon = Economist::Horizon();
+	if (bestPay >= horizon)
+		return;
+	// order what the spare can run, but no more at once than builders that could take it
+	const int n = AiMin(bestN, AiMax(1, aiBuilderMgr.GetWorkerCount()));
+	for (int k = 0; k < n; ++k)
+		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::CONVERT, Task::Priority::NORMAL, defs[best], basePos,
+			SQUARE_SIZE * 48, true, 2 * MINUTE));
+	pendingE += n * facts[best].capE;
+	pendingUntil = ai.frame + 2 * MINUTE;
+	ordered += n;
+	AiLog("[ANV] Convert: +" + n + " " + defs[best].GetName() + " (spare " + int(spare) + " E/s, repays in "
+		+ int(bestPay) + "s < horizon " + int(horizon) + "s)");
+}
+
+// The core sizes energy to a fixed multiple of metal income (economy.json "factor", 20x-60x), so it keeps
+// assigning power plants while energy already overflows. At that moment a plant's marginal value is zero
+// (its output is thrown away) and it costs metal; a T1 converter costs ~1 metal and turns the surplus into
+// metal. So the builder takes the converter instead. Self-limiting: converters drain the storage, the
+// overflow stops, and plants come back when energy is short again.
+int swaps = 0;
+IUnitTask@ Substitute(CCircuitUnit@ unit, IUnitTask@ task)
+{
+	if (task is null || task.GetType() != Task::Type::BUILDER || !HasBase())
+		return task;
+	IBuilderTask@ bt = cast<IBuilderTask>(task);
+	if (bt is null || bt.GetBuildType() != Task::BuildType::ENERGY)
+		return task;
+	const SResourceInfo@ e = aiEconomyMgr.energy;
+	if (!aiEconomyMgr.isEnergyFull || e.income <= e.pull || aiEconomyMgr.isMetalFull)
+		return task;
+	// cheapest converter by metal: the surplus is free, metal is what's short
+	int best = -1;
+	for (uint i = 0; i < defs.length(); ++i)
+		if (defs[i].IsAvailable(ai.frame) && Facts::BuildOptions(unit.circuitDef.GetName()).find(defs[i].GetName()) >= 0
+			&& (best < 0 || facts[i].costM < facts[best].costM))
+			best = int(i);
+	if (best < 0 || bt.buildDef is null || facts[best].costM >= bt.buildDef.costM)
+		return task;
+	++swaps;
+	if (swaps % 10 == 1)
+		AiLog("[ANV] Convert: energy overflowing, " + defs[best].GetName() + " instead of " + bt.buildDef.GetName() + " (swaps " + swaps + ")");
+	return aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::CONVERT, Task::Priority::NORMAL, defs[best], basePos,
+		SQUARE_SIZE * 48, true, MINUTE));
+}
+
+}  // namespace Convert
 
 /* ======================================================================== */
 /*
@@ -1800,6 +1954,49 @@ float waveFrac = 0.30f;
 float ratio = 1.f;
 float baseBP = -1.f;     // core's constructor-vs-army knob (economy.buildpower)
 float scale = 1.f;       // multiplier we apply to it
+/*
+ * Expansion demand. The core sizes build power to income, a loop that keeps a small economy small.
+ * The real question: is one more constructor worth its cost? n constructors take F free extractor spots
+ * in F*t/n seconds (t = one trip: walk the spot spacing + build the extractor). The metal a spot yields
+ * while still unclaimed is lost, so the expansion loss is about s*F^2*t/(2n) (s = one spot's income).
+ * One more constructor cuts it by s*F^2*t/(2n^2); that beats its cost c while n < F*sqrt(s*t/(2c)).
+ * Every input is a game fact or a live measurement: spots from the map analysis (our fair share =
+ * map extractors / players), speed and cost from the constructor's def, s from our own extractors.
+ */
+float expandWant = 0.f;
+void Expand()
+{
+	MapFacts::SMap@ m = Brain::Production::mapInfo;
+	CCircuitDef@ con = Brain::Strategic::Side("armck", "corck", "legck");
+	const float income = aiEconomyMgr.metal.income;
+	if (m is null || m.mex <= 0 || con is null || income <= 0.f)
+		return;
+	const float players = float(AiMax(2, ai.GetEnemyTeamSize() + 1));
+	const float ours = float(Brain::Economist::mexes.length());
+	const float F = float(m.mex) / players - ours;
+	if (F <= 0.f) {
+		expandWant = 0.f;
+		return;
+	}
+	float speed = con.speed;               // elmos per frame in the core
+	if (speed < 10.f) speed *= SECOND;     // -> elmos per second
+	const float spacing = AiMax(1.f, m.straight) / sqrt(float(m.mex));
+	const float t = spacing / AiMax(1.f, speed) + MEX_BUILDTIME / (Brain::Production::BUILD_SPEED_PER_WORKER * 20.f);
+	const float s = ours > 0.f ? AiMax(0.5f, income / ours) : 1.f;  // upper bound: includes reclaim/makers
+	const float c = Brain::Economist::MetalValue(con);
+	expandWant = F * sqrt(s * t / (2.f * c));
+	// A spot is only worth what survives: discount by the pressure on us (home losses against a minute
+	// of income). Not by the army ratio: humans boom on 0.4x the bots' army; what counts is force sent at us.
+	const float income60 = income * 60.f;
+	const float p = Brain::Assess::lostNear / AiMax(1.f, Brain::Assess::lostNear + income60);
+	expandWant *= (1.f - p);
+	// the core adds a constructor while workers' build power < income * ratio
+	const float coreWorkers = income * aiFactoryMgr.buildpowerRatio / Brain::Production::BUILD_SPEED_PER_WORKER;
+	const float want = AiMax(coreWorkers, expandWant + income * baseBP / Brain::Production::BUILD_SPEED_PER_WORKER);
+	aiFactoryMgr.buildpowerRatio = want * Brain::Production::BUILD_SPEED_PER_WORKER / income;
+}
+const float MEX_BUILDTIME = 1800.f;  // T1 extractor buildtime (unit facts)
+
 string scaleWhy = "";
 bool blind = false;
 string reason = "start";
@@ -1856,9 +2053,12 @@ void Update()
 	}
 	if (F_SCALE)
 		aiFactoryMgr.buildpowerRatio = baseBP * scale;
+	if (F_EXPAND && !Brain::Assess::pushedBack)
+		Expand();
 	if (F_SCOUT)
 		aiMilitaryMgr.quota.scout = AiMax(int(aiMilitaryMgr.quota.scout), blind ? 4 : 3);
 
+	// (see Expand)
 	// Waves are sized to win: the gather completes when it holds the power needed.
 	waveFrac = (Brain::Army::groundPower > 0.f) ? AiMin(1.f, needPower / Brain::Army::groundPower) : 1.f;
 
@@ -1912,6 +2112,7 @@ void Init()
 	Production::LookAtMap();
 	Waste::Init();
 	Economist::Init();
+	Convert::Init();
 }
 
 void OnFactoryAdded(CCircuitUnit@ unit)
@@ -1936,6 +2137,7 @@ void OnUnitFinished(CCircuitUnit@ unit)
 		++Strategic::terrainBuilt;
 	Economist::OnFinished(unit);
 	Production::OnFinished(unit);
+	if (F_CONVERT) Convert::OnFinished(unit);
 }
 
 CCircuitUnit@ commander = null;
@@ -1992,6 +2194,7 @@ void Update()  // every 30 frames
 	if (F_INTEL) Intel::Update();
 	Assess::Update();
 	if (F_WASTE) Waste::Update();
+	if (F_CONVERT) Convert::Update();
 	Director::Update();
 	if (F_QUOTA) Army::Update(Intel::jamAlert);
 	else Army::CheckSquads();
@@ -2013,7 +2216,7 @@ void Update()  // every 30 frames
 		AiLog("[ANV] eco t=" + Minute() + "m workers=" + aiBuilderMgr.GetWorkerCount() + " mex=" + Economist::mexes.length()
 			+ " M inc=" + F1(aiEconomyMgr.metal.income) + " M " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
 			+ " E inc=" + F1(aiEconomyMgr.energy.income) + " E " + int(aiEconomyMgr.energy.current) + "/" + int(aiEconomyMgr.energy.storage)
-			+ " stall=" + aiEconomyMgr.isEnergyStalling + " bpTarget=" + F1(aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio));
+			+ " stall=" + aiEconomyMgr.isEnergyStalling + " expandWant=" + F1(Director::expandWant) + " bpTarget=" + F1(aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio));
 
 		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | groundPow=" + F1(Army::groundPower) + " units=" + Army::ground.length()
 			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " waves=" + Army::waves + " recalls=" + Army::recalls + " ft=" + Army::Hist()
