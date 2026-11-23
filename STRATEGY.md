@@ -4,6 +4,9 @@ Anarvā doesn't copy moves. It encodes the **reasoning** behind them. Each princ
 the code that implements it. Sources (public domain, kept locally under `ref/strategy/`): Sun Tzu, *The
 Art of War* (Giles translation); Clausewitz, *On War*; Napoleon's *Military Maxims*.
 
+
+> **Status:** every mechanism below is implemented, but several are off by default until they win head-to-head tests. The README status table is the source of truth for what's on.
+
 ## 1. Know the enemy: scouting decides everything
 
 > "If you know the enemy and know yourself, you need not fear the result of a hundred battles."

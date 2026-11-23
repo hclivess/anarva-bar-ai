@@ -16,48 +16,33 @@ Anarvā runs on BARb's C++ core (CircuitAI) and adds its own AngelScript brain a
 from game facts (unit costs, upkeep, converter rates) and live measurements (force ratio, trade
 efficiency, front movement, income growth, overflow).
 
-What it does:
+Every module sits behind a feature flag (`F_*` in `script/anarva/misc/brain.as`). A module ships **on**
+only after it has won head-to-head A/B tests, every map from both sides, against the best-measured
+build. Status as of this commit:
 
-- **Director.** Works out the army power needed to win, from the scouted enemy army plus the army we
-  guess is hidden under jammers, divided by how efficiently we're trading. It sizes attack waves to
-  that, and splits production between constructors and army from the surplus or deficit. It only cuts
-  the economy when pushed back at home.
-- **Assessment.** Tracks whether we're pushing or being pushed back, how well we trade, and whether
-  the economy is still growing.
-- **Economist.** Prices energy in metal at the converter rate. Investments (T2, moho upgrades) are
-  judged by payback time against a planning horizon set by how safe we are.
-- **Production.** Picks each unit from its live abilities (damage against air, surface and
-  underwater, health, range, speed, cost) against the scouted enemy mix, plus a screening value against
-  heavy armies. It builds rez bots while the wreck pool from recent fights is worth more than the rez
-  fleet.
-- **Waves and recall.** Squads gather until they can win, then launch together. A squad that's no
-  longer winning comes home to regroup instead of trickling in.
-- **Economy:**
-  - recycles obsolete eco: solars and winds, then fusions once advanced fusions carry the grid, T1
-    makers, and idle T1 units late in the game
-  - gates moho upgrades on energy headroom
-  - spends overflowing metal through nanos and assists, and converts overflowing energy with makers
-- **Intel:**
-  - keeps real sight with continuous scouting, because radar dots carry no type
-  - treats seen jammers as a hidden army
-  - builds Dragon's Eyes where we die unseen, and a Juno against jammers
-- **Strategic:**
-  - anti-nuke when an enemy silo appears
-  - a tactical or EMP launcher placed forward
-  - a nuke once our anti-nuke covers us
-  - shields over the most valuable infrastructure
-  - anti-air scaled to the air we've seen
-  - turrets and dragon's teeth at contested fronts when outgunned
+| Module | Default | Evidence |
+|---|---|---|
+| Recycling obsolete eco (solar/wind → fusion → advanced fusion, T1 makers) and salvage of idle T1 units | **on** | part of the first build (7–3 vs BARb-hard) |
+| Jammer intel: phantom threat on seen jammers, loss heatmap → Dragon's Eyes, Juno on jammer alert | **on** | first build |
+| Strategic: anti-nuke when an enemy silo appears; EMP/tactical launcher, nuke under anti-nuke cover and shields, only while our army covers what we need | **on** | first build; luxury spending is now gated on the force ratio |
+| Broken-squad recall (first-gen rule) | **on** | first build |
+| Production chooser: units scored from live abilities (Lanchester damage × health, reach, sight gap, screening, travel time vs horizon); rez bots from the wreck pool; constructors left to the core's mix | testing, leading | 3–0 vs base in the first games of round 7 |
+| Director-sized waves and quotas (army needed to win = enemy + jammer guess ÷ trade efficiency) | off | net negative so far: holds units back, costs map control |
+| Director scale knob (constructors vs army from surplus/deficit) | off | untested on its own since the starvation fixes |
+| Payback-based tech gate, moho energy gate, overflow handling (nanos, converters), assist redirect, fortify (turrets + teeth) | off | untested individually yet |
+| Forced continuous scouting, static AA counter, need-based recall, fusion recycling | off | measured harmful as always-on behaviour (round 3 → 4) |
+
+The reasoning behind each module is in [STRATEGY.md](STRATEGY.md) (economy, tech, intel; sources Sun Tzu,
+Clausewitz, Napoleon and top-player replays) and [TACTICS.md](TACTICS.md) (composition, engagement,
+micro limits). Every experiment and its result is logged in [PROGRESS.md](PROGRESS.md) and
+[progress.json](progress.json).
 
 **Goal:** one Anarvā beats six BARb (hard) opponents on every map type.
 
-**Honest status:** the first build beat BARb-hard 7-3 in 1v1, mostly on points. The bundle of new
-modules added since then lost 3-8, mainly because the economy starved. Every module now sits behind a
-feature flag and is being A/B-tested head-to-head against the first build. A module ships only if it
-measurably helps. Details are in [PROGRESS.md](PROGRESS.md), [progress.json](progress.json) and
-[STRATEGY.md](STRATEGY.md), which maps every principle (Sun Tzu, Clausewitz, Napoleon, top-player
-replay data) to the code that implements it.
-
+**Honest status:** the first build beat BARb-hard 7–3 in 1v1, mostly on points. Bundling many new
+modules at once regressed it (3–8), mainly through economic starvation. That's why every module is now
+proven one at a time. The 1v6 goal hasn't been attempted yet: the 1v1 build has to be clearly stronger
+first.
 ## Install
 
 You need Beyond All Reason installed and started at least once (so it has downloaded an engine).

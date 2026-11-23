@@ -5,26 +5,25 @@ AngelScript brain and configs on top.
 
 ## What it does differently from BARb
 
-- **Massed attacks instead of trickling.** It sizes attack and raid gathering from its real army size,
-  and recalls squads that have lost most of their strength. The survivors regroup and come back as part
-  of a full wave, instead of walking into the enemy one at a time.
-- **Recycles obsolete economy.** Once fusion-tier power carries the base, it reclaims solars, winds,
-  tidals and advanced solars. Once 2+ advanced fusions carry the grid, it reclaims plain fusions, and it
-  drops T1 metal makers after T2 makers arrive. It also stops the core from rebuilding any of them.
-  If energy ever collapses, cheap energy is allowed again.
-- **Salvages obsolete T1 units.** Late in the game (with an advanced factory and good income), cheap T1
-  units idling at base are reclaimed for metal.
-- **Hunts jammers.**
-  - Seen enemy jammers are treated as a hidden army, so weak squads avoid them and strong ones go in.
-  - A loss heatmap marks places where we keep dying unseen; it builds Dragon's Eye cameras there.
-  - On jammer alert it gathers heavier, raises the scout quota, recruits air scouts and builds a Juno.
-- **Strategic structures BARb never builds:**
-  - an anti-nuke the moment an enemy silo is seen (or proactively when rich)
-  - a Juno, as described above
-  - an EMP or tactical missile launcher placed forward of the base
-  - a late nuke, only once it has its own anti-nuke cover
-  - shields placed over the most valuable uncovered infrastructure
+On by default (proven in testing):
 
+- **Recycles obsolete economy.** Once fusion-tier power carries the base, it reclaims solars, winds,
+  tidals and advanced solars, drops T1 metal makers after T2 makers arrive, and stops the core from
+  rebuilding them. If energy ever collapses, cheap energy is allowed again.
+- **Salvages obsolete T1 units.** Late in the game (advanced factory, good income), cheap T1 units
+  idling at base are reclaimed for metal.
+- **Hunts jammers.** Seen enemy jammers are treated as a hidden army, so weak squads avoid them and
+  strong ones go in. A loss heatmap marks where we keep dying unseen and gets Dragon's Eye cameras. On
+  jammer alert it sends air scouts and builds a Juno.
+- **Strategic structures BARb never builds.** An anti-nuke the moment an enemy silo is seen. An EMP or
+  tactical launcher placed forward, a late nuke only under its own anti-nuke cover, and shields over
+  the most valuable infrastructure, all three only while its army is strong enough to afford them.
+- **Recalls broken squads** so survivors regroup instead of trickling into the enemy.
+
+Being tested (off by default until they win head-to-head): capability-based production with rez bots,
+Director-sized attack waves, the scouting-driven constructor-vs-army split, the payback-based tech
+gate, the moho energy gate, overflow handling, assist redirect and front fortification. See the status
+table in the [main README](../README.md).
 ## Install
 
 1. Download `anarva-<version>-windows-x64.zip` or `anarva-<version>-linux-x64.tar.gz` from the

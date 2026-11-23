@@ -16,7 +16,7 @@
                            "id":  "M1",
                            "desc":  "1v1 vs BARb hard: \u003e= 2:1 win ratio across all map types",
                            "status":  "in_progress",
-                           "result":  "baseline 2.33 (mostly points); need decisive wins"
+                           "result":  "first build 2.33 vs BARb (points); improving module by module"
                        },
                        {
                            "id":  "M2",
@@ -48,85 +48,100 @@
                 },
     "features":  [
                      {
-                         "name":  "Army quota scaling",
-                         "file":  "script/anarva/misc/brain.as (Brain::Army)",
-                         "status":  "done",
-                         "desc":  "attack quota = 30%-\u003e55% of ground army power; raid gather = max(3 raiders, 40% raider pool)"
+                         "name":  "Eco recycling + T1 salvage",
+                         "flag":  "F_RECYCLE",
+                         "default":  "on",
+                         "evidence":  "first build"
                      },
                      {
-                         "name":  "Broken-squad recall",
-                         "status":  "done",
-                         "desc":  "abort raid/attack squads below 40% of peak power -\u003e survivors regroup"
+                         "name":  "Fusion recycling (AFUS carry grid)",
+                         "flag":  "F_FUSREC",
+                         "default":  "off",
+                         "evidence":  "harmful as always-on (h6-\u003eh7)"
                      },
                      {
-                         "name":  "Eco recycling",
-                         "status":  "done",
-                         "desc":  "reclaim solar/wind/tidal/adv-solar once fusion-tier carries; fusions once 2+ AFUS carry; T1 makers once 4+ T2 makers; blocks rebuild via maxThisUnit=0, restores on energy collapse"
+                         "name":  "Jammer intel (phantom threat, eyes, Juno)",
+                         "flag":  "F_INTEL",
+                         "default":  "on",
+                         "evidence":  "first build"
                      },
                      {
-                         "name":  "Obsolete T1 unit salvage",
-                         "status":  "done",
-                         "desc":  "after 22 min with adv factory and m_inc\u003e=30: take idle T1 unit near base out of control and reclaim"
+                         "name":  "Timed scouting + scout quota \u003e=3",
+                         "flag":  "F_SCOUT",
+                         "default":  "off",
+                         "evidence":  "harmful as always-on"
                      },
                      {
-                         "name":  "Jammer intel",
-                         "status":  "done",
-                         "desc":  "enemy jammer role tagging, phantom threat kernel on seen jammers, loss heatmap -\u003e Dragon\u0027s Eyes, scout quota + air scouts on alert"
+                         "name":  "Strategic structures (luxuries gated on force ratio)",
+                         "flag":  "F_STRAT",
+                         "default":  "on",
+                         "evidence":  "first build"
                      },
                      {
-                         "name":  "Strategic planner",
-                         "status":  "done",
-                         "desc":  "anti-nuke (enemy silo or rich), Juno (jammer alert), EMP/tac launcher forward, nuke under AMD, shields over most valuable infra"
+                         "name":  "Static AA counter",
+                         "flag":  "F_AA",
+                         "default":  "off",
+                         "evidence":  "harmful as always-on"
                      },
                      {
-                         "name":  "Economy split rebalance",
-                         "status":  "done",
-                         "desc":  "ms_pull 0.57-0.66 -\u003e 0.45-0.52, buildpower 1.2 -\u003e 1.4 (profile anarva_b)"
+                         "name":  "Broken-squad recall (first-gen rule)",
+                         "flag":  "F_RECALL (+F_NEWRECALL off)",
+                         "default":  "on",
+                         "evidence":  "first build"
                      },
                      {
-                         "name":  "Counter-response to scouted composition",
-                         "status":  "done (AA towers + capability-based production)"
+                         "name":  "Capability-based production (+rez, core builder share)",
+                         "flag":  "F_PROD",
+                         "default":  "off (testing)",
+                         "evidence":  "r7b leading 3-0"
                      },
                      {
-                         "name":  "Walls / dragon teeth at chokes",
-                         "status":  "todo"
+                         "name":  "Director-sized waves + quotas",
+                         "flag":  "F_WAVES,F_QUOTA",
+                         "default":  "off",
+                         "evidence":  "net negative (r7a); rework"
                      },
                      {
-                         "name":  "Factory composition tuning from pro replays",
-                         "status":  "todo"
+                         "name":  "Scale knob (buildpowerRatio from surplus/deficit)",
+                         "flag":  "F_SCALE",
+                         "default":  "off",
+                         "evidence":  "untested alone"
                      },
                      {
-                         "name":  "1vN defensive play (chokes, porc where it pays)",
-                         "status":  "todo"
+                         "name":  "Payback tech gate",
+                         "flag":  "F_TECH",
+                         "default":  "off",
+                         "evidence":  "untested alone"
                      },
                      {
-                         "name":  "Director (Sun Tzu force-ratio ladder)",
-                         "status":  "done",
-                         "desc":  "TURTLE/HOLD/BALANCED/PRESSURE/ALLIN from power ratio; reasons logged"
+                         "name":  "Moho energy gate",
+                         "flag":  "F_ECOGATE",
+                         "default":  "off",
+                         "evidence":  "untested alone"
                      },
                      {
-                         "name":  "Scouting-driven scale vs army",
-                         "status":  "done",
-                         "desc":  "buildpowerRatio from scouted threat ratio; blind -\u003e hedge + scouts; greedy enemy -\u003e pressure"
+                         "name":  "Overflow: nanos + converters",
+                         "flag":  "F_WASTE",
+                         "default":  "off",
+                         "evidence":  "untested alone"
                      },
                      {
-                         "name":  "Wave control",
-                         "status":  "done",
-                         "desc":  "one script-owned gathering task per kind, sized by Director"
+                         "name":  "Assist redirect by deficit",
+                         "flag":  "F_REDIRECT",
+                         "default":  "off",
+                         "evidence":  "untested alone"
                      },
                      {
-                         "name":  "Capability-based production",
-                         "status":  "testing",
-                         "desc":  "scores factory role options by dmg vs scouted air/surface/sub mix, hp, range, speed, cost"
+                         "name":  "Fortify (turrets + teeth at fronts)",
+                         "flag":  "F_FORTIFY",
+                         "default":  "off",
+                         "evidence":  "untested alone"
                      },
                      {
-                         "name":  "Eco gate (moho energy headroom)",
-                         "status":  "done"
-                     },
-                     {
-                         "name":  "Energy factor from reasoning + pro data",
-                         "status":  "testing",
-                         "desc":  "[[12,0],[13,8m],[16,12m],[22,20m],[28,40m]]"
+                         "name":  "Constructor-rich opener",
+                         "flag":  "F_OPENER",
+                         "default":  "off",
+                         "evidence":  "part of regressed bundle"
                      }
                  ],
     "tools":  {

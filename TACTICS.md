@@ -4,10 +4,10 @@
 what an army is made of, when it engages, how it moves and what it shoots. The same doctrine applies:
 no static thresholds, every choice comes from live game facts and measurements.
 
-Status labels: **done**, **partial** (what the API allows), **limit** (needs a game-side
-widget or gadget), **planned**.
+Status labels give the feature flag and whether it's on by default (see the status table in the README).
+**Partial** = what the script API allows; **limit** = needs a game-side widget or gadget; **planned** = not built yet.
 
-## 1. Composition: Lanchester, sight and reach (done)
+## 1. Composition: Lanchester, sight and reach (implemented: F_PROD, testing, leading in round 7)
 
 `Brain::Production::Score` / `MeasureArmy`.
 
@@ -53,7 +53,7 @@ Legion napalm leaves burning ground that keeps damaging everything standing in o
 - **Test gap:** the harness runs with Legion disabled (it's behind a modoption), so Legion matchups
   still need their own test pool.
 
-## 2. Concentration and engagement (done)
+## 2. Concentration and engagement (implemented: F_WAVES/F_QUOTA, off; net negative so far, being reworked)
 
 - **Waves gather to the power needed to win:** known enemy army + the army guessed under jammers,
   divided by our trade efficiency. When we're much stronger, waves are small and frequent (constant
@@ -64,20 +64,20 @@ Legion napalm leaves burning ground that keeps damaging everything standing in o
 - **Pick fights at home when outgunned:** Fortify puts turrets plus dragon's teeth at the hottest front
   cell, so attackers stall under fire (Sun Tzu: let the enemy come to ground you have prepared).
 
-## 3. Disengage at the culminating point (done)
+## 3. Disengage at the culminating point (on: first-gen recall rule; need-based variant F_NEWRECALL off)
 
 A squad is recalled once it has bled and is weaker than what we'd send fresh, measured against the
 needed power, which itself falls as we kill. A squad that's trading well keeps fighting. A losing
 squad comes home and merges into the next wave instead of trickling in. Raids in particular used to
 continue until their *leader* died.
 
-## 4. Raids (done)
+## 4. Raids (raid sizing is part of F_QUOTA, off; greedy-enemy punishment off with it)
 
 - A raid pack must beat the enemy raiders that will answer it: their raider threat ÷ our trade rate.
 - Raiders go after eco and builders, steered by the core's threat map away from defences.
 - A greedy enemy (lots of buildings, little army) gets punished.
 
-## 5. Information in combat (done / core)
+## 5. Information in combat (on: jammer intel and eyes; timed scouting F_SCOUT off)
 
 - **Continuous scouting** for real sight, with planes on a timer, plus Dragon's Eyes where we die unseen.
 - **Fire from the fog.** When hit by something unseen, the core projects the shooter's type and
@@ -107,7 +107,7 @@ continue until their *leader* died.
 - **Planned:** front labs and rally points. A forward lab saves (travel time × production rate) of
   army presence, against the risk measured from threat and loss heat at the site.
 
-## 9. Spending under fire (done)
+## 9. Spending under fire (implemented: F_PROD, F_REDIRECT, F_ECOGATE; testing)
 
 - **Energy stall:** production defers to the core, which answers with energy first. Assists stop. The
   moho gate blocks new upkeep.
