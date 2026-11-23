@@ -363,7 +363,8 @@
   "1v3: every loss ends with army ~0, extractors collapsing 10-25 -> 2-5, commander dying at home 20-28 min. Expansion pulls the commander out (dies 1000-1400 from base).",
   "Replay study correction: 3 of 6 'human vs several BARbs' games were FFA (bots fight each other). Allied 1vN: Knizek 1v4 (Ancient Bastion), NoviceKing99 1v3, FloBoo 1v8, Edict 1v2 Comet Catcher.",
   "Edict (1 human vs 2 allied BARbs, Comet Catcher): ~20 light turrets + ~30 mines on the lanes by 8 min, static defence above each bot's 3-8 min, mass Gatling tanks 10-14 min, T2 at 13, push at 20 with 2x the bots' army. Defence first when the enemy comes to you.",
-  "1v3 single games after deficit-sized terrain defence: bots reach 43-91 M/s each vs ours 20-25; our extractors fall to 3-5. The deficit measure (needPower in power units) is too small when the enemy is unscouted; turret count stays low."
+  "1v3 single games after deficit-sized terrain defence: bots reach 43-91 M/s each vs ours 20-25; our extractors fall to 3-5. The deficit measure (needPower in power units) is too small when the enemy is unscouted; turret count stays low.",
+  "Refrog (1 human vs 2 allied BARbs, Center Command, 139 min): the factory cycles constructor, rez bot (cornecro), raiders, assault every round from minute 5; income passes the bots by minute 10 (45 vs 35 each) and reaches 2x by minute 15. Rez bots as a steady metal source alongside the army."
  ],
  "replay_analysis": {
   "local_index": "ref/replays.csv (1054 replays)",

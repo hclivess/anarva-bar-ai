@@ -40,6 +40,8 @@ const bool F_DETAIL = false;    // 1vN: defeat in detail - size against one oppo
 const bool F_TERRAIN = true;    // fortify the choke from the high ground (map analysis)
 const bool F_CONVERT = false;   // wasted energy -> converters, chosen by payback incl. build time
 const bool F_EXPAND = false;    // constructors from the free extractor spots (marginal value), not from income
+const bool F_DEFSIZE = false;   // terrain defence sized to the metal deficit (false: one turret per attack)
+const bool F_REZ = false;       // rez-bot fleet sized to the wreck metal on the map
 const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
 
 CCircuitDef@ Def(const string& in name)
@@ -1058,6 +1060,13 @@ int terrainBuilt = 0;
 float terrainHit = 0.f, hitAtLastOrder = -1.f;
 CCircuitDef@ terrainDef = null;
 float terrainPower = 0.f;            // power of the turrets standing at our choke
+float terrainMetal = 0.f;            // metal in them
+float armyMetal = 0.f;               // our armed mobile units (not builders), metal
+float EnemyArmyMetal()               // known enemy ground army, metal (the core remembers what it saw)
+{
+	return aiEnemyMgr.GetEnemyCost(RT::RAIDER) + aiEnemyMgr.GetEnemyCost(RT::ASSAULT) + aiEnemyMgr.GetEnemyCost(RT::SKIRM)
+		+ aiEnemyMgr.GetEnemyCost(RT::RIOT) + aiEnemyMgr.GetEnemyCost(RT::HEAVY) + aiEnemyMgr.GetEnemyCost(RT::ARTY);
+}
 CCircuitDef@ mlvDef, mineDef;        // minelayer vehicle and its light land mine
 int minelayers = 0, mlvOrderedAt = -10000;
 void OnTerrainLoss(const AIFloat3& in pos, float costM)
@@ -1119,7 +1128,9 @@ bool TerrainFortify()
 	 * on the lanes in the first 8 minutes (Edict, Comet Catcher 1v2).
 	 */
 	const float hit = terrainHit + Brain::Assess::lostNearTotal;
-	const float deficit = Brain::Director::needPower - Brain::Director::OurPower() - terrainPower;
+	// in metal, which is what both sides actually spend: the known enemy army against our army plus the
+	// turrets already standing at the choke (a turret holding ground is worth at least its cost)
+	const float deficit = F_DEFSIZE ? EnemyArmyMetal() - armyMetal - terrainMetal : 0.f;
 	if (forts > 0 && deficit <= 0.f && hit <= hitAtLastOrder)
 		return true;
 	const float m_inc = aiEconomyMgr.metal.income;
@@ -1131,7 +1142,7 @@ bool TerrainFortify()
 	if (ai.frame - lastFortify >= 3 * MINUTE)
 		terrainBuilt = forts;
 	const int pending = forts - terrainBuilt;
-	const int need = (deficit > 0.f) ? int(ceil(deficit / AiMax(1.f, tur.power))) : 1;
+	const int need = (deficit > 0.f) ? int(ceil(deficit / AiMax(1.f, tur.costM))) : 1;
 	const int n = AiMin(need - pending, AiMax(1, aiBuilderMgr.GetWorkerCount()));
 	if (n < 1)
 		return true;
@@ -1357,9 +1368,18 @@ void OnDestroyed(CCircuitUnit@ u) { RemoveUnit(rezBots, u); }
 // Wrecks are the fastest metal on the map: about half the metal of what died recently lies there
 // (Assess windows decay as it gets harvested or goes stale). Keep adding rez bots while that pool is
 // worth more than the rez fleet we already have: a bot pays for itself if there's more than its cost to take.
+const float WRECK_SHARE = 0.6f;  // a wreck holds ~60% of the unit's metal (BAR corpse defs)
 CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 {
-	const float pool = 0.5f * (Brain::Assess::lostNear + Brain::Assess::lostFar + Brain::Assess::killed);
+	/*
+	 * Scale: the fleet is worth having while the wreck metal on the map repays it. Wrecks don't decay, so
+	 * the pool is everything that died (ours and theirs) at the wreck share of its metal. Fights far away
+	 * leave wrecks the enemy can take too, so those count half. One more bot while pool > fleet cost + bot
+	 * (each bot must have at least its own cost to bring back). Debt: subtract what was already harvested.
+	 */
+	const float pool = F_REZ
+		? WRECK_SHARE * (Brain::Assess::lostNearTotal + 0.5f * (Brain::Assess::lostFarTotal + Brain::Assess::killedTotal))
+		: 0.5f * (Brain::Assess::lostNear + Brain::Assess::lostFar + Brain::Assess::killed);
 	float fleet = 0.f;
 	for (uint i = 0; i < rezBots.length(); ++i)
 		fleet += rezBots[i].circuitDef.costM;
@@ -1412,6 +1432,15 @@ IUnitTask@ MineLayerTask(CCircuitUnit@ fac)
 
 IUnitTask@ MakeTask(CCircuitUnit@ fac)
 {
+	if (F_REZ && !F_PROD && !fac.circuitDef.IsMobile()) {
+		CCircuitDef@ rez = RezToBuild(fac.circuitDef);
+		if (rez !is null) {
+			++rezOrders;
+			AiLog("[ANV] Rez: +" + rez.GetName() + " fleet=" + rezBots.length() + " pool~" + int(WRECK_SHARE * (Brain::Assess::lostNearTotal
+				+ 0.5f * (Brain::Assess::lostFarTotal + Brain::Assess::killedTotal))));
+			return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, rez, fac.GetPos(ai.frame), 64.f));
+		}
+	}
 	IUnitTask@ ml = MineLayerTask(fac);
 	if (ml !is null)
 		return ml;
@@ -1914,6 +1943,7 @@ namespace Assess {
 
 float lostNear = 0.f, lostFar = 0.f, killed = 0.f, frontDist = 0.f;
 float lostNearTotal = 0.f;  // never decays: has anything come at us since X?
+float lostFarTotal = 0.f, killedTotal = 0.f;  // never decay: wrecks stay on the map
 float enemyPrev = -1.f;
 array<float> incomeHist;  // one sample per minute
 float growth = 0.f;
@@ -1943,6 +1973,7 @@ void OnLoss(CCircuitUnit@ unit)
 		lostNearTotal += d.costM;
 	} else
 		lostFar += d.costM;
+		lostFarTotal += d.costM;
 	if (d.IsMobile())
 		frontDist = 0.9f * frontDist + 0.1f * dist;
 }
@@ -1955,6 +1986,7 @@ void Update()  // every second
 	const float ev = EnemyValue();
 	if (enemyPrev >= 0.f && ev < enemyPrev)
 		killed += AiMin(enemyPrev - ev, 3000.f);  // drops in known enemy value ~ our kills
+		killedTotal += AiMin(enemyPrev - ev, 3000.f);
 	enemyPrev = ev;
 	const float lost = lostNear + lostFar;
 	trade = (killed + 50.f) / (lost + 50.f);
@@ -2165,6 +2197,11 @@ void OnFactoryAdded(CCircuitUnit@ unit)
 	Intel::OnFactory(unit);
 }
 
+bool IsArmy(const CCircuitDef@ d)
+{
+	return d.IsMobile() && d.defDmg > 0.f && !d.IsRoleAny(Unit::Role::BUILDER.mask) && !d.IsRoleAny(Unit::Role::COMM.mask);
+}
+
 void OnUnitFinished(CCircuitUnit@ unit)
 {
 	if (commander is null && unit.circuitDef.IsRoleAny(Unit::Role::COMM.mask))
@@ -2177,7 +2214,10 @@ void OnUnitFinished(CCircuitUnit@ unit)
 	if (F_TERRAIN && Strategic::terrainDef !is null && unit.circuitDef is Strategic::terrainDef) {
 		++Strategic::terrainBuilt;
 		Strategic::terrainPower += unit.circuitDef.power;
+		Strategic::terrainMetal += unit.circuitDef.costM;
 	}
+	if (IsArmy(unit.circuitDef))
+		Strategic::armyMetal += unit.circuitDef.costM;
 	if (Strategic::mlvDef !is null && unit.circuitDef is Strategic::mlvDef)
 		++Strategic::minelayers;
 	Economist::OnFinished(unit);
@@ -2224,7 +2264,12 @@ void OnUnitDestroyed(CCircuitUnit@ unit)
 	if (Strategic::mlvDef !is null && unit.circuitDef is Strategic::mlvDef)
 		Strategic::minelayers = AiMax(0, Strategic::minelayers - 1);
 	if (F_TERRAIN && Strategic::terrainDef !is null && unit.circuitDef is Strategic::terrainDef)
+	{
 		Strategic::terrainPower = AiMax(0.f, Strategic::terrainPower - unit.circuitDef.power);
+		Strategic::terrainMetal = AiMax(0.f, Strategic::terrainMetal - unit.circuitDef.costM);
+	}
+	if (IsArmy(unit.circuitDef))
+		Strategic::armyMetal = AiMax(0.f, Strategic::armyMetal - unit.circuitDef.costM);
 	const bool recycled = Recycler::OnDestroyed(unit);
 	if (!recycled) {
 		Intel::OnLoss(unit);
