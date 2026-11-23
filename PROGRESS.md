@@ -9,7 +9,7 @@ module is in [STRATEGY.md](STRATEGY.md) and [TACTICS.md](TACTICS.md).
 | # | Target | Status |
 |---|--------|--------|
 | M1 | 1v1 vs BARb hard, at least a 2:1 win ratio on all map types | **met: 2.25** (9–3–4, 16 games both sides; open 2–1, choke 2–1, mixed 3–1, water 2–1) |
-| M2 | 1v2, winning a majority on all map types | in progress |
+| M2 | 1v2, winning a majority on all map types | baseline **0–11–1**; working on holding defence + commander safety |
 | M3 | 1v3 | not started |
 | M4 | **1v6 on all map types** | not started; the harness supports it (`batch.py --pool big --n1 6`) |
 
@@ -106,3 +106,5 @@ else is off pending tests (see the status table in [README.md](README.md)).
 | r10 | + production + map-driven constructor share | 2W 1D 8L: the chooser loses fights; stays off |
 | abs1 | **current best vs BARb hard**, 16 games both sides | **6W 6D 4L (1.5)**; 3 of 4 losses are commander kills; water weakest |
 | r11 | + commander safety vs BARb hard, 16 games | **9W 3D 4L (2.25)**, 6 commander kills, ≥2:1 on every map type: **M1 met, shipped** |
+| m2-base | 1v2 vs BARb hard, big maps, separated starts | **0W 11L 1D**: out-ecoes each BARb, but the army is ~40% of their combined; the commander dies when pushed back |
+| m2-fortify | 1v2 + Fortify | running |

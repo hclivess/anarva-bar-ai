@@ -288,6 +288,16 @@
                             "id":  "r11",
                             "desc":  "best + commander safety vs BARb hard, 16 games both sides",
                             "result":  "9W 3D 4L (2.25), 6 commander kills; open 2-1, choke 2-1, mixed 3-1, water 2-1 -\u003e M1 met; SHIPPED"
+                        },
+                        {
+                            "id":  "m2-base",
+                            "desc":  "1v2 vs BARb hard, big pool, separated start boxes, 12 games",
+                            "result":  "0W 11L 1D: out-ecoes each BARb but army ~40% of combined; commander dies when pushed back (no holding defence)"
+                        },
+                        {
+                            "id":  "m2-fortify",
+                            "desc":  "1v2 + F_FORTIFY",
+                            "result":  "running"
                         }
                     ],
     "findings":  [
