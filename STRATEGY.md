@@ -207,11 +207,12 @@ build power per constructor) and plain unit conversions may be constants. The sh
 
 ### Judgment numbers still in the code (debt, to remove)
 
+Removed so far: the turret tier is now the turret with the most power per metal; far wrecks are weighted
+by our share of the exchange, trade / (1 + trade).
+
 These are not game facts. They are numbers I chose, so they break the no-thresholds rule until replaced:
 
 - Energy plant lead time assumes half our builders work on it (`workers * 0.5`).
-- The rez wreck pool counts far-away wrecks at half.
-- Turret tier at the choke is picked by income 18 / 45 metal/s.
 - Our own nuke silo timing (minute 30, 90 metal/s), the Juno and tactical-launcher gates.
 - The `infra` list counts buildings of ≥ 250 metal as infrastructure.
 - Commander safety values in the configs (time 180, threat 5, radius 2000/1200).

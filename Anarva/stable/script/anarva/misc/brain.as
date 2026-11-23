@@ -1140,6 +1140,19 @@ void InitFortify()
  * (power < needed) or whenever we're outnumbered (1vN), as long as the deficit lasts.
  */
 int myStart = -2;
+CCircuitDef@ BestTurret()
+{
+	array<CCircuitDef@> c = {turT1, turT2, turT3};
+	CCircuitDef@ best = null;
+	float bestV = 0.f;
+	for (uint i = 0; i < c.length(); ++i) {
+		if (c[i] is null || !c[i].IsAvailable(ai.frame))
+			continue;
+		const float v = c[i].power / AiMax(1.f, Brain::Economist::MetalValue(c[i]));
+		if (best is null || v > bestV) { bestV = v; @best = c[i]; }
+	}
+	return best;
+}
 bool TerrainFortify()
 {
 	MapFacts::SMap@ m = Brain::Production::mapInfo;
@@ -1176,9 +1189,8 @@ bool TerrainFortify()
 	const float deficit = F_DEFSIZE ? EnemyArmyMetal() - armyMetal - terrainMetal : 0.f;
 	if (forts > 0 && deficit <= 0.f && hit <= hitAtLastOrder)
 		return true;
-	const float m_inc = aiEconomyMgr.metal.income;
-	CCircuitDef@ tur = (m_inc >= 45.f && turT3 !is null && turT3.IsAvailable(ai.frame)) ? turT3
-		: ((m_inc >= 18.f && turT2 !is null && turT2.IsAvailable(ai.frame)) ? turT2 : turT1);
+	// the turret that holds the most ground per metal we can build now (live, from the defs)
+	CCircuitDef@ tur = BestTurret();
 	if (tur is null || !tur.IsAvailable(ai.frame))
 		return true;
 	// orders still unbuilt (tasks live 3 min) count against the deficit; expired ones are forgotten
@@ -1411,6 +1423,8 @@ void OnDestroyed(CCircuitUnit@ u) { RemoveUnit(rezBots, u); }
 // Wrecks are the fastest metal on the map: about half the metal of what died recently lies there
 // (Assess windows decay as it gets harvested or goes stale). Keep adding rez bots while that pool is
 // worth more than the rez fleet we already have: a bot pays for itself if there's more than its cost to take.
+// who ends up holding the ground where fights happened: our share of the exchange, trade / (1 + trade)
+float HoldShare() { const float tr = Brain::Assess::trade; return tr / (1.f + tr); }
 const float WRECK_SHARE = 0.6f;  // a wreck holds ~60% of the unit's metal (BAR corpse defs)
 CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 {
@@ -1421,7 +1435,7 @@ CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 	 * (each bot must have at least its own cost to bring back). Debt: subtract what was already harvested.
 	 */
 	const float pool = F_REZ
-		? WRECK_SHARE * (Brain::Assess::lostNearTotal + 0.5f * (Brain::Assess::lostFarTotal + Brain::Assess::killedTotal))
+		? WRECK_SHARE * (Brain::Assess::lostNearTotal + HoldShare() * (Brain::Assess::lostFarTotal + Brain::Assess::killedTotal))
 		: 0.5f * (Brain::Assess::lostNear + Brain::Assess::lostFar + Brain::Assess::killed);
 	float fleet = 0.f;
 	for (uint i = 0; i < rezBots.length(); ++i)
@@ -1480,7 +1494,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		if (rez !is null) {
 			++rezOrders;
 			AiLog("[ANV] Rez: +" + rez.GetName() + " fleet=" + rezBots.length() + " pool~" + int(WRECK_SHARE * (Brain::Assess::lostNearTotal
-				+ 0.5f * (Brain::Assess::lostFarTotal + Brain::Assess::killedTotal))));
+				+ HoldShare() * (Brain::Assess::lostFarTotal + Brain::Assess::killedTotal))));
 			return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, rez, fac.GetPos(ai.frame), 64.f));
 		}
 	}
