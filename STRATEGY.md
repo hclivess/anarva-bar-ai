@@ -290,19 +290,97 @@ whatever the AI interface can't see (projectiles, burn zones).
 
 ## 22. How humans beat several hard BARbs (solo replays)
 
-Public replays of **one human alone beating 3–14 hard or hard-aggressive BARbs** (rated 12–23, not
-top players):
+Six public replays of **one human alone, no allied bots, against 3–14 hard or hard-aggressive
+BARbs**, played back headless and measured every minute (`tools/fetch_vsbots.py`,
+`tools/analyze_vsbots.py`):
 
-- **Boom first.** Knizek vs 4 hard-aggressive: 83 m/s at minute 5 and 134 at minute 8, against the
-  bots' 27 and 49, with **zero army and zero defence for 8 minutes**. NoviceKing99 vs 3 hard: 1.6–1.9×
-  each bot's income.
-- **A smaller army, used at home.** The human army stays at about 0.3–0.7× of *all bots combined*,
-  and still wins.
+| minute | human income vs ONE bot | human army vs ALL bots combined |
+|---|---|---|
+| 8 | 2.0× | 0.55× |
+| 10 | 1.8× | 0.38× |
+| 15 | 2.6× | 0.47× |
+| 20 | 3.1× | 0.61× |
+| 25 | 3.3× | 0.71× |
+
+- **Boom first, and keep booming.** Knizek vs 4 hard-aggressive had zero army and zero defence for 8
+  minutes and reached 134 m/s against 49 per bot. The Oort Cloud player (vs 14) built *no army at all*
+  and won from a 640 m/s economy behind static defence and long-range weapons.
+- **A smaller army, used at home.** About 0.4–0.7× of all bots together is enough when it fights next
+  to its own turrets and the bots arrive one at a time.
+- **Static defence late, not early.** Human defence is near zero until minute 15–20, then jumps once the
+  economy can afford it (Oort Cloud: 85k at 20 min, 265k at 25 min).
 - **The reasoning:** BARb armies gather at home and don't punish early greed, so an enemy army sitting
   in its own base is no threat. What matters is force **projected at us**.
-- **In Anarvā (`F_BOOM`):** constructors-vs-army scales on *pressure* (losses near home relative to a
-  minute of income), not on the enemy's presence. Nothing pressing means boom; pressure shifts toward
-  army in proportion.
+- **Anarvā today:** about 1.3× one bot's income, 1–3 points short of what the humans reach. That gap,
+  not the army, is what to close first.
+- **`F_BOOM`** (constructors vs army scale on *pressure*, home losses relative to a minute of income,
+  not on enemy presence) went 0–6 in 1v2. Booming alone isn't enough: the AI booms but its economy
+  doesn't grow like the humans' does. Next: find *what* the humans build to get 2–3× (constructor
+  count, converter and advanced-extractor timing, rez bots) and compare it minute by minute with
+  Anarvā's new `[ANV] eco` log.
+
+## 23. Space, efficiency and the cheapest energy that fits
+
+Energy choices aren't only cost per energy. They are cost per energy **per unit of space and build time**:
+
+- **Wind.** On a large map with strong wind, wind turbines beat solars on cost per energy (especially for
+  Armada). They need space, and wind is variable, so storage or a mix covers the dips. The decision
+  inputs are the map's wind range (min/max wind in mapinfo, now readable by the map analysis), free
+  space near the base and its risk.
+- **Assistant drones** (the commander-built assist drones / build drones) can put down cheap eco like
+  wind fields without tying up real constructors. Use them whenever free build power is the bottleneck.
+- **Converters.** T1 converters are cheaper per unit but convert less and take more space; T2 converters
+  are dearer but denser and more efficient. With space to spare, T1 has the better cost per metal; when
+  space or build time is the limit, or energy is abundant, T2 wins. Compare per metal produced, per
+  square, per second of build time.
+- **Nano reach.** Construction turrets only reach a fixed radius. Eco, factories and their nanos must
+  be placed so the turrets cover what they're meant to assist. Every building plan accounts for it.
+
+## 24. Nothing is ready until it's finished (build lead time)
+
+An investment pays nothing until it completes. A fusion started now gives energy only after its build
+time at our real build power; until then it *costs* drain. The same goes for factories, and above all
+the T2→T3 transition (an experimental gantry plus its first unit is minutes of drain with zero
+output). So every investment's value is `return × (horizon − time to finish)`, with time to finish =
+cost ÷ the build power actually assigned to it. Storage must bridge the drain while it builds, or the
+investment starves everything else (§17). The payback-based tech gate (`F_TECH`) already uses
+time-to-finish; the eco chooser must do the same for power plants.
+
+## 25. High ground and chokepoints
+
+High ground is a real advantage in BAR:
+
+- **Range.** Ballistic weapons (plasma cannons, artillery) gain range when they fire downhill.
+- **Sight.** Elevated units and turrets see further over ridges.
+- **Cover.** Terrain blocks direct fire from below, while the defender shoots down over the crest.
+
+The map analysis (`tools/analyze_maps.py`) finds, for every start position, the narrowest stretch on our
+half of the route to the farthest enemy (our choke) and the highest passable ground within ~500 elmos of
+it on our side. Glacier Pass: chokes 160–224 wide with high ground 150–190 elmos above them. Colorado: a
+32-wide choke with high ground 275 above.
+
+**`F_TERRAIN` (on):** while we can't win an open fight, or whenever we're outnumbered (1vN), Anarvā
+builds the best turret its economy allows on that high ground and dragon's teeth across the choke mouth.
+Attackers stall in the choke under fire from above (Sun Tzu X: "occupy the raised and sunny spots, and
+wait for the enemy").
+
+**Maps get updated.** Map facts are keyed by the full name, with a fallback to the same map's other
+versions: the version suffix is stripped. A brand-new map has no facts, and Anarvā falls back to the
+core's own behaviour until `tools/analyze_maps.py` is re-run.
+
+## 26. Validation: the built-in scenarios
+
+BAR's single-player scenarios ship BARb setups that are designed to be hard to beat:
+
+- "One by One": 7 BARbs, free-for-all on TMA20X
+- "World War XXV": 8 BARbs in alliances on Neurope
+- "Catch those rare Comets": **1v3 BARb**, difficulty 10, on Comet Catcher Remake. It is the first target.
+- "Outsmart the Barbarians": 3 aggressive BARbs
+- "Supremacy": difficulty 10
+
+Humans clear them with focused plans, such as rushing T2 bombers to kill commanders. They're the target
+validation suite for Anarvā's adaptive strategy (issue tracker: "scenarios").
+
 ## Planned
 
 - Walls and dragon's teeth at chokes, in front of defence lines (Sun Tzu's terrain chapters; HOLD and

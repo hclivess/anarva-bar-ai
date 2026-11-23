@@ -272,7 +272,7 @@ def main():
              "namespace MapFacts {", "",
              "class SMap { float basePath; float straight; float choke; int mex; float water;",
              "  array<float> sx, sz, cx, cz, hx, hz, gain; }  // per analysed start: start, choke point, high ground", "",
-             "dictionary maps;", "", "void Init()", "{"]
+             "dictionary maps, bases;", "", "void Init()", "{"]
     for r in reports:
         d = [x for x in (r.get("defence") or []) if x and x.get("high")]
         def arr(vals):
@@ -284,7 +284,26 @@ def main():
                         arr(x["start"][0] for x in d), arr(x["start"][1] for x in d), arr(x["choke"][0] for x in d),
                         arr(x["choke"][1] for x in d), arr(x["high"][0] for x in d), arr(x["high"][1] for x in d),
                         arr(x["gain"] for x in d), r["name"].replace('"', "")))
-    lines += ["}", "", "SMap@ Get(const string& in name)", "{", "\tSMap@ m;", "\tif (maps.get(name, @m))", "\t\treturn m;",
+    # maps get updated: also index by base name (version stripped), so a new version of a known map
+    # falls back to the newest analysed version of it (layouts rarely change between versions)
+    def base(n):
+        n = n.rstrip()
+        while n and n[-1] in "0123456789._ -vV":
+            n = n[:-1]
+        return n.lower()
+    seen = set()
+    for r in sorted(reports, key=lambda r: r["name"], reverse=True):
+        b = base(r["name"])
+        if b and b not in seen:
+            seen.add(b)
+            lines.append('\t{ SMap@ m; if (maps.get("%s", @m)) bases.set("%s", @m); }' % (r["name"].replace('"', ""), b.replace('"', "")))
+    lines += ["}", "",
+              "string Base(const string& in name)", "{", "\tint n = int(name.length());",
+              "\twhile (n > 0 && \"0123456789._ -vV\".findFirst(name.substr(n - 1, 1)) >= 0)", "\t\t--n;",
+              "\tstring b = name.substr(0, n);", "\tfor (uint i = 0; i < b.length(); ++i)",
+              "\t\tif (b[i] >= 65 && b[i] <= 90) b[i] = b[i] + 32;", "\treturn b;", "}", "",
+              "SMap@ Get(const string& in name)", "{", "\tSMap@ m;", "\tif (maps.get(name, @m))", "\t\treturn m;",
+              "\tif (bases.get(Base(name), @m))  // another version of an analysed map", "\t\treturn m;",
               "\treturn null;", "}", "", "}  // namespace MapFacts"]
     open(out_as, "w", encoding="utf-8", newline="\n").write("\n".join(lines) + "\n")
     print(f"{len(reports)} maps -> {out_json}, {out_as}")

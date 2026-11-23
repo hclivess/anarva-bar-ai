@@ -4,7 +4,7 @@ namespace MapFacts {
 class SMap { float basePath; float straight; float choke; int mex; float water;
   array<float> sx, sz, cx, cz, hx, hz, gain; }  // per analysed start: start, choke point, high ground
 
-dictionary maps;
+dictionary maps, bases;
 
 void Init()
 {
@@ -239,12 +239,243 @@ void Init()
 	{ SMap m; m.basePath = -1.0; m.straight = 11393.0; m.choke = -1.0; m.mex = 322; m.water = 0.582; m.sx = {3968}; m.sz = {6464}; m.cx = {7472}; m.cz = {10416}; m.hx = {7600}; m.hz = {10032}; m.gain = {288}; maps.set("Why did I let PtaQ talk me into this 1.0", @m); }
 	{ SMap m; m.basePath = -1.0; m.straight = 10804.0; m.choke = -1.0; m.mex = 139; m.water = 0.649; m.sx = {}; m.sz = {}; m.cx = {}; m.cz = {}; m.hx = {}; m.hz = {}; m.gain = {}; maps.set("World In Flames v1.8", @m); }
 	{ SMap m; m.basePath = 5178.0; m.straight = 4511.0; m.choke = 1088.0; m.mex = 20; m.water = 0.359; m.sx = {3920, 2200}; m.sz = {990, 5160}; m.cx = {3888, 2288}; m.cz = {2480, 3664}; m.hx = {3888, 2608}; m.hz = {2256, 3760}; m.gain = {1, 1}; maps.set("Zed Remake 3.3.1", @m); }
+	{ SMap@ m; if (maps.get("mescaline_v2.sd7", @m)) bases.set("mescaline_v2.sd", @m); }
+	{ SMap@ m; if (maps.get("Zed Remake 3.3.1", @m)) bases.set("zed remake", @m); }
+	{ SMap@ m; if (maps.get("World In Flames v1.8", @m)) bases.set("world in flames", @m); }
+	{ SMap@ m; if (maps.get("Why did I let PtaQ talk me into this 1.0", @m)) bases.set("why did i let ptaq talk me into this", @m); }
+	{ SMap@ m; if (maps.get("White Fire Remake 1.3", @m)) bases.set("white fire remake", @m); }
+	{ SMap@ m; if (maps.get("Wanderlust 2.1", @m)) bases.set("wanderlust", @m); }
+	{ SMap@ m; if (maps.get("Valles Marineris 2.6.1", @m)) bases.set("valles marineris", @m); }
+	{ SMap@ m; if (maps.get("Twin Lakes Park Redux 1.2.2", @m)) bases.set("twin lakes park redux", @m); }
+	{ SMap@ m; if (maps.get("Tundra_V2", @m)) bases.set("tundra", @m); }
+	{ SMap@ m; if (maps.get("Tundra Continents v2.3.1", @m)) bases.set("tundra continents", @m); }
+	{ SMap@ m; if (maps.get("Tumult Remake v1.0.1", @m)) bases.set("tumult remake", @m); }
+	{ SMap@ m; if (maps.get("Tropical Assault v3.0", @m)) bases.set("tropical assault", @m); }
+	{ SMap@ m; if (maps.get("Trefoil Remake 2.20", @m)) bases.set("trefoil remake", @m); }
+	{ SMap@ m; if (maps.get("To Kill The Middle v1.1", @m)) bases.set("to kill the middle", @m); }
+	{ SMap@ m; if (maps.get("TitanDuel_V3", @m)) bases.set("titanduel", @m); }
+	{ SMap@ m; if (maps.get("Titan v3.1", @m)) bases.set("titan", @m); }
+	{ SMap@ m; if (maps.get("Timna Island 1.0.1", @m)) bases.set("timna island", @m); }
+	{ SMap@ m; if (maps.get("Throne_V8", @m)) bases.set("throne", @m); }
+	{ SMap@ m; if (maps.get("Theta Crystals 1.3", @m)) bases.set("theta crystals", @m); }
+	{ SMap@ m; if (maps.get("Thermal Shock v1.1", @m)) bases.set("thermal shock", @m); }
+	{ SMap@ m; if (maps.get("The Tartar Steppe v1.1", @m)) bases.set("the tartar steppe", @m); }
+	{ SMap@ m; if (maps.get("The Rock Jungle 2.1.1", @m)) bases.set("the rock jungle", @m); }
+	{ SMap@ m; if (maps.get("The Rock 3.0.1", @m)) bases.set("the rock", @m); }
+	{ SMap@ m; if (maps.get("The Halite Maze v1.4", @m)) bases.set("the halite maze", @m); }
+	{ SMap@ m; if (maps.get("The Desert Triad Remake v1.0", @m)) bases.set("the desert triad remake", @m); }
+	{ SMap@ m; if (maps.get("The Cold Place BAR v1.1", @m)) bases.set("the cold place bar", @m); }
+	{ SMap@ m; if (maps.get("The BARrier Reef Remake v1.0", @m)) bases.set("the barrier reef remake", @m); }
+	{ SMap@ m; if (maps.get("Tetrad_V2", @m)) bases.set("tetrad", @m); }
+	{ SMap@ m; if (maps.get("Tempest_V3", @m)) bases.set("tempest", @m); }
+	{ SMap@ m; if (maps.get("Tau12", @m)) bases.set("tau", @m); }
+	{ SMap@ m; if (maps.get("Tangerine_Remake 1.0", @m)) bases.set("tangerine_remake", @m); }
+	{ SMap@ m; if (maps.get("Talus_v2", @m)) bases.set("talus", @m); }
+	{ SMap@ m; if (maps.get("Taldarim_V3", @m)) bases.set("taldarim", @m); }
+	{ SMap@ m; if (maps.get("Tabula_Remake 1.5.1", @m)) bases.set("tabula_remake", @m); }
+	{ SMap@ m; if (maps.get("TMA20X 1.8", @m)) bases.set("tma20x", @m); }
+	{ SMap@ m; if (maps.get("Swirly Rock v1.1", @m)) bases.set("swirly rock", @m); }
+	{ SMap@ m; if (maps.get("Supreme_Crossing 2.2.1", @m)) bases.set("supreme_crossing", @m); }
+	{ SMap@ m; if (maps.get("Supreme Isthmus v2.1", @m)) bases.set("supreme isthmus", @m); }
+	{ SMap@ m; if (maps.get("Sunderance V1.3", @m)) bases.set("sunderance", @m); }
+	{ SMap@ m; if (maps.get("Sulphur Springs v1.1", @m)) bases.set("sulphur springs", @m); }
+	{ SMap@ m; if (maps.get("Stronghold v5.0.1", @m)) bases.set("stronghold", @m); }
+	{ SMap@ m; if (maps.get("Starwatcher 1.0", @m)) bases.set("starwatcher", @m); }
+	{ SMap@ m; if (maps.get("Sphagnum Bog v1.2.1", @m)) bases.set("sphagnum bog", @m); }
+	{ SMap@ m; if (maps.get("SpeedMetal BAR V2", @m)) bases.set("speedmetal bar", @m); }
+	{ SMap@ m; if (maps.get("Special Reef 1.0", @m)) bases.set("special reef", @m); }
+	{ SMap@ m; if (maps.get("Special Hotstepper 1.1.1", @m)) bases.set("special hotstepper", @m); }
+	{ SMap@ m; if (maps.get("Special Creek 1.0", @m)) bases.set("special creek", @m); }
+	{ SMap@ m; if (maps.get("Small_Supreme_Battlefield_V3", @m)) bases.set("small_supreme_battlefield", @m); }
+	{ SMap@ m; if (maps.get("Sky Isle v1.1.1", @m)) bases.set("sky isle", @m); }
+	{ SMap@ m; if (maps.get("Silveridge v1.0.1", @m)) bases.set("silveridge", @m); }
+	{ SMap@ m; if (maps.get("Silent Sea v1.0.1", @m)) bases.set("silent sea", @m); }
+	{ SMap@ m; if (maps.get("Shore_to_Shore_V3", @m)) bases.set("shore_to_shore", @m); }
+	{ SMap@ m; if (maps.get("Shallow Straits v1.0.1", @m)) bases.set("shallow straits", @m); }
+	{ SMap@ m; if (maps.get("Seven Rivers v1.21", @m)) bases.set("seven rivers", @m); }
+	{ SMap@ m; if (maps.get("Seths Ravine Remake 1.3.1", @m)) bases.set("seths ravine remake", @m); }
+	{ SMap@ m; if (maps.get("Sertaleina_v9.2", @m)) bases.set("sertaleina", @m); }
+	{ SMap@ m; if (maps.get("Sertagatta v6.0.1", @m)) bases.set("sertagatta", @m); }
+	{ SMap@ m; if (maps.get("Serene Caldera v1.3", @m)) bases.set("serene caldera", @m); }
+	{ SMap@ m; if (maps.get("Sector 318C v1.0", @m)) bases.set("sector 318c", @m); }
+	{ SMap@ m; if (maps.get("Sand Crowns 1.0", @m)) bases.set("sand crowns", @m); }
+	{ SMap@ m; if (maps.get("Salt Reef 1.1", @m)) bases.set("salt reef", @m); }
+	{ SMap@ m; if (maps.get("Salmiakki 1.3", @m)) bases.set("salmiakki", @m); }
+	{ SMap@ m; if (maps.get("SailAway 2", @m)) bases.set("sailaway", @m); }
+	{ SMap@ m; if (maps.get("Rustcrown Canyon 1.3", @m)) bases.set("rustcrown canyon", @m); }
+	{ SMap@ m; if (maps.get("Rosetta 1.4.4", @m)) bases.set("rosetta", @m); }
+	{ SMap@ m; if (maps.get("Riverrun_V1", @m)) bases.set("riverrun", @m); }
+	{ SMap@ m; if (maps.get("Riverdale Remake 2.1", @m)) bases.set("riverdale remake", @m); }
+	{ SMap@ m; if (maps.get("Ring Atoll Remake v2.0", @m)) bases.set("ring atoll remake", @m); }
+	{ SMap@ m; if (maps.get("Rifted_V2", @m)) bases.set("rifted", @m); }
+	{ SMap@ m; if (maps.get("Requiem Outpost 1.0.1", @m)) bases.set("requiem outpost", @m); }
+	{ SMap@ m; if (maps.get("Red Triangle Remake v1.3", @m)) bases.set("red triangle remake", @m); }
+	{ SMap@ m; if (maps.get("Red Rock Desert v2", @m)) bases.set("red rock desert", @m); }
+	{ SMap@ m; if (maps.get("Red River Remake v1.2", @m)) bases.set("red river remake", @m); }
+	{ SMap@ m; if (maps.get("Red River Estuary v1.1", @m)) bases.set("red river estuary", @m); }
+	{ SMap@ m; if (maps.get("Red Comet Remake 1.8", @m)) bases.set("red comet remake", @m); }
+	{ SMap@ m; if (maps.get("ReRaghnarok 1.0.1", @m)) bases.set("reraghnarok", @m); }
+	{ SMap@ m; if (maps.get("Ravaged Remake v1.2", @m)) bases.set("ravaged remake", @m); }
+	{ SMap@ m; if (maps.get("Raptor_Crater_V2", @m)) bases.set("raptor_crater", @m); }
+	{ SMap@ m; if (maps.get("Quicksilver Remake 1.24", @m)) bases.set("quicksilver remake", @m); }
+	{ SMap@ m; if (maps.get("Pyroclast 1.1.0", @m)) bases.set("pyroclast", @m); }
+	{ SMap@ m; if (maps.get("Proving Grounds v1.0", @m)) bases.set("proving grounds", @m); }
+	{ SMap@ m; if (maps.get("Project SD-129 v1.0", @m)) bases.set("project sd", @m); }
+	{ SMap@ m; if (maps.get("Prismatic Anomaly v1.02", @m)) bases.set("prismatic anomaly", @m); }
+	{ SMap@ m; if (maps.get("Pools of Ilys 1.1.2", @m)) bases.set("pools of ilys", @m); }
+	{ SMap@ m; if (maps.get("Point of No Return v1.0.1", @m)) bases.set("point of no return", @m); }
+	{ SMap@ m; if (maps.get("Plethora_of_Ponds_V1", @m)) bases.set("plethora_of_ponds", @m); }
+	{ SMap@ m; if (maps.get("Plains and Passes v1.0", @m)) bases.set("plains and passes", @m); }
+	{ SMap@ m; if (maps.get("Pinewood_Derby_V1", @m)) bases.set("pinewood_derby", @m); }
+	{ SMap@ m; if (maps.get("Pinch Point 1.03", @m)) bases.set("pinch point", @m); }
+	{ SMap@ m; if (maps.get("Pillar_of_Doom_V1", @m)) bases.set("pillar_of_doom", @m); }
+	{ SMap@ m; if (maps.get("Pentos_V1", @m)) bases.set("pentos", @m); }
+	{ SMap@ m; if (maps.get("Pawn Retreat 1.2", @m)) bases.set("pawn retreat", @m); }
+	{ SMap@ m; if (maps.get("Paradise_Lost_V4", @m)) bases.set("paradise_lost", @m); }
+	{ SMap@ m; if (maps.get("Painted Desert v1.0", @m)) bases.set("painted desert", @m); }
+	{ SMap@ m; if (maps.get("Otago 1.43", @m)) bases.set("otago", @m); }
+	{ SMap@ m; if (maps.get("Onyx Cauldron 2.2.2", @m)) bases.set("onyx cauldron", @m); }
+	{ SMap@ m; if (maps.get("Omega Valley V1.01", @m)) bases.set("omega valley", @m); }
+	{ SMap@ m; if (maps.get("Nuclear Winter Bar 1.4", @m)) bases.set("nuclear winter bar", @m); }
+	{ SMap@ m; if (maps.get("Nine_Metal_Islands_V1", @m)) bases.set("nine_metal_islands", @m); }
+	{ SMap@ m; if (maps.get("Neurope_Remake 4.2.1", @m)) bases.set("neurope_remake", @m); }
+	{ SMap@ m; if (maps.get("Moonshine Run v1.0.1", @m)) bases.set("moonshine run", @m); }
+	{ SMap@ m; if (maps.get("MoonQ20XR2 2.5", @m)) bases.set("moonq20xr", @m); }
+	{ SMap@ m; if (maps.get("Mithril Mountain v2.0.1", @m)) bases.set("mithril mountain", @m); }
+	{ SMap@ m; if (maps.get("Melting Glacier v1.1.2", @m)) bases.set("melting glacier", @m); }
+	{ SMap@ m; if (maps.get("Mediterraneum_V1", @m)) bases.set("mediterraneum", @m); }
+	{ SMap@ m; if (maps.get("Mariposa Island v2.4.1", @m)) bases.set("mariposa island", @m); }
+	{ SMap@ m; if (maps.get("Lavender Bender v2", @m)) bases.set("lavender bender", @m); }
+	{ SMap@ m; if (maps.get("Lake Carne v2.0.1", @m)) bases.set("lake carne", @m); }
+	{ SMap@ m; if (maps.get("LV412 1.3.1", @m)) bases.set("l", @m); }
+	{ SMap@ m; if (maps.get("Koom Valley 3 3.1", @m)) bases.set("koom valley", @m); }
+	{ SMap@ m; if (maps.get("Kolmogorov Remake 3.0.1", @m)) bases.set("kolmogorov remake", @m); }
+	{ SMap@ m; if (maps.get("KnockoutR 1.5", @m)) bases.set("knockoutr", @m); }
+	{ SMap@ m; if (maps.get("Kings Assault v1.3", @m)) bases.set("kings assault", @m); }
+	{ SMap@ m; if (maps.get("Jade Empress 1.41", @m)) bases.set("jade empress", @m); }
+	{ SMap@ m; if (maps.get("Isidis crack 1.1", @m)) bases.set("isidis crack", @m); }
+	{ SMap@ m; if (maps.get("Iron_Isle_V1", @m)) bases.set("iron_isle", @m); }
+	{ SMap@ m; if (maps.get("Into Battle Redux v3.0.1", @m)) bases.set("into battle redux", @m); }
+	{ SMap@ m; if (maps.get("Industrial_Revolution_V2", @m)) bases.set("industrial_revolution", @m); }
+	{ SMap@ m; if (maps.get("Incandescence Remake 3.3.1", @m)) bases.set("incandescence remake", @m); }
+	{ SMap@ m; if (maps.get("Ice Scream v2.5.2", @m)) bases.set("ice scream", @m); }
+	{ SMap@ m; if (maps.get("Hyperion Shale 1.0.2", @m)) bases.set("hyperion shale", @m); }
+	{ SMap@ m; if (maps.get("Houses of Tripolis 1.3", @m)) bases.set("houses of tripolis", @m); }
+	{ SMap@ m; if (maps.get("Hotstepper 5 1.2.1", @m)) bases.set("hotstepper", @m); }
+	{ SMap@ m; if (maps.get("Hotlips Remake v3.2", @m)) bases.set("hotlips remake", @m); }
+	{ SMap@ m; if (maps.get("Hooked 1.1.1", @m)) bases.set("hooked", @m); }
+	{ SMap@ m; if (maps.get("High Noon Remake 1.0", @m)) bases.set("high noon remake", @m); }
+	{ SMap@ m; if (maps.get("Hide and Seek 2.2.3", @m)) bases.set("hide and seek", @m); }
+	{ SMap@ m; if (maps.get("Hera Planum 0.9.2", @m)) bases.set("hera planum", @m); }
+	{ SMap@ m; if (maps.get("Hellas Basin v1.4", @m)) bases.set("hellas basin", @m); }
+	{ SMap@ m; if (maps.get("Heartbreak Hill v4.0.1", @m)) bases.set("heartbreak hill", @m); }
+	{ SMap@ m; if (maps.get("Hades Ponds 1.1", @m)) bases.set("hades ponds", @m); }
+	{ SMap@ m; if (maps.get("Greenhaven BAR v1.2", @m)) bases.set("greenhaven bar", @m); }
+	{ SMap@ m; if (maps.get("Greenest Fields 1.3.1", @m)) bases.set("greenest fields", @m); }
+	{ SMap@ m; if (maps.get("Great Divide V1", @m)) bases.set("great divide", @m); }
+	{ SMap@ m; if (maps.get("Gods of War Remake v1.3", @m)) bases.set("gods of war remake", @m); }
+	{ SMap@ m; if (maps.get("Glacier Pass 1.2", @m)) bases.set("glacier pass", @m); }
+	{ SMap@ m; if (maps.get("Glacial Gap v1.1", @m)) bases.set("glacial gap", @m); }
+	{ SMap@ m; if (maps.get("Ghenna Rising 4.0.1", @m)) bases.set("ghenna rising", @m); }
+	{ SMap@ m; if (maps.get("Geyser Plains BAR v1.2.1", @m)) bases.set("geyser plains bar", @m); }
+	{ SMap@ m; if (maps.get("Gecko Isle Remake v1.2.1", @m)) bases.set("gecko isle remake", @m); }
+	{ SMap@ m; if (maps.get("Gasbag Grabens 1.1.1", @m)) bases.set("gasbag grabens", @m); }
+	{ SMap@ m; if (maps.get("Full Metal Plate 1.7", @m)) bases.set("full metal plate", @m); }
+	{ SMap@ m; if (maps.get("Frozen_Ford_V2", @m)) bases.set("frozen_ford", @m); }
+	{ SMap@ m; if (maps.get("Forge v2.3", @m)) bases.set("forge", @m); }
+	{ SMap@ m; if (maps.get("FolsomDamR 1.17", @m)) bases.set("folsomdamr", @m); }
+	{ SMap@ m; if (maps.get("Flooded_Valley_V5", @m)) bases.set("flooded_valley", @m); }
+	{ SMap@ m; if (maps.get("Flats and Forests v2.2", @m)) bases.set("flats and forests", @m); }
+	{ SMap@ m; if (maps.get("Feast of Hades 1.0.1", @m)) bases.set("feast of hades", @m); }
+	{ SMap@ m; if (maps.get("Faster Than Light 1.1", @m)) bases.set("faster than light", @m); }
+	{ SMap@ m; if (maps.get("Fallendell_V4", @m)) bases.set("fallendell", @m); }
+	{ SMap@ m; if (maps.get("Failed Negotiations 1.0", @m)) bases.set("failed negotiations", @m); }
+	{ SMap@ m; if (maps.get("Factions and Factious 0.9", @m)) bases.set("factions and factious", @m); }
+	{ SMap@ m; if (maps.get("Eye Of Horus 1.7.1", @m)) bases.set("eye of horus", @m); }
+	{ SMap@ m; if (maps.get("Evad River Confluence_V2", @m)) bases.set("evad river confluence", @m); }
+	{ SMap@ m; if (maps.get("Eternal Consequences 1.2", @m)) bases.set("eternal consequences", @m); }
+	{ SMap@ m; if (maps.get("Esker Creek 1.3", @m)) bases.set("esker creek", @m); }
+	{ SMap@ m; if (maps.get("Erebos Lakes v1.0", @m)) bases.set("erebos lakes", @m); }
+	{ SMap@ m; if (maps.get("Entrenched_Plains_V2", @m)) bases.set("entrenched_plains", @m); }
+	{ SMap@ m; if (maps.get("EmainMacha Remake 2.1.1", @m)) bases.set("emainmacha remake", @m); }
+	{ SMap@ m; if (maps.get("Eight Horses 1.2", @m)) bases.set("eight horses", @m); }
+	{ SMap@ m; if (maps.get("Eclipsed 0.9.8", @m)) bases.set("eclipsed", @m); }
+	{ SMap@ m; if (maps.get("Downs_of_Destruction_V2", @m)) bases.set("downs_of_destruction", @m); }
+	{ SMap@ m; if (maps.get("Ditched_V1", @m)) bases.set("ditched", @m); }
+	{ SMap@ m; if (maps.get("Digsite 2.0", @m)) bases.set("digsite", @m); }
+	{ SMap@ m; if (maps.get("Devil's Postpiles 1.1.1", @m)) bases.set("devil's postpiles", @m); }
+	{ SMap@ m; if (maps.get("Desolation v1.0.1", @m)) bases.set("desolation", @m); }
+	{ SMap@ m; if (maps.get("Delta Siege Dry v5.7.1", @m)) bases.set("delta siege dry", @m); }
+	{ SMap@ m; if (maps.get("Deeploria Fields v1.5.1", @m)) bases.set("deeploria fields", @m); }
+	{ SMap@ m; if (maps.get("Death Valley v1.0.1", @m)) bases.set("death valley", @m); }
+	{ SMap@ m; if (maps.get("Darkside v3.0", @m)) bases.set("darkside", @m); }
+	{ SMap@ m; if (maps.get("DWorld_V4", @m)) bases.set("dworld", @m); }
+	{ SMap@ m; if (maps.get("DSD 8 Way 1.1", @m)) bases.set("dsd 8 way", @m); }
+	{ SMap@ m; if (maps.get("Crystallized Plains 1.1", @m)) bases.set("crystallized plains", @m); }
+	{ SMap@ m; if (maps.get("Crubick Plains BAR v1.1", @m)) bases.set("crubick plains bar", @m); }
+	{ SMap@ m; if (maps.get("Crimson Bay v1.1a", @m)) bases.set("crimson bay v1.1a", @m); }
+	{ SMap@ m; if (maps.get("Crescent_Bay_V2", @m)) bases.set("crescent_bay", @m); }
+	{ SMap@ m; if (maps.get("Copper Hill v1.0.1", @m)) bases.set("copper hill", @m); }
+	{ SMap@ m; if (maps.get("Comet Catcher Remake 1.8", @m)) bases.set("comet catcher remake", @m); }
+	{ SMap@ m; if (maps.get("Colorado_V2 1.1", @m)) bases.set("colorado", @m); }
+	{ SMap@ m; if (maps.get("Coastlines_Dry_V2.2.1", @m)) bases.set("coastlines_dry", @m); }
+	{ SMap@ m; if (maps.get("Coast To Coast BAR v1.0", @m)) bases.set("coast to coast bar", @m); }
+	{ SMap@ m; if (maps.get("Cloud9_V2", @m)) bases.set("cloud", @m); }
+	{ SMap@ m; if (maps.get("Claymore 3.0.4", @m)) bases.set("claymore", @m); }
+	{ SMap@ m; if (maps.get("Cirolata 1.03", @m)) bases.set("cirolata", @m); }
+	{ SMap@ m; if (maps.get("Charlie In The Hills Remake v1.1.1", @m)) bases.set("charlie in the hills remake", @m); }
+	{ SMap@ m; if (maps.get("Centerrock Remake 1.2", @m)) bases.set("centerrock remake", @m); }
+	{ SMap@ m; if (maps.get("Center Command BAR v1.0", @m)) bases.set("center command bar", @m); }
+	{ SMap@ m; if (maps.get("Cells 1.2", @m)) bases.set("cells", @m); }
+	{ SMap@ m; if (maps.get("Ceasefire 1.1", @m)) bases.set("ceasefire", @m); }
+	{ SMap@ m; if (maps.get("Carrot Mountains v2.0", @m)) bases.set("carrot mountains", @m); }
+	{ SMap@ m; if (maps.get("Cape_Violet_V1", @m)) bases.set("cape_violet", @m); }
+	{ SMap@ m; if (maps.get("Canis River v1.4", @m)) bases.set("canis river", @m); }
+	{ SMap@ m; if (maps.get("Callisto v3.1", @m)) bases.set("callisto", @m); }
+	{ SMap@ m; if (maps.get("Boulder_Beach_V1", @m)) bases.set("boulder_beach", @m); }
+	{ SMap@ m; if (maps.get("Boreal Falls 1.0.2", @m)) bases.set("boreal falls", @m); }
+	{ SMap@ m; if (maps.get("BlackStar_v2", @m)) bases.set("blackstar", @m); }
+	{ SMap@ m; if (maps.get("Bismuth Valley v2.4.1", @m)) bases.set("bismuth valley", @m); }
+	{ SMap@ m; if (maps.get("Baryon Tar Lake v1.1", @m)) bases.set("baryon tar lake", @m); }
+	{ SMap@ m; if (maps.get("BarR 1.1", @m)) bases.set("barr", @m); }
+	{ SMap@ m; if (maps.get("Azurite Shores 1.0.2", @m)) bases.set("azurite shores", @m); }
+	{ SMap@ m; if (maps.get("Avalanche 3.4", @m)) bases.set("avalanche", @m); }
+	{ SMap@ m; if (maps.get("Aurelia v4.1", @m)) bases.set("aurelia", @m); }
+	{ SMap@ m; if (maps.get("Asteroid_Mines_V3", @m)) bases.set("asteroid_mines", @m); }
+	{ SMap@ m; if (maps.get("Ascendancy v2.2", @m)) bases.set("ascendancy", @m); }
+	{ SMap@ m; if (maps.get("Argent Strata 1.1", @m)) bases.set("argent strata", @m); }
+	{ SMap@ m; if (maps.get("Archsimkats_Valley_V1", @m)) bases.set("archsimkats_valley", @m); }
+	{ SMap@ m; if (maps.get("Angel Crossing 1.5.1", @m)) bases.set("angel crossing", @m); }
+	{ SMap@ m; if (maps.get("Ancient Vault v1.4", @m)) bases.set("ancient vault", @m); }
+	{ SMap@ m; if (maps.get("Ancient Bastion Remake 0.5", @m)) bases.set("ancient bastion remake", @m); }
+	{ SMap@ m; if (maps.get("Altored Divide Bar Remake 1.6.2", @m)) bases.set("altored divide bar remake", @m); }
+	{ SMap@ m; if (maps.get("Altair_Crossing_V4.1", @m)) bases.set("altair_crossing", @m); }
+	{ SMap@ m; if (maps.get("All That Smolders v1.2", @m)) bases.set("all that smolders", @m); }
+	{ SMap@ m; if (maps.get("All That Simmers v1.1.1", @m)) bases.set("all that simmers", @m); }
+	{ SMap@ m; if (maps.get("All That Glitters v2.2.3", @m)) bases.set("all that glitters", @m); }
+	{ SMap@ m; if (maps.get("All That Glitters Extended v1.0.2", @m)) bases.set("all that glitters extended", @m); }
+	{ SMap@ m; if (maps.get("Aethermoor Creek 1.0", @m)) bases.set("aethermoor creek", @m); }
+	{ SMap@ m; if (maps.get("Adamantium_Factory_V1", @m)) bases.set("adamantium_factory", @m); }
+	{ SMap@ m; if (maps.get("AcidicQuarry 5.17", @m)) bases.set("acidicquarry", @m); }
+}
+
+string Base(const string& in name)
+{
+	int n = int(name.length());
+	while (n > 0 && "0123456789._ -vV".findFirst(name.substr(n - 1, 1)) >= 0)
+		--n;
+	string b = name.substr(0, n);
+	for (uint i = 0; i < b.length(); ++i)
+		if (b[i] >= 65 && b[i] <= 90) b[i] = b[i] + 32;
+	return b;
 }
 
 SMap@ Get(const string& in name)
 {
 	SMap@ m;
 	if (maps.get(name, @m))
+		return m;
+	if (bases.get(Base(name), @m))  // another version of an analysed map
 		return m;
 	return null;
 }

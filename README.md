@@ -24,24 +24,32 @@ build. Status as of this commit:
 |---|---|---|
 | Recycling obsolete eco (solar/wind → fusion → advanced fusion, T1 makers) and salvage of idle T1 units | **on** | part of the first build (7–3 vs BARb-hard) |
 | Jammer intel: phantom threat on seen jammers, loss heatmap → Dragon's Eyes, Juno on jammer alert | **on** | first build |
-| Strategic: anti-nuke when an enemy silo appears; EMP/tactical launcher, nuke under anti-nuke cover and shields, only while our army covers what we need | **on** | first build; luxury spending is now gated on the force ratio |
+| Strategic: anti-nuke when an enemy silo appears; EMP/tactical launcher, nuke under anti-nuke cover and shields, only while our army covers what we need | **on** | first build; luxury spending is gated on the force ratio |
 | Broken-squad recall (first-gen rule) | **on** | first build |
-| Constructor-rich opener (constructors alternate with raider escorts) | **on** | **13–2–1 vs the previous build** (round 8) |
-| Commander safety (the commander is the win condition: hide earlier, at lower threat, wider danger radius) | **on** | **1.5 → 2.25 vs BARb-hard** (round 11) |
-| Production chooser: units scored from live abilities (Lanchester damage × health, reach, sight gap, screening, travel time vs horizon); rez bots from the wreck pool; constructors left to the core's mix | testing, leading | 3–0 vs base in the first games of round 7 |
-| Director-sized waves and quotas (army needed to win = enemy + jammer guess ÷ trade efficiency) | off | net negative so far: holds units back, costs map control |
-| Director scale knob (constructors vs army from scouted surplus/deficit; the economy is cut only when pushed back at home) | **on** | **9–4–3 vs the previous build** (round 9) |
-| Payback-based tech gate, moho energy gate, overflow handling (nanos, converters), assist redirect, fortify (turrets + teeth) | off | untested individually yet |
-| Forced continuous scouting, static AA counter, need-based recall, fusion recycling | off | measured harmful as always-on behaviour (round 3 → 4) |
+| Constructor-rich opener | **on** | **13–2–1 vs the previous build** |
+| Director scale knob (constructors vs army from scouted surplus/deficit; the economy is cut only when pushed back at home) | **on** | **9–4–3 vs the previous build** |
+| Commander safety (configs: hide earlier, at lower threat, wider danger radius) | **on** | **1.5 → 2.25 vs BARb-hard** |
+| Terrain defence: turrets on the high ground over our choke, dragon's teeth across it (map analysis) | **on** | new; on because chokes and high ground decide 1vN, being measured |
+| Boom on pressure, not presence (the human playbook vs several BARbs) | off | 0–6 in 1v2 so far |
+| Defeat in detail (1vN: size waves against one opponent, not the sum) | off | 1–11 in 1v2 (the first 1v2 win) |
+| Production chooser (Lanchester damage × health, reach, sight, screening, travel time; rez bots) | off | rejected 2–1–8 |
+| Waves and quotas, overflow handling, tech gate, moho gate, assist redirect, scouting timer, static AA, fusion recycling | off | rejected or neutral in A/B |
 
-The reasoning behind each module is in [STRATEGY.md](STRATEGY.md) (economy, tech, intel; sources Sun Tzu,
-Clausewitz, Napoleon and top-player replays) and [TACTICS.md](TACTICS.md) (composition, engagement,
-micro limits). Every experiment and its result is logged in [PROGRESS.md](PROGRESS.md) and
-[progress.json](progress.json).
+The reasoning behind each module is in [STRATEGY.md](STRATEGY.md) (economy, tech, intel, terrain; sources
+Sun Tzu, Clausewitz, Napoleon and replays of top players and of humans beating several BARbs) and
+[TACTICS.md](TACTICS.md) (composition, engagement, transports, micro limits). Every experiment and its
+result is logged in [PROGRESS.md](PROGRESS.md) and [progress.json](progress.json). Open work is tracked
+in [GitHub issues](https://github.com/hclivess/anarva-bar-ai/issues).
 
-**Goal:** one Anarvā beats six BARb (hard) opponents on every map type.
+**Goal:** one Anarvā beats six BARb opponents on every map type.
 
-**Status:** in 1v1 the current build beats BARb-hard **9–4 with 3 draws (2.25)**, 16 games from both sides, with at least 2:1 on every map type (milestone M1). Bundling many modules at once once regressed it (3–8, through economic starvation), so every module is now proven one at a time. Next: 1v2, then 1v3, then 1v6.
+**Status:**
+
+- 1v1: Anarvā beats BARb-hard **9–4 with 3 draws** (2.25), with at least 2:1 on every map type.
+- 1v2: not there yet. **1 win in 12** (Throne). It out-earns each BARb about 1.3×. Humans who beat
+  several BARbs out-earn each bot 2–3× (STRATEGY.md §22), and closing that economic gap is the current
+  work.
+
 ## Install
 
 You need Beyond All Reason installed and started at least once (so it has downloaded an engine).
@@ -94,6 +102,79 @@ The installer is a plain, unsigned script, so Windows may warn about it.
 Beyond All Reason ships only for Windows and Linux, and BARb's native library exists only as
 `SkirmishAI.dll` and `libSkirmishAI.so`. With no macOS game and no macOS library to copy, a macOS
 archive would install nothing that runs.
+
+## Questions and answers
+
+**Can one player really beat six BARbs?**
+Yes. Public replays show humans alone beating 3–14 hard and hard-aggressive BARbs, and BAR's own
+scenarios pit one player against up to seven. Those humans boom to 2–3× each bot's income, keep an army
+of about half the bots' combined army, fight it at home, and add static defence once the economy can
+afford it (STRATEGY.md §22).
+
+**Did you study how the best players progress?**
+Yes, in three sets, played back headless and measured every minute:
+
+- top-rated 1v1 duels (48 player-games)
+- top team games up to 4v4 (25 player-games)
+- humans alone against several BARbs (6 games)
+
+Each has an income, army, defence and eco curve, and the economy-vs-army ratio over time. 1v1, team
+games and 8v8 are treated separately because they differ: team games boom harder and go T2 earlier.
+The decision rules copy the *reasoning* behind these curves, not the numbers.
+
+**What did we gain from the map analysis?**
+
+- **Ready and used:** per start position, Anarvā knows its choke toward the enemy, the high ground
+  overlooking it, and how much higher that ground is. Terrain defence (on) builds there.
+- **Ready and used:** for every installed map, Anarvā knows the base-to-base path length versus the
+  straight line, the narrowest corridor, extractors per side and water share. These drive travel time
+  and constructor value.
+- **Not yet proven:** no map-driven module has won an A/B test yet. The constructor share from free
+  extractors was neutral, and the composition chooser that uses travel time was rejected. Terrain
+  defence is the first map-driven module to ship on, and it's still being measured.
+
+**Is it aware of high-ground advantages?**
+
+- Ballistic weapons gain range firing downhill, elevation extends sight, and crests block fire from
+  below.
+- Anarvā's map analysis finds the highest ground over its choke, and terrain defence puts its turrets
+  there.
+- The core's unit behaviour doesn't seek high ground in open fights; that needs unit commands (see the
+  next question).
+
+**What happens when a map gets updated?**
+Map facts are looked up by full name, then by the map's name without its version. A new version of a
+known map uses the facts of the version that was analysed. A brand-new map has no facts until
+`tools/analyze_maps.py` is re-run, and Anarvā falls back to the core's behaviour there.
+
+**What is "Throne"?**
+A map: Throne_V8, 12288×12288 with lots of water, used in BAR's "King of the Hill" scenario. Test
+results name the map they were played on.
+
+**Does it use transports?**
+Not yet. Transports can carry every unit, including turrets, construction turrets and the commander,
+which makes the commander far faster. Directing them needs unit commands the script layer doesn't have.
+It's planned for the C++ build, with commander airlift first.
+
+**Does it use tactical missiles, nukes, cloaking and cameras?**
+
+- **Tactical missile launcher:** BARb lists it among its defences but limits it to one and rarely builds
+  it. Anarvā builds it forward when its army covers what it needs.
+- **Anti-nuke and nuke:** Anarvā builds an anti-nuke when an enemy silo appears, and a nuke under
+  anti-nuke cover.
+- **Not yet:** cloaked infiltration (sniping the anti-nuke, then nuking) and hidden cameras. Both are
+  tracked as issues and need unit commands.
+
+**Why not just copy BARb's or a pro's numbers?**
+Balance changes and every game is different. Anarvā compares the live value of each option
+(cost, build time, upkeep, risk, space, time to finish) and has **no static thresholds**.
+
+**Does it work online?**
+Yes. Only the player hosting the AI needs it installed (see [Anarva/README.md](Anarva/README.md)).
+
+**Which opponent matters?**
+BARb (BARbarIAn), the strongest built-in AI. Everything is tested against it, at its hard and
+hard-aggressive settings.
 
 ## More
 

@@ -17,28 +17,28 @@ namespace Brain {
 // Feature flags: tools/install.ps1 -Flags "F_PROD=true,..." flips them in an installed copy so each
 // module can be A/B-tested head-to-head against the first-gen build. A module ships ON only after it\n// has measurably won; defaults below are the best-measured configuration (bisect round 4: 5-3 vs first-gen).
 const bool F_WAVES = false;     // script-owned wave/pack gathering
-const bool F_RECALL = true;    // broken-squad recall
+const bool F_RECALL = true;     // broken-squad recall
 const bool F_PROD = false;      // capability-based production chooser (incl. rez bots)
-const bool F_SCALE = true;     // Director drives buildpowerRatio
+const bool F_SCALE = true;      // Director drives buildpowerRatio
 const bool F_ECOGATE = false;   // moho energy-headroom gate
-const bool F_RECYCLE = true;   // eco recycling + T1 salvage
-const bool F_STRAT = true;     // strategic structures + AA counter
+const bool F_RECYCLE = true;    // eco recycling + T1 salvage
+const bool F_STRAT = true;      // strategic structures + AA counter
 const bool F_FORTIFY = false;   // turrets + teeth at hot fronts
 const bool F_WASTE = false;     // overflow: nanos + converters
 const bool F_TECH = false;      // payback-based tech gate
 const bool F_REDIRECT = false;  // assist factories by army deficit
-const bool F_INTEL = true;     // eyes, scouting, phantom threat
-const bool F_QUOTA = false;
-const bool F_OPENER = true;
+const bool F_INTEL = true;      // eyes, scouting, phantom threat
+const bool F_QUOTA = false;     // attack/raid quotas sized from needed power
+const bool F_OPENER = true;     // constructor-rich T1 opener (false = BARb hard opener)
 const bool F_SCOUT = false;     // scout quota >=3 and timed scout recruits (keep sight)
 const bool F_AA = false;        // static AA counter
-const bool F_FUSREC = false;
-const bool F_NEWRECALL = false;
-const bool F_MAPECO = false;
-const bool F_COMMSAFE = false;
-const bool F_DETAIL = false;
-const bool F_TERRAIN = false;
-const bool F_BOOM = false;      // scale on pressure, not presence: boom while nothing presses us (human playbook vs BARbs)   // fortify the choke from the high ground (map analysis)    // 1vN: defeat in detail - size against one opponent's army, not their sum  // commander only works inside the zone our army protects    // constructor share from free extractor spots (map analysis) // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
+const bool F_FUSREC = false;    // recycle fusions once AFUS carry the grid
+const bool F_NEWRECALL = false; // need-based recall (false = first-gen 40%-of-peak rule)
+const bool F_MAPECO = false;    // constructor share from free extractor spots (map analysis)
+const bool F_COMMSAFE = false;  // commander only works inside the zone our army protects
+const bool F_DETAIL = false;    // 1vN: defeat in detail - size against one opponent's army, not their sum
+const bool F_TERRAIN = true;    // fortify the choke from the high ground (map analysis)
+const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -1050,6 +1050,21 @@ void CounterUpdate()
  */
 CCircuitDef@ turT1, turT2, turT3, wallDef;
 int lastFortify = 0, forts = 0;
+// terrain defence bookkeeping: build the next turret only once the last one stands AND something has
+// come at us since (event-driven, no timer flood: one order per real attack)
+int terrainBuilt = 0;
+float terrainHit = 0.f, hitAtLastOrder = -1.f;
+CCircuitDef@ terrainDef = null;
+void OnTerrainLoss(const AIFloat3& in pos, float costM)
+{
+	MapFacts::SMap@ m = Brain::Production::mapInfo;
+	if (myStart < 0 || m is null)
+		return;
+	const AIFloat3 high(m.hx[myStart], 0.f, m.hz[myStart]);
+	const AIFloat3 choke(m.cx[myStart], 0.f, m.cz[myStart]);
+	if (pos.distance2D(high) < 900.f || pos.distance2D(choke) < 900.f)
+		terrainHit += costM;
+}
 
 void InitFortify()
 {
@@ -1089,13 +1104,24 @@ bool TerrainFortify()
 	const bool outnumbered = ai.GetEnemyTeamSize() > 1;
 	if ((Brain::Director::ratio >= 1.f && !outnumbered) || ai.frame - lastFortify < 30 * SECOND)
 		return true;  // handled (nothing to do now)
+	// the last order still building (its task lives 3 min): wait for it
+	if (terrainBuilt < forts && ai.frame - lastFortify < 3 * MINUTE)
+		return true;
+	// nothing came at our choke or our base since the last turret: the turrets there suffice
+	const float hit = terrainHit + Brain::Assess::lostNearTotal;
+	if (forts > 0 && hit <= hitAtLastOrder)
+		return true;
 	const float m_inc = aiEconomyMgr.metal.income;
 	CCircuitDef@ tur = (m_inc >= 45.f && turT3 !is null && turT3.IsAvailable(ai.frame)) ? turT3
 		: ((m_inc >= 18.f && turT2 !is null && turT2.IsAvailable(ai.frame)) ? turT2 : turT1);
 	if (tur is null || !tur.IsAvailable(ai.frame))
 		return true;
 	lastFortify = ai.frame;
+	if (terrainBuilt < forts)
+		terrainBuilt = forts;  // the previous order expired unbuilt: don't wait on it forever
 	++forts;
+	hitAtLastOrder = hit;
+	@terrainDef = tur;
 	const AIFloat3 high(m.hx[myStart], 0.f, m.hz[myStart]);
 	const AIFloat3 choke(m.cx[myStart], 0.f, m.cz[myStart]);
 	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, high, SQUARE_SIZE * 12, true, 3 * MINUTE));
@@ -1692,6 +1718,7 @@ bool Allowed(const CCircuitDef@ facDef)
 namespace Assess {
 
 float lostNear = 0.f, lostFar = 0.f, killed = 0.f, frontDist = 0.f;
+float lostNearTotal = 0.f;  // never decays: has anything come at us since X?
 float enemyPrev = -1.f;
 array<float> incomeHist;  // one sample per minute
 float growth = 0.f;
@@ -1714,9 +1741,12 @@ void OnLoss(CCircuitUnit@ unit)
 	if (!d.IsMobile() && d.defDmg <= 0.f && aiEconomyMgr.GetEnergyMake(d) > 0.f)
 		return;
 	const float dist = HasBase() ? basePos.distance2D(unit.GetPos(ai.frame)) : 0.f;
-	if (dist < 1500.f)
+	if (F_TERRAIN)
+		Brain::Strategic::OnTerrainLoss(unit.GetPos(ai.frame), d.costM);
+	if (dist < 1500.f) {
 		lostNear += d.costM;
-	else
+		lostNearTotal += d.costM;
+	} else
 		lostFar += d.costM;
 	if (d.IsMobile())
 		frontDist = 0.9f * frontDist + 0.1f * dist;
@@ -1902,6 +1932,8 @@ void OnUnitFinished(CCircuitUnit@ unit)
 	Recycler::OnFinished(unit);
 	Intel::OnFinished(unit);
 	Strategic::OnFinished(unit);
+	if (F_TERRAIN && Strategic::terrainDef !is null && unit.circuitDef is Strategic::terrainDef)
+		++Strategic::terrainBuilt;
 	Economist::OnFinished(unit);
 	Production::OnFinished(unit);
 }
@@ -1978,6 +2010,11 @@ void Update()  // every 30 frames
 			AiLog("[ANV] commander at (" + int(cp.x) + "," + int(cp.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(cp) : -1.f)
 				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects);
 		}
+		AiLog("[ANV] eco t=" + Minute() + "m workers=" + aiBuilderMgr.GetWorkerCount() + " mex=" + Economist::mexes.length()
+			+ " M inc=" + F1(aiEconomyMgr.metal.income) + " M " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
+			+ " E inc=" + F1(aiEconomyMgr.energy.income) + " E " + int(aiEconomyMgr.energy.current) + "/" + int(aiEconomyMgr.energy.storage)
+			+ " stall=" + aiEconomyMgr.isEnergyStalling + " bpTarget=" + F1(aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio));
+
 		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | groundPow=" + F1(Army::groundPower) + " units=" + Army::ground.length()
 			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " waves=" + Army::waves + " recalls=" + Army::recalls + " ft=" + Army::Hist()
 			+ " quota.attack=" + F1(aiMilitaryMgr.quota.attack) + " raidMin=" + F1(aiMilitaryMgr.quota.raid.min)
