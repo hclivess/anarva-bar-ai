@@ -8,7 +8,10 @@ CCircuitUnit@ energizer2 = null;
 
 IUnitTask@ AiMakeTask(CCircuitUnit@ unit)
 {
-	return aiBuilderMgr.DefaultMakeTask(unit);
+	IUnitTask@ task = aiBuilderMgr.DefaultMakeTask(unit);
+	if (Brain::F_COMMSAFE && unit.circuitDef.IsRoleAny(Unit::Role::COMM.mask))
+		return Brain::CommanderTask(unit, task);
+	return task;
 }
 
 void AiTaskAdded(IUnitTask@ task)
@@ -22,6 +25,8 @@ void AiTaskRemoved(IUnitTask@ task, bool done)
 void AiUnitAdded(CCircuitUnit@ unit, Unit::UseAs usage)
 {
 	const CCircuitDef@ cdef = unit.circuitDef;
+	if (cdef.IsRoleAny(Unit::Role::COMM.mask) && Brain::commander is null)
+		@Brain::commander = unit;
 	if (usage != Unit::UseAs::BUILDER || cdef.IsRoleAny(Unit::Role::COMM.mask))
 		return;
 

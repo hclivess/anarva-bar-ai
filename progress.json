@@ -296,7 +296,17 @@
                         },
                         {
                             "id":  "m2-fortify",
-                            "desc":  "1v2 + F_FORTIFY",
+                            "desc":  "1v2 + F_FORTIFY (10 games)",
+                            "result":  "0W 9L 1D: no help"
+                        },
+                        {
+                            "id":  "diag-comm",
+                            "desc":  "commander tracking in 1v2",
+                            "result":  "commander spends the game on builder tasks 300-1600 elmos from base"
+                        },
+                        {
+                            "id":  "m2-commsafe",
+                            "desc":  "1v2 + commander only works inside protected zone",
                             "result":  "running"
                         }
                     ],

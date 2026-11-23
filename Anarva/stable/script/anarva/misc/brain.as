@@ -34,7 +34,8 @@ const bool F_SCOUT = false;     // scout quota >=3 and timed scout recruits (kee
 const bool F_AA = false;        // static AA counter
 const bool F_FUSREC = false;
 const bool F_NEWRECALL = false;
-const bool F_MAPECO = false;    // constructor share from free extractor spots (map analysis) // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
+const bool F_MAPECO = false;
+const bool F_COMMSAFE = false;  // commander only works inside the zone our army protects    // constructor share from free extractor spots (map analysis) // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -1823,6 +1824,8 @@ void OnFactoryAdded(CCircuitUnit@ unit)
 
 void OnUnitFinished(CCircuitUnit@ unit)
 {
+	if (commander is null && unit.circuitDef.IsRoleAny(Unit::Role::COMM.mask))
+		@commander = unit;
 	if (!HasBase() && !unit.circuitDef.IsMobile())
 		basePos = unit.GetPos(ai.frame);
 	Recycler::OnFinished(unit);
@@ -1832,8 +1835,42 @@ void OnUnitFinished(CCircuitUnit@ unit)
 	Production::OnFinished(unit);
 }
 
+CCircuitUnit@ commander = null;
+int commRedirects = 0;
+
+/*
+ * The commander is the win condition: a far-off building gains a little metal, losing the commander
+ * loses the game. So it only takes work inside the zone our army can protect, measured from where
+ * fights actually happen (half the distance to the front; the map's base-to-base path early on).
+ * Work outside stays queued for cheap constructors; the commander assists a factory at home instead.
+ */
+IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
+{
+	if (task is null || !HasBase() || task.GetType() != Task::Type::BUILDER || Brain::Intel::allFactories.length() == 0)
+		return task;
+	IBuilderTask@ bt = cast<IBuilderTask>(task);
+	if (bt is null)
+		return task;
+	float front = Brain::Assess::frontDist;
+	if (front <= 0.f && Brain::Production::mapInfo !is null && Brain::Production::mapInfo.basePath > 0.f)
+		front = Brain::Production::mapInfo.basePath * 0.5f;
+	if (front <= 0.f)
+		return task;  // no idea where the fighting is yet (opening): let it build
+	if (basePos.distance2D(bt.GetBuildPos()) <= 0.5f * front)
+		return task;
+	++commRedirects;
+	CCircuitUnit@ fac = Brain::Intel::allFactories[AiRandom(0, int(Brain::Intel::allFactories.length()) - 1)];
+	return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, 30 * SECOND));
+}
+
 void OnUnitDestroyed(CCircuitUnit@ unit)
 {
+	if (unit.circuitDef.IsRoleAny(Unit::Role::COMM.mask)) {
+		const AIFloat3 p = unit.GetPos(ai.frame);
+		AiLog("[ANV] COMMANDER LOST at (" + int(p.x) + "," + int(p.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(p) : -1.f)
+			+ " task=" + (unit.task is null ? -1 : int(unit.task.GetType())) + " t=" + Minute() + "m posture=" + Director::names[Director::posture]);
+		@commander = null;
+	}
 	const bool recycled = Recycler::OnDestroyed(unit);
 	if (!recycled) {
 		Intel::OnLoss(unit);
@@ -1865,6 +1902,11 @@ void Update()  // every 30 frames
 		Strategic::Update(Intel::jamAlert);
 
 	if (ai.frame % MINUTE < SECOND) {
+		if (commander !is null) {
+			const AIFloat3 cp = commander.GetPos(ai.frame);
+			AiLog("[ANV] commander at (" + int(cp.x) + "," + int(cp.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(cp) : -1.f)
+				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects);
+		}
 		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | groundPow=" + F1(Army::groundPower) + " units=" + Army::ground.length()
 			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " waves=" + Army::waves + " recalls=" + Army::recalls + " ft=" + Army::Hist()
 			+ " quota.attack=" + F1(aiMilitaryMgr.quota.attack) + " raidMin=" + F1(aiMilitaryMgr.quota.raid.min)
