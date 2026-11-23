@@ -353,6 +353,11 @@
    "id": "en-live",
    "desc": "live energy (anarva_e + F_ENERGY + F_CONVERT), smoke tests",
    "result": "energy orders 86 -> 28 after mmLevel gate; our metal 30-36 vs each BARb 87-140 on Comet Catcher: the gap is extractor share (we hold 11-13 of 80 spots), not energy"
+  },
+  {
+   "id": "e2-ecobundle",
+   "desc": "1v2: anarva_e live energy + F_CONVERT + F_REZ (rez pool had the killedTotal bug)",
+   "result": "0-6 both; value share 0.25 vs 0.31 base, 2 outright losses: not shipped; rez to be retested alone after the fix"
   }
  ],
  "findings": [
@@ -379,7 +384,8 @@
   "Replay study correction: 3 of 6 'human vs several BARbs' games were FFA (bots fight each other). Allied 1vN: Knizek 1v4 (Ancient Bastion), NoviceKing99 1v3, FloBoo 1v8, Edict 1v2 Comet Catcher.",
   "Edict (1 human vs 2 allied BARbs, Comet Catcher): ~20 light turrets + ~30 mines on the lanes by 8 min, static defence above each bot's 3-8 min, mass Gatling tanks 10-14 min, T2 at 13, push at 20 with 2x the bots' army. Defence first when the enemy comes to you.",
   "1v3 single games after deficit-sized terrain defence: bots reach 43-91 M/s each vs ours 20-25; our extractors fall to 3-5. The deficit measure (needPower in power units) is too small when the enemy is unscouted; turret count stays low.",
-  "Refrog (1 human vs 2 allied BARbs, Center Command, 139 min): the factory cycles constructor, rez bot (cornecro), raiders, assault every round from minute 5; income passes the bots by minute 10 (45 vs 35 each) and reaches 2x by minute 15. Rez bots as a steady metal source alongside the army."
+  "Refrog (1 human vs 2 allied BARbs, Center Command, 139 min): the factory cycles constructor, rez bot (cornecro), raiders, assault every round from minute 5; income passes the bots by minute 10 (45 vs 35 each) and reaches 2x by minute 15. Rez bots as a steady metal source alongside the army.",
+  "All-in at 12 min in a 1v2 (lost ~3000 metal far from home): trade estimate from ~85 s of kills swung 0.7 -> 5.1 on a few cheap kills, needed power fell 130 -> 21. Fix candidate F_STAKE: weight evidence by the army at stake."
  ],
  "replay_analysis": {
   "local_index": "ref/replays.csv (1054 replays)",
