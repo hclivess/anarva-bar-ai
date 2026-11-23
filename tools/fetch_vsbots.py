@@ -40,8 +40,8 @@ def main():
             bots = sum(len(a.get("AIs", [])) for a in teams)
             if humans != 1 or bots < args.min_bots:
                 continue
-            win = [a for a in teams if a.get("winningTeam")]
-            if not win or len(win[0].get("Players", [])) != 1:
+            win = [a for a in teams if a.get("winningTeam")]  # solo: the human wins with no allied bots
+            if not win or len(win[0].get("Players", [])) != 1 or len(win[0].get("AIs", [])) != 0:
                 continue  # the human must be the winner
             checked += 1
             d = get_json(f"{API}/{it['id']}")

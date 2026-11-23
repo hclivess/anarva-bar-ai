@@ -72,6 +72,19 @@ Correct decisions need everything a player sees.
   geo vents, and per-unit enemy composition near a point. It's one piece of infrastructure that
   unlocks dodging, napalm avoidance, geo decisions, wreck-field routing and rez targeting.
 
+## 1d2. Transports (limit: needs unit commands)
+
+Air transports can carry **every unit, including defence towers, nano/construction turrets and the
+commander**.
+
+- relocate a defence line or nanos to a new front or choke
+- rescue the commander from danger
+- move the commander far faster to expand, escape, or reach a forward build site
+- drop raiders behind enemy lines
+
+The core has a transport role but barely uses it, and directing a transport needs unit commands. So
+this belongs to the C++ fork (STRATEGY.md §21), with commander airlift as a top-priority use.
+
 ## 1e. Map analysis before the match (in progress)
 
 A pro reads the map first. `tools/analyze_maps.py` reads each map archive offline (height map, metal
