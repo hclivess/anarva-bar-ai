@@ -41,6 +41,7 @@ const bool F_TERRAIN = true;    // fortify the choke from the high ground (map a
 const bool F_CONVERT = false;   // wasted energy -> converters, chosen by payback incl. build time
 const bool F_EXPAND = false;    // constructors from the free extractor spots (marginal value), not from income
 const bool F_DEFSIZE = false;   // terrain defence sized to the metal deficit (false: one turret per attack)
+const bool F_ENERGY = false;    // energy decided live (with profile anarva_e, where the fixed curve is off)
 const bool F_REZ = false;       // rez-bot fleet sized to the wreck metal on the map
 const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
 
@@ -874,6 +875,45 @@ void Init()
 	InitFortify();
 }
 
+/*
+ * Nuke risk, as an expected loss. A launch from an unseen silo leaves seconds, so the only defence that
+ * works is an anti-nuke already standing with an interceptor stockpiled. Readiness takes
+ *   L = anti-nuke build time at the build power we can put on it + its interceptor stockpile time.
+ * By now + L, could an enemy have a missile? The metal they could have put into silo + missile since
+ * they could reach T2 (parity: when we did; we can't see theirs), over what silo + missile cost, capped
+ * at 1; a seen silo makes it 1. Worth it when that feasibility x the metal at risk in our base (what a
+ * nuke would erase) >= the anti-nuke's cost. Returns feasibility x risk / cost (>= 1: build).
+ * Game facts (unit files): anti-nuke 60000 build time, 90 s stockpile; silo ~8000 M + missile, 120-180 s.
+ */
+int ourT2Frame = -1;
+float InfraValue()
+{
+	float v = 0.f;
+	for (uint i = 0; i < infra.length(); ++i)
+		v += infra[i].circuitDef.costM;
+	return v;
+}
+float NukeRisk()
+{
+	if (amdDef is null || siloDef is null)
+		return 0.f;
+	const float workers = float(AiMax(1, aiBuilderMgr.GetWorkerCount()));
+	const float L = AMD_BUILDTIME / (Brain::Convert::CON_WORK * AiMax(1.f, workers * 0.5f)) + AMD_STOCKPILE_S;
+	float feasible = 1.f;
+	if (aiEnemyMgr.GetEnemyCost(RT::NUKE) <= 0.f) {
+		if (ourT2Frame < 0)
+			return 0.f;  // nobody near T2 yet (parity): a silo is out of reach
+		const float since = float(ai.frame - ourT2Frame) / SECOND + L;
+		// each enemy earns about what we do (parity prior; scouted BARbs out-earn us, so it's a floor)
+		const float enemyMetal = float(AiMax(1, ai.GetEnemyTeamSize())) * aiEconomyMgr.metal.income * since;
+		feasible = AiMin(1.f, enemyMetal / (siloDef.costM + SILO_MISSILE_M) - SILO_STOCKPILE_S / AiMax(1.f, since));
+		if (feasible <= 0.f)
+			return 0.f;
+	}
+	return feasible * InfraValue() / AiMax(1.f, Brain::Economist::MetalValue(amdDef));
+}
+const float AMD_BUILDTIME = 60000.f, AMD_STOCKPILE_S = 90.f, SILO_STOCKPILE_S = 180.f, SILO_MISSILE_M = 1000.f;
+
 void OnFinished(CCircuitUnit@ u)
 {
 	const CCircuitDef@ d = u.circuitDef;
@@ -953,10 +993,12 @@ void Update(bool jamAlert)
 	const int minute = Minute();
 	const bool enemyNuke = aiEnemyMgr.GetEnemyCost(RT::NUKE) > 0.f;
 
-	// Anti-nuke: immediately when a silo is spotted; proactively when rich.
-	const uint wantAmd = enemyNuke ? (m >= 100.f ? 2 : 1) : ((minute >= 35 && m >= 60.f) ? 1 : 0);
+	// Anti-nuke: ready BEFORE the first missile could exist, because after a launch there is no time
+	// to react (the missile lands in seconds). See NukeRisk().
+	const uint wantAmd = (amds.length() == 0 && NukeRisk() >= 1.f) ? 1
+		: ((enemyNuke && InfraValue() > 2.f * Brain::Economist::MetalValue(amdDef) * float(amds.length() + 1)) ? amds.length() + 1 : amds.length());
 	if (amds.length() < wantAmd && Ready(1, amdDef)) {
-		Order(1, amdDef, basePos, enemyNuke ? Task::Priority::NOW : Task::Priority::NORMAL, SQUARE_SIZE * 32);
+		Order(1, amdDef, basePos, enemyNuke ? Task::Priority::NOW : Task::Priority::HIGH, SQUARE_SIZE * 32);
 		return;
 	}
 	// Juno: EMP missile that wipes radar, jammers and mines in its blast. Our answer to jammers.
@@ -1772,6 +1814,109 @@ IUnitTask@ Substitute(CCircuitUnit@ unit, IUnitTask@ task)
 
 /* ======================================================================== */
 /*
+ * Energy, decided live. BARb sizes energy to a fixed multiple of metal income (20x-60x by the clock);
+ * that curve is switched off in profile anarva_e, and this decides instead:
+ *  - WHEN: a plant takes time to finish, and nothing pays until it's done. Watch net energy
+ *    (income - pull) and the trend of pull. If, by the time a plant ordered now would be finished, the
+ *    stock would already be empty, order now. Starving energy collapses everything (build power stops,
+ *    extractors and converters stop), so the lead time is what matters, not the current balance.
+ *  - WHICH: the plant with the lowest metal-equivalent cost per E/s whose build lead time still fits
+ *    before the stock runs out; if none fits, the quickest one (stop the bleeding first).
+ *  - HOW MANY: enough to cover the projected deficit.
+ *  Surplus is not built for its own sake: real surplus goes to converters (Brain::Convert).
+ */
+namespace Energy {
+
+array<CCircuitDef@> plants;
+float prevPull = 0.f, trend = 0.f;   // E/s per second, smoothed
+float pendingE = 0.f;
+int pendingUntil = 0, orders = 0, lastLog = 0;
+
+void Init()
+{
+	array<string> names = {"armsolar", "corsolar", "legsolar", "armadvsol", "coradvsol", "legadvsol",
+		"armfus", "corfus", "legfus", "armafus", "corafus", "legafus"};
+	for (uint i = 0; i + 2 < names.length(); i += 3) {
+		CCircuitDef@ d = Brain::Strategic::Side(names[i], names[i + 1], names[i + 2]);  // our faction only
+		if (d !is null && aiEconomyMgr.GetEnergyMake(d) > 0.f)
+			plants.insertLast(d);
+	}
+}
+
+const float MM_LEVEL = 0.75f;  // game fact: converters run while energy storage is above 75% (mmLevel)
+
+void Update()  // every second
+{
+	const SResourceInfo@ e = aiEconomyMgr.energy;
+	trend = 0.95f * trend + 0.05f * (e.pull - prevPull);   // ~20 s smoothing of how fast demand grows
+	prevPull = e.pull;
+	if (!HasBase() || ai.frame % (5 * SECOND) != 0)
+		return;
+	if (ai.frame > pendingUntil)
+		pendingE = 0.f;
+	// above the converters' threshold the game already treats energy as surplus: no plant is needed
+	if (e.current > MM_LEVEL * e.storage)
+		return;
+	const int workers = AiMax(1, aiBuilderMgr.GetWorkerCount());
+	CCircuitDef@ best = null;
+	float bestCost = 1e9f, quickLead = 1e9f, need = 0.f;
+	CCircuitDef@ quick = null;
+	// lead time: build time at the build power that would take it (a share of our builders)
+	for (uint i = 0; i < plants.length(); ++i) {
+		const float lead = BuildTime(plants[i]) / (Brain::Convert::CON_WORK * AiMax(1.f, float(workers) * 0.5f));
+		if (plants[i].IsAvailable(ai.frame) && lead < quickLead) { quickLead = lead; @quick = plants[i]; }
+	}
+	for (uint i = 0; i < plants.length(); ++i) {
+		CCircuitDef@ d = plants[i];
+		if (!d.IsAvailable(ai.frame))
+			continue;
+		const float lead = BuildTime(d) / (Brain::Convert::CON_WORK * AiMax(1.f, float(workers) * 0.5f));
+		const float net = e.income + pendingE - e.pull - AiMax(0.f, trend) * lead;
+		const float toEmpty = net < 0.f ? e.current / -net : 1e9f;
+		// not yet: the stock outlasts this plant's lead plus the time the fastest plant needs to cover a miss
+		if (toEmpty > lead + quickLead)
+			continue;
+		const float make = aiEconomyMgr.GetEnergyMake(d);
+		const float cost = Brain::Economist::MetalValue(d) / make;
+		if (toEmpty >= lead && cost < bestCost) {
+			bestCost = cost;
+			@best = d;
+			need = -net;
+		} else if (best is null && need <= 0.f) {
+			need = -net;
+		}
+	}
+	if (need <= 0.f)
+		return;
+	if (best is null)
+		@best = quick;  // nothing finishes in time: the fastest plant first
+	if (best is null)
+		return;
+	const float make = aiEconomyMgr.GetEnergyMake(best);
+	const int n = AiMin(AiMax(1, int(ceil(need / make))), workers);
+	for (int k = 0; k < n; ++k)
+		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::ENERGY, Task::Priority::HIGH, best, basePos, SQUARE_SIZE * 40, true, 2 * MINUTE));
+	pendingE += n * make;
+	pendingUntil = ai.frame + 2 * MINUTE;
+	orders += n;
+	AiLog("[ANV] Energy: +" + n + " " + best.GetName() + " (net " + int(e.income - e.pull) + " E/s, trend +" + F1(trend) + "/s, stock "
+		+ int(e.current) + ")");
+}
+
+// build time from the unit facts (the API doesn't expose it): solar ~2600, adv solar ~8000, fusion ~55000, afus ~320000
+float BuildTime(const CCircuitDef@ d)
+{
+	const string n = d.GetName();
+	if (n.findFirst("afus") >= 0) return 320000.f;
+	if (n.findFirst("fus") >= 0) return 56000.f;
+	if (n.findFirst("advsol") >= 0) return 8000.f;
+	return 2700.f;
+}
+
+}  // namespace Energy
+
+/* ======================================================================== */
+/*
  * Economist: the shared valuation every decision uses. No hand-picked cutoffs: investments are judged
  * by payback time against a planning horizon derived from the live situation, and energy is priced in
  * metal at the exchange rate of the converters we can build (read from their defs).
@@ -2186,12 +2331,17 @@ void Init()
 	Waste::Init();
 	Economist::Init();
 	Convert::Init();
+	Energy::Init();
 }
 
 void OnFactoryAdded(CCircuitUnit@ unit)
 {
 	if ((Factory::userData[unit.circuitDef.id].attr & (Factory::Attr::T2 | Factory::Attr::T3)) != 0)
+	{
 		++Recycler::advFactories;
+		if (Strategic::ourT2Frame < 0)
+			Strategic::ourT2Frame = ai.frame;
+	}
 	if (!HasBase())
 		basePos = unit.GetPos(ai.frame);
 	Intel::OnFactory(unit);
@@ -2289,6 +2439,7 @@ void Update()  // every 30 frames
 	Assess::Update();
 	if (F_WASTE) Waste::Update();
 	if (F_CONVERT) Convert::Update();
+	if (F_ENERGY) Energy::Update();
 	Director::Update();
 	if (F_QUOTA) Army::Update(Intel::jamAlert);
 	else Army::CheckSquads();

@@ -160,10 +160,30 @@ It's planned for the C++ build, with commander airlift first.
 
 - **Tactical missile launcher:** BARb lists it among its defences but limits it to one and rarely builds
   it. Anarvā builds it forward when its army covers what it needs.
-- **Anti-nuke and nuke:** Anarvā builds an anti-nuke when an enemy silo appears, and a nuke under
-  anti-nuke cover.
+- **Anti-nuke:** a launch from a silo we never saw lands in seconds, so reacting to a spotted silo is
+  too late. Readiness takes minutes: build time at our build power plus 90 s to stockpile the first
+  interceptor. So Anarvā builds the anti-nuke as soon as an enemy *could* have a missile by the time
+  ours would be ready. That's estimated from the enemy's likely economy since T2, weighted by the base
+  value a nuke would erase and compared with the anti-nuke's cost.
+- **Nuke:** built under anti-nuke cover. Its timing still uses fixed rules, which is open debt.
 - **Not yet:** cloaked infiltration (sniping the anti-nuke, then nuking) and hidden cameras. Both are
   tracked as issues and need unit commands.
+
+**Why didn't it build converters?**
+Because it still used BARb's fixed "energy income = 20–60× metal income" curve. Energy kept being built
+by the clock, storage sat full, and the core builds converters only as a last resort, at most two at a
+time. The replacement is in test, as profile `anarva_e` with flags `F_ENERGY` and `F_CONVERT`:
+
+- **No curve.** A power plant is ordered only when energy would run out before a new plant could
+  finish (net balance, demand trend, stock, build time). Above 75% storage, where the game's converters
+  already run, none is ordered.
+- **Converters.** Real surplus goes to converters, T1 or T2 by which repays faster, build time included.
+
+**How many rez bots?**
+As many as the wreck metal on the map repays. Everything that died, ours and theirs, leaves about 60%
+of its metal as a wreck; far-off fights count half because the enemy can take those wrecks too. One
+more bot is built while that pool exceeds the fleet's cost plus one bot. Every count follows the same
+rule: size it to the scale it works on (STRATEGY.md §28).
 
 **Why not just copy BARb's or a pro's numbers?**
 Balance changes and every game is different. Anarvā compares the live value of each option

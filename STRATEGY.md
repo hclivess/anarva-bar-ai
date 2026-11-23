@@ -423,6 +423,23 @@ How Anarvā takes this on:
 - **Restraint.** Knowing when *not* to use a clever tactic. A kill zone may never be visited; a probe
   may reveal more about us than about them.
 
+## 28. Scale: every count is sized to the game in front of it
+
+How many of anything is never a fixed number. It's the scale of what that thing works on, divided by
+what one more of it adds, as long as one more still repays its cost:
+
+| What | Sized against | Rule (status) |
+|---|---|---|
+| Constructors for expansion | free extractor spots on our share of the map, spot spacing, constructor speed | n* = F·√(s·t / 2c) (F_EXPAND; worse in 1v3, off) |
+| Rez bots | wreck metal on the map: everything that died × wreck share, far fights at half | one more while pool > fleet cost + one bot (F_REZ; testing) |
+| Converters | spare energy that would be thrown away | as many as the spare runs, the type with the fastest payback incl. build time (F_CONVERT; off) |
+| Turrets at the choke | enemy force projected at us; the army deficit | one per attack (on); metal deficit (F_DEFSIZE; worse, off) |
+| Nanos | metal overflowing storage | (F_WASTE; off) |
+| Build power overall | metal income × the Director's scale | core rule, scaled by surplus/deficit (on) |
+
+Scale changes during the game: map size, number of players, game time, how much has died. So the
+counts are recomputed every update, never fixed at start.
+
 ## Planned
 
 - Walls and dragon's teeth at chokes, in front of defence lines (Sun Tzu's terrain chapters; HOLD and

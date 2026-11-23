@@ -338,6 +338,21 @@
    "id": "b3-expand",
    "desc": "1v3 BARb-hard, 6 maps: baseline vs F_EXPAND+F_CONVERT",
    "result": "baseline 0-6 (3 outright), expand+convert 0-6 (5 outright): rejected, stays off"
+  },
+  {
+   "id": "b2-defsize",
+   "desc": "1v2: terrain defence sized to metal deficit",
+   "result": "value share 0.32 vs 0.37 base: off (F_DEFSIZE)"
+  },
+  {
+   "id": "r2-rez",
+   "desc": "1v2: rez fleet sized to wreck metal (F_REZ)",
+   "result": "0-6 both; value share 0.24 vs 0.11 base, kills up sharply; promising, needs more games"
+  },
+  {
+   "id": "en-live",
+   "desc": "live energy (anarva_e + F_ENERGY + F_CONVERT), smoke tests",
+   "result": "energy orders 86 -> 28 after mmLevel gate; our metal 30-36 vs each BARb 87-140 on Comet Catcher: the gap is extractor share (we hold 11-13 of 80 spots), not energy"
   }
  ],
  "findings": [

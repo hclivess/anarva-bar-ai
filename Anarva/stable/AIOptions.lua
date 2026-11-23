@@ -62,6 +62,11 @@ local options = {
 				desc = 'Development A/B variant',
 			},
 			{
+				key  = 'anarva_e',
+				name = 'Anarva (live energy)',
+				desc = 'Development: no fixed energy curve; energy decided from need and payback',
+			},
+			{
 				key  = 'anarva_fg',
 				name = 'Anarva (first-gen configs)',
 				desc = 'Development: first-gen configs with the current brain, for bisecting',
