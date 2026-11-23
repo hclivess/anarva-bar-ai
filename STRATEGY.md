@@ -269,6 +269,25 @@ Production far from the fight wastes army-time on the walk. A forward lab saves 
 production rate) of army presence, against the risk of losing it, which is measured from threat and
 loss heat near the site. The same trade decides where rally points and the next lab go.
 
+## 21. The script API ceiling, and the path past it
+
+Measured so far:
+- **1v1 vs BARb-hard is met** at ≥2:1 on every map type.
+- **1v2 is 0–11** across every variant tried: Fortify, commander zone, the economy gates.
+
+Anarvā out-ecoes each BARb individually but not both combined, gets pushed back, and loses the
+commander. Almost every remaining lever is blocked by the **script API**, not by the reasoning:
+
+- no unit commands: dodging, explicit commander positioning, focusing one opponent's base or commander
+- no feature or vent queries: wreck fields, geothermal
+- no per-enemy lists: target priority, snipe targets
+
+CircuitAI is open source (GPL-2.0). The next major lever is a **fork of the C++ core** that exposes
+exactly these to the scripts: a unit move/attack command, feature and vent queries, and per-enemy
+iteration with type, position and owner. That's a C++ build against the Recoil AI interface, heavier
+than scripts and configs, but it's what 1v6 most likely needs. A game-side companion gadget covers
+whatever the AI interface can't see (projectiles, burn zones).
+
 ## Planned
 
 - Walls and dragon's teeth at chokes, in front of defence lines (Sun Tzu's terrain chapters; HOLD and

@@ -317,6 +317,16 @@
                         {
                             "id":  "r13",
                             "desc":  "1v1 vs BARb: best + F_ECOGATE + F_TECH",
+                            "result":  "9W 5L 2D (1.80) vs control 2.25: neutral on wins; much larger economies on big maps, weak on small Avalanche"
+                        },
+                        {
+                            "id":  "m2-ecotech",
+                            "desc":  "1v2: best + ECOGATE + TECH (6 games)",
+                            "result":  "0W 6L"
+                        },
+                        {
+                            "id":  "m2-detail",
+                            "desc":  "1v2: best + defeat-in-detail sizing + waves/quota",
                             "result":  "running"
                         }
                     ],

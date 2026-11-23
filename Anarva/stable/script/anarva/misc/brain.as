@@ -35,7 +35,8 @@ const bool F_AA = false;        // static AA counter
 const bool F_FUSREC = false;
 const bool F_NEWRECALL = false;
 const bool F_MAPECO = false;
-const bool F_COMMSAFE = false;  // commander only works inside the zone our army protects    // constructor share from free extractor spots (map analysis) // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
+const bool F_COMMSAFE = false;
+const bool F_DETAIL = false;    // 1vN: defeat in detail - size against one opponent's army, not their sum  // commander only works inside the zone our army protects    // constructor share from free extractor spots (map analysis) // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -1731,7 +1732,10 @@ void Update()
 
 	// What we must be able to beat: the known (or, when blind, assumed) enemy army plus the army we
 	// guess is hidden under seen jammers, divided by how efficiently we are actually trading.
-	const float theirs = Brain::Economist::EnemyThreat() + aiEnemyMgr.GetEnemyThreat(RT::JAMMER);
+	float theirs = Brain::Economist::EnemyThreat() + aiEnemyMgr.GetEnemyThreat(RT::JAMMER);
+	// Napoleon: several enemies are several armies. Beat them one at a time before they combine.
+	if (F_DETAIL)
+		theirs /= float(AiMax(1, ai.GetEnemyTeamSize()));
 	needPower = theirs / AiMax(0.25f, Brain::Assess::trade);  // 0.25: numeric guard, not a tuning knob
 	ratio = ours / AiMax(1.f, needPower);
 
