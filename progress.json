@@ -383,6 +383,16 @@
    "id": "z2-rez",
    "desc": "1v2, 8 games each, 45-min games: F_REZ (bug fixed) vs base",
    "result": "0-8 both; value share 0.04 vs 0.13, survival 38.8 vs 38.6 min: rejected"
+  },
+  {
+   "id": "q2-quota",
+   "desc": "1v2, 8x45min: F_QUOTA alone",
+   "result": "0-8; share 0.04, survival 36.5 vs base 0.13/38.6: rejected"
+  },
+  {
+   "id": "t2-tech",
+   "desc": "1v2, 8x45min: F_TECH alone",
+   "result": "0-8; share 0.05, survival 34.0 vs base 0.13/38.6: rejected"
   }
  ],
  "findings": [
