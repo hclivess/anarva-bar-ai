@@ -33,7 +33,8 @@ const bool F_OPENER = true;
 const bool F_SCOUT = false;     // scout quota >=3 and timed scout recruits (keep sight)
 const bool F_AA = false;        // static AA counter
 const bool F_FUSREC = false;
-const bool F_NEWRECALL = false; // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
+const bool F_NEWRECALL = false;
+const bool F_MAPECO = false;    // constructor share from free extractor spots (map analysis) // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -1143,6 +1144,26 @@ void Init()
 // A T1 constructor brings ~85 workertime = ~4.25 build_speed units (unit facts), so that many workers.
 const float BUILD_SPEED_PER_WORKER = 4.25f;
 const int CORE_BUILDER_SHARE = 30;  // percent: mean constructor weight in factory.json T1/T2 tiers (config fact)
+// Constructor share of factory decisions. With map analysis: free extractor spots on our side
+// (map extractors / players - extractors we own) over (free spots + constructors): high when there is
+// much to claim and few hands, falling to zero once the map is taken. Without it: the core's config share.
+MapFacts::SMap@ mapInfo = null;
+void LookAtMap()  // pre-match map study (tools/analyze_maps.py)
+{
+	MapFacts::Init();
+	@mapInfo = MapFacts::Get(ai.GetMapName());
+	AiLog("[ANV] Map: " + ai.GetMapName() + (mapInfo is null ? " (not analysed)" : (" mex=" + mapInfo.mex + " path=" + int(mapInfo.basePath) + " straight=" + int(mapInfo.straight) + " choke=" + int(mapInfo.choke) + " water=" + F1(mapInfo.water))));
+}
+int BuilderSharePercent()
+{
+	if (!F_MAPECO || mapInfo is null)
+		return CORE_BUILDER_SHARE;
+	const float players = float(AiMax(2, ai.GetEnemyTeamSize() + 1));
+	const float free = AiMax(0.f, float(mapInfo.mex) / players - float(Brain::Economist::mexes.length()));
+	const float workers = float(aiBuilderMgr.GetWorkerCount());
+	return int(100.f * free / AiMax(1.f, free + workers));
+}
+
 bool NeedBuilder()
 {
 	const float want = aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio / BUILD_SPEED_PER_WORKER;
@@ -1252,7 +1273,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// T1/T2 weights). Hand that share of decisions back to the core so its constructor logic keeps the
 	// economy growing; we choose only the army picks. (Debt: replace with a measured marginal value of a
 	// constructor: income it adds now vs its cost and the horizon.)
-	if (NeedBuilder() || AiRandom(0, 99) < CORE_BUILDER_SHARE) {
+	if (NeedBuilder() || AiRandom(0, 99) < BuilderSharePercent()) {
 		++builders;
 		return null;
 	}
@@ -1786,6 +1807,7 @@ void Init()
 	Strategic::Init();
 	Eco::Init();
 	Production::Init();
+	Production::LookAtMap();
 	Waste::Init();
 	Economist::Init();
 }

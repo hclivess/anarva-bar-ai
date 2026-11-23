@@ -3,6 +3,7 @@
 #include "manager/factory.as"
 #include "manager/economy.as"
 #include "misc/facts.as"
+#include "misc/mapfacts.as"
 #include "misc/brain.as"
 #include "../common.as"
 

@@ -58,6 +58,38 @@ it gives crawling bombs a raider/scout role with limit 2, and cuts paralyzer uni
   facts table generated from the unit files (kind, factory) feeds these units into the candidate list
   with their own value terms.
 
+## 1d. Seeing what the player sees (planned: companion gadget)
+
+Correct decisions need everything a player sees.
+
+- **The core already sees:** wrecks and features (reclaim values; used by reclaim and resurrect
+  tasks), enemy units in LOS and radar, and terrain. Engine pathfinding routes around blocking
+  wreckage, and build placement avoids occupied ground.
+- **The script layer does not:** no feature or wreck list, no per-unit enemy list, no projectiles, no
+  burn zones, no geo vents. It only gets the core's summaries (threat, groups, costs per role).
+- **Plan:** a companion game-side gadget that answers the AI's queries over the existing `CallRules`
+  channel. It would report wreck fields (metal, energy, location, blocking), projectiles, napalm areas,
+  geo vents, and per-unit enemy composition near a point. It's one piece of infrastructure that
+  unlocks dodging, napalm avoidance, geo decisions, wreck-field routing and rez targeting.
+
+## 1e. Map analysis before the match (in progress)
+
+A pro reads the map first. `tools/analyze_maps.py` reads each map archive offline (height map, metal
+map, mapinfo) and computes:
+
+- extractor spots, and how many lie on each side
+- the base-to-base path distance, compared with the straight line (how winding it is)
+- the narrowest sustained corridor on that path (choke width)
+- the water share
+- start positions
+
+It writes `mapfacts.as`, which the AI looks up by map name at game start. Examples: Avalanche is open
+(width 1.4k); Glacier Pass is a winding choke (path 2× straight, width 160); Comet Catcher sits in
+between (736).
+
+**Uses:** travel time (the composition time term), expansion potential (the constructor value),
+whether fortifying chokes pays, and whether naval is needed.
+
 ## 1c. Legion napalm (planned / limit)
 
 Legion napalm leaves burning ground that keeps damaging everything standing in or walking through it.
