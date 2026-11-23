@@ -43,6 +43,7 @@ const bool F_EXPAND = false;    // constructors from the free extractor spots (m
 const bool F_DEFSIZE = false;   // terrain defence sized to the metal deficit (false: one turret per attack)
 const bool F_ENERGY = false;    // energy decided live (with profile anarva_e, where the fixed curve is off)
 const bool F_STAKE = false;     // trade estimate weighted by the army at stake (no all-in on a few kills)
+const bool F_COMMZONE = false;  // commander works only inside the zone where nothing of ours has died (with F_COMMSAFE)
 const bool F_REZ = false;       // rez-bot fleet sized to the wreck metal on the map
 const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
 
@@ -2410,13 +2411,30 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 	IBuilderTask@ bt = cast<IBuilderTask>(task);
 	if (bt is null)
 		return task;
-	float front = Brain::Assess::frontDist;
-	if (front <= 0.f && Brain::Production::mapInfo !is null && Brain::Production::mapInfo.basePath > 0.f)
-		front = Brain::Production::mapInfo.basePath * 0.5f;
-	if (front <= 0.f)
-		return task;  // no idea where the fighting is yet (opening): let it build
-	if (basePos.distance2D(bt.GetBuildPos()) <= 0.5f * front)
-		return task;
+	if (F_COMMZONE) {
+		/*
+		 * The commander is the game. It only takes work closer to home than the nearest place where we
+		 * have lost anything recently (the loss heat map; a cell counts while at least one metal of losses
+		 * there hasn't decayed away), and never inside such a cell. Where nothing has died, nothing has
+		 * reached. Work beyond stays queued for constructors, which are cheap to lose.
+		 */
+		const AIFloat3 bp = bt.GetBuildPos();
+		const float d = basePos.distance2D(bp);
+		float danger = 1e9f;
+		for (uint c = 0; c < Brain::Intel::heat.length(); ++c)
+			if (Brain::Intel::heat[c] >= 1.f)
+				danger = AiMin(danger, Brain::Intel::CellCenter(int(c)).distance2D(basePos) - Brain::Intel::CELL);
+		if (d < danger && Brain::Intel::heat[Brain::Intel::CellOf(bp)] < 1.f)
+			return task;
+	} else {
+		float front = Brain::Assess::frontDist;
+		if (front <= 0.f && Brain::Production::mapInfo !is null && Brain::Production::mapInfo.basePath > 0.f)
+			front = Brain::Production::mapInfo.basePath * 0.5f;
+		if (front <= 0.f)
+			return task;  // no idea where the fighting is yet (opening): let it build
+		if (basePos.distance2D(bt.GetBuildPos()) <= 0.5f * front)
+			return task;
+	}
 	++commRedirects;
 	CCircuitUnit@ fac = Brain::Intel::allFactories[AiRandom(0, int(Brain::Intel::allFactories.length()) - 1)];
 	return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, 30 * SECOND));
