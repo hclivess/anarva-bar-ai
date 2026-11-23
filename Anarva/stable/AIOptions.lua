@@ -66,6 +66,11 @@ local options = {
 				name = 'Anarva (first-gen configs)',
 				desc = 'Development: first-gen configs with the current brain, for bisecting',
 			},
+			{
+				key  = 'anarva_cs',
+				name = 'Anarva (commander safety test)',
+				desc = 'Development: commander hides from min 3 at lower threat',
+			},
 		},
 	},
 }

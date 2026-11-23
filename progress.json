@@ -16,7 +16,7 @@
                            "id":  "M1",
                            "desc":  "1v1 vs BARb hard: \u003e= 2:1 win ratio across all map types",
                            "status":  "in_progress",
-                           "result":  "first build 2.33 vs BARb; opener build beats that build 13-2-1 head-to-head"
+                           "result":  "current best 1.5 vs BARb hard (16 games, 30 min); first build 2.33 under harsher setup"
                        },
                        {
                            "id":  "M2",
@@ -93,7 +93,7 @@
                          "name":  "Capability-based production (+rez, core builder share)",
                          "flag":  "F_PROD",
                          "default":  "off (testing)",
-                         "evidence":  "r7b leading 3-0"
+                         "evidence":  "r7 even, r10 2-1-8 vs base: loses fights; off"
                      },
                      {
                          "name":  "Director-sized waves + quotas",
@@ -270,7 +270,17 @@
                         },
                         {
                             "id":  "r10",
-                            "desc":  "base(+opener+scale) + production + map-driven constructor share vs base",
+                            "desc":  "base(+opener+scale) + production + map eco vs base (11 of 16)",
+                            "result":  "2W 1D 8L: chooser loses fights (kills 48 vs 172); stays OFF; unit-value model needs work"
+                        },
+                        {
+                            "id":  "abs1",
+                            "desc":  "current best (opener+scale) vs BARb hard, 16 games both sides, 30 min",
+                            "result":  "6W 6D 4L (1.5); mixed 3-0, water 1-2; 3 of 4 losses = commander kills. In-family gains (13-2, 9-4) only partly transfer to BARb -\u003e BARb is the yardstick"
+                        },
+                        {
+                            "id":  "r11",
+                            "desc":  "best + commander safety config (anarva_cs) vs BARb hard",
                             "result":  "running"
                         }
                     ],

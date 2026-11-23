@@ -8,7 +8,7 @@ module is in [STRATEGY.md](STRATEGY.md) and [TACTICS.md](TACTICS.md).
 
 | # | Target | Status |
 |---|--------|--------|
-| M1 | 1v1 vs BARb hard, at least a 2:1 win ratio on all map types | first build 7–3 (2.33), mostly points wins; improving it module by module |
+| M1 | 1v1 vs BARb hard, at least a 2:1 win ratio on all map types | current best **1.5** (6–6–4, both sides, 30 min); first build 2.33 under a harsher setup. BARb is now the yardstick |
 | M2 | 1v2, winning a majority on all map types | not started |
 | M3 | 1v3 | not started |
 | M4 | **1v6 on all map types** | not started; the harness supports it (`batch.py --pool big --n1 6`) |
@@ -103,4 +103,6 @@ else is off pending tests (see the status table in [README.md](README.md)).
 | team replays | top ≤4v4 team games | boom harder and T2 5–6 min earlier than duels |
 | r8 | default + constructor-rich opener vs default, 16 games | **13W 2L 1D (6.5)**, 4 commander kills, all map types: **shipped on** |
 | r9 | + scale knob vs default (with opener), 16 games | **9W 4L 3D (2.25): shipped on** |
-| r10 | + production + map-driven constructor share | running |
+| r10 | + production + map-driven constructor share | 2W 1D 8L: the chooser loses fights; stays off |
+| abs1 | **current best vs BARb hard**, 16 games both sides | **6W 6D 4L (1.5)**; 3 of 4 losses are commander kills; water weakest |
+| r11 | + commander safety vs BARb hard | running |
