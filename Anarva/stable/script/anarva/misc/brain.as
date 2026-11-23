@@ -1142,6 +1142,7 @@ void Init()
 // The core's own rule: build power should be income * buildpowerRatio (the Director sets the ratio).
 // A T1 constructor brings ~85 workertime = ~4.25 build_speed units (unit facts), so that many workers.
 const float BUILD_SPEED_PER_WORKER = 4.25f;
+const int CORE_BUILDER_SHARE = 30;  // percent: mean constructor weight in factory.json T1/T2 tiers (config fact)
 bool NeedBuilder()
 {
 	const float want = aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio / BUILD_SPEED_PER_WORKER;
@@ -1239,9 +1240,13 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	const CCircuitDef@ fdef = fac.circuitDef;
 	if (fdef.IsMobile())
 		return null;
-	if (NeedBuilder()) {
+	// Constructors are part of every factory's mix in the core's config (unit list index 0, ~25-35% of
+	// T1/T2 weights). Hand that share of decisions back to the core so its constructor logic keeps the
+	// economy growing; we choose only the army picks. (Debt: replace with a measured marginal value of a
+	// constructor: income it adds now vs its cost and the horizon.)
+	if (NeedBuilder() || AiRandom(0, 99) < CORE_BUILDER_SHARE) {
 		++builders;
-		return null;  // core picks and places the right constructor
+		return null;
 	}
 	CCircuitDef@ rez = RezToBuild(fdef);
 	if (rez !is null) {

@@ -219,13 +219,18 @@
                             "result":  "3W 2L, 3 incomplete; decisive EoH win where base only won on points - neutral/positive"
                         },
                         {
-                            "id":  "r6a",
-                            "desc":  "base+prod+waves+quota vs base, 16 games both sides",
+                            "id":  "r6",
+                            "desc":  "base+prod(+waves) vs base, 6 of 16 games",
+                            "result":  "0W 4L 2D -\u003e chooser never picked constructors (core mix has ~30% builders): income flat ~12 m/s for 20 min. Stopped."
+                        },
+                        {
+                            "id":  "r7a",
+                            "desc":  "base+prod(fixed: core builder share)+waves+quota vs base, 16 games",
                             "result":  "running"
                         },
                         {
-                            "id":  "r6b",
-                            "desc":  "base+prod vs base, 16 games both sides",
+                            "id":  "r7b",
+                            "desc":  "base+prod(fixed) vs base, 16 games",
                             "result":  "running"
                         }
                     ],
@@ -246,7 +251,8 @@
                      "Geothermals are a core fallback only (energy planner ranks anywhere-placeable energy); script cannot see vents.",
                      "Side/map confound: with games==maps each map is played from one side only; compare variants paired, and move to both-sides (16 games) for final numbers.",
                      "Method: modules ship ON only after winning head-to-head vs first-gen; defaults = best-measured config.",
-                     "Harness: games capped at 30 game-min, points verdict from min 20, 60 min wall; variants tested directly vs base (paired) on both sides."
+                     "Harness: games capped at 30 game-min, points verdict from min 20, 60 min wall; variants tested directly vs base (paired) on both sides.",
+                     "Production chooser must leave constructors to the core (~30% of factory weights are builders); debt: measured marginal value of a constructor."
                  ],
     "replay_analysis":  {
                             "local_index":  "ref/replays.csv (1054 replays)",
