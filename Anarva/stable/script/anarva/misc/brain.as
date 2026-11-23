@@ -37,7 +37,8 @@ const bool F_NEWRECALL = false;
 const bool F_MAPECO = false;
 const bool F_COMMSAFE = false;
 const bool F_DETAIL = false;
-const bool F_TERRAIN = false;   // fortify the choke from the high ground (map analysis)    // 1vN: defeat in detail - size against one opponent's army, not their sum  // commander only works inside the zone our army protects    // constructor share from free extractor spots (map analysis) // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
+const bool F_TERRAIN = false;
+const bool F_BOOM = false;      // scale on pressure, not presence: boom while nothing presses us (human playbook vs BARbs)   // fortify the choke from the high ground (map analysis)    // 1vN: defeat in detail - size against one opponent's army, not their sum  // commander only works inside the zone our army protects    // constructor share from free extractor spots (map analysis) // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -1804,6 +1805,17 @@ void Update()
 	if (Brain::Assess::pushedBack) {
 		scale = AiMin(1.f, AiMax(0.35f, ratio));
 		scaleWhy = "pushed back with a deficit: army first";
+	} else if (F_BOOM) {
+		/*
+		 * Humans beat several hard BARbs by booming: BARb armies gather at home and don't punish
+		 * greed, so an army sitting in their base is no threat to us. What matters is force projected
+		 * AT us: metal we lose near home, relative to what we earn. Pressure p = home losses /
+		 * (home losses + a minute of income); scale toward eco by (1 - p).
+		 */
+		const float income60 = aiEconomyMgr.metal.income * 60.f;
+		const float p = Brain::Assess::lostNear / AiMax(1.f, Brain::Assess::lostNear + income60);
+		scale = AiMin(2.f, AiMax(1.f, ratio) * (1.f + (1.f - p)));
+		scaleWhy = "boom: home pressure " + int(p * 100.f) + "%";
 	} else {
 		scale = AiMin(2.f, AiMax(1.f, ratio));
 		scaleWhy = blind ? "blind: assume enemy kept pace" : (ratio >= 1.f ? "surplus power: scale" : "deficit away from home: keep the economy growing");

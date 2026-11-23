@@ -288,6 +288,21 @@ iteration with type, position and owner. That's a C++ build against the Recoil A
 than scripts and configs, but it's what 1v6 most likely needs. A game-side companion gadget covers
 whatever the AI interface can't see (projectiles, burn zones).
 
+## 22. How humans beat several hard BARbs (solo replays)
+
+Public replays of **one human alone beating 3–14 hard or hard-aggressive BARbs** (rated 12–23, not
+top players):
+
+- **Boom first.** Knizek vs 4 hard-aggressive: 83 m/s at minute 5 and 134 at minute 8, against the
+  bots' 27 and 49, with **zero army and zero defence for 8 minutes**. NoviceKing99 vs 3 hard: 1.6–1.9×
+  each bot's income.
+- **A smaller army, used at home.** The human army stays at about 0.3–0.7× of *all bots combined*,
+  and still wins.
+- **The reasoning:** BARb armies gather at home and don't punish early greed, so an enemy army sitting
+  in its own base is no threat. What matters is force **projected at us**.
+- **In Anarvā (`F_BOOM`):** constructors-vs-army scales on *pressure* (losses near home relative to a
+  minute of income), not on the enemy's presence. Nothing pressing means boom; pressure shifts toward
+  army in proportion.
 ## Planned
 
 - Walls and dragon's teeth at chokes, in front of defence lines (Sun Tzu's terrain chapters; HOLD and
