@@ -40,6 +40,24 @@ Status labels give the feature flag and whether it's on by default (see the stat
   in proportion to the artillery share. Real dodging uses projectile speed and flight time in the
   widget (§7).
 
+## 1b2. Tactical units: EMP, crawling bombs, utility (planned)
+
+Their value isn't damage × health, so the Lanchester score undervalues them. BARb mostly hides them:
+it gives crawling bombs a raider/scout role with limit 2, and cuts paralyzer units' threat to
+0.05-0.2.
+
+- **EMP** (`armspid` spider, `armstil` bomber, `corbw` drone; paralyzer weapons). A stun is worth the
+  enemy firepower it switches off times our damage that lands freely meanwhile. Value ∝ the enemy's
+  heavy/super/commander share × our army's damage.
+- **Crawling bombs** (Tumbleweed `armvader` at 65 M, `corroach`, `corsktl`, Legion snapper). Cheap
+  metal traded for area damage. Value ∝ the enemy's static and heavy share (clumped, slow, defensive
+  lines), plus speed against artillery armies.
+- **Utility** (radar bots, spies, decoys). Value comes from the information or deception they add,
+  tied to the sight-gap term and jammer intel.
+- **How:** the script can't read weapon flags (paralyzer, kamikaze) or a factory's build options, so a
+  facts table generated from the unit files (kind, factory) feeds these units into the candidate list
+  with their own value terms.
+
 ## 1c. Legion napalm (planned / limit)
 
 Legion napalm leaves burning ground that keeps damaging everything standing in or walking through it.

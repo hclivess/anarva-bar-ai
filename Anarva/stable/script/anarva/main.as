@@ -2,6 +2,7 @@
 #include "manager/builder.as"
 #include "manager/factory.as"
 #include "manager/economy.as"
+#include "misc/facts.as"
 #include "misc/brain.as"
 #include "../common.as"
 

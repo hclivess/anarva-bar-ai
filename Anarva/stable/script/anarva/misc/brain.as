@@ -1150,7 +1150,7 @@ bool NeedBuilder()
 }
 
 // Our current army, as the candidates would join it (Lanchester: strength ~ total damage x total health).
-float armyH = 0.f, armyD = 0.f, armyCost = 0.f, armyRange = 0.f, armyLos = 0.f, armySpeed = 0.f, wArty = 0.f;
+float armyH = 0.f, armyD = 0.f, armyCost = 0.f, armyRange = 0.f, armyLos = 0.f, armySpeed = 0.f, wArty = 0.f, wStaticCost = 0.f;
 
 void MeasureArmy(float wAir, float wSurf, float wSub)
 {
@@ -1208,6 +1208,14 @@ float Score(CCircuitDef@ d, float wAir, float wSurf, float wSub, float wStatic, 
 	const float dist = Brain::Assess::frontDist > 0.f ? Brain::Assess::frontDist : AiTerrainDiagonal() * 0.5f;
 	const float travel = dist / AiMax(1.f, d.speed);
 	s *= AiMax(0.f, 1.f - travel / AiMax(1.f, H));
+	// Tactical kinds (facts from unit files; the API can't see weapon flags). Same units as above:
+	// relative gain in fighting strength. A stun/blast that removes a fraction f of the enemy's
+	// effective strength is worth ~f; f ~ (share of targets it suits) x (this unit's share of our army).
+	const float share = d.costM / AiMax(1.f, armyCost + d.costM);
+	if (Facts::empUnits.find(d.GetName()) >= 0)
+		s += wHeavy * share;      // EMP: disables heavy, expensive targets while our army hits freely
+	if (Facts::crawlUnits.find(d.GetName()) >= 0)
+		s += (wStaticCost + wHeavy) * share;  // crawling bombs: area damage on what can't dodge
 	return s / Brain::Economist::MetalValue(d);  // per metal, energy priced at the converter rate
 }
 void OnFinished(CCircuitUnit@ u) { if (InList(rezDefs, u.circuitDef)) rezBots.insertLast(u); }
@@ -1270,19 +1278,32 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 
 	MeasureArmy(wAir, wSurf, wSub);
 	wArty = AiMin(1.f, aiEnemyMgr.GetEnemyCost(RT::ARTY) / surf);
+	wStaticCost = AiMin(1.f, aiEnemyMgr.GetEnemyCost(RT::STATIC) / (surf + aiEnemyMgr.GetEnemyCost(RT::STATIC)));
 	array<CCircuitDef@> cands;
 	array<float> scores;
-	for (uint i = 0; i < roles.length(); ++i) {
+	// Every unit this factory can build (facts: build options), not one per role.
+	const array<string>@ opts = Facts::BuildOptions(fdef.GetName());
+	for (uint i = 0; i < opts.length(); ++i) {
+		CCircuitDef@ d = ai.GetCircuitDef(opts[i]);
+		if (d is null || !d.IsMobile() || d.IsRoleAny(Unit::Role::BUILDER.mask) || InList(rezDefs, d) || cands.findByRef(d) >= 0)
+			continue;
+		const float s = Score(d, wAir, wSurf, wSub, wStatic, wHeavy);
+		if (s > 0.f) {
+			cands.insertLast(d);
+			scores.insertLast(s);
+		}
+	}
+	// factories without facts fall back to one candidate per role
+	for (uint i = 0; opts.length() == 0 && i < roles.length(); ++i) {
 		CCircuitDef@ d = aiFactoryMgr.GetRoleDef(fdef, roles[i]);
 		if (d is null || !d.IsMobile() || cands.findByRef(d) >= 0)
 			continue;
 		const float s = Score(d, wAir, wSurf, wSub, wStatic, wHeavy);
 		if (s > 0.f) {
 			cands.insertLast(d);
-			scores.insertLast(s);  // proportional pick: Lanchester marginal value already balances the mix
+			scores.insertLast(s);
 		}
-	}
-	if (cands.length() == 0)
+	}	if (cands.length() == 0)
 		return null;
 	if (ai.frame - lastDump > 3 * MINUTE) {  // audit trail: what the chooser weighed
 		lastDump = ai.frame;
