@@ -35,7 +35,7 @@ name={short}{idx};
 }}
 [team{idx}]
 {{
-allyteam={idx};
+allyteam={idx if ally is None else ally};
 teamleader=0;
 side=Random;
 handicap=0;
@@ -72,7 +72,7 @@ hostip=127.0.0.1;
 hostport=0;
 numplayers=1;
 numusers={2 + args.n1};
-startpostype=0;
+startpostype={2 if args.n1 > 1 else 0};
 gametype={GAME};
 mapname={args.map};
 myplayername=Observer;
