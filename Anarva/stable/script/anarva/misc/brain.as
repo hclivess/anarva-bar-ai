@@ -42,6 +42,7 @@ const bool F_CONVERT = false;   // wasted energy -> converters, chosen by paybac
 const bool F_EXPAND = false;    // constructors from the free extractor spots (marginal value), not from income
 const bool F_DEFSIZE = false;   // terrain defence sized to the metal deficit (false: one turret per attack)
 const bool F_ENERGY = false;    // energy decided live (with profile anarva_e, where the fixed curve is off)
+const bool F_STAKE = false;     // trade estimate weighted by the army at stake (no all-in on a few kills)
 const bool F_REZ = false;       // rez-bot fleet sized to the wreck metal on the map
 const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
 
@@ -2129,12 +2130,16 @@ void Update()  // every second
 	lostFar *= 0.992f;
 	killed *= 0.992f;
 	const float ev = EnemyValue();
-	if (enemyPrev >= 0.f && ev < enemyPrev)
+	if (enemyPrev >= 0.f && ev < enemyPrev) {
 		killed += AiMin(enemyPrev - ev, 3000.f);  // drops in known enemy value ~ our kills
 		killedTotal += AiMin(enemyPrev - ev, 3000.f);
+	}
 	enemyPrev = ev;
 	const float lost = lostNear + lostFar;
-	trade = (killed + 50.f) / (lost + 50.f);
+	// Evidence weighted by the stake: exchanges small next to the army we'd be risking can't swing the
+	// estimate (a few cheap kills once turned 0.7 into 5.1 and launched an all-in), real exchanges do.
+	const float stake = F_STAKE ? AiMax(50.f, Brain::Strategic::armyMetal) : 50.f;
+	trade = (killed + stake) / (lost + stake);
 	pushedBack = lostNear > 300.f && lostNear > 1.5f * lostFar;
 	pushing = lostFar > 300.f && lostFar > 2.f * lostNear && frontDist > 1800.f;
 
