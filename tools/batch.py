@@ -67,7 +67,7 @@ def run_one(args, i):
     if tac_team == 1:
         ai.reverse()
     subprocess.run([sys.executable, "-I", os.path.join(HERE, "run_match.py"), out, "--ai0", ai[0], "--ai1", ai[1],
-                    "--map", m, "--minutes", str(args.minutes), "--n1", str(args.n1 if tac_team == 0 else 1)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    "--map", m, "--minutes", str(args.minutes), "--game-minutes", str(args.game_minutes), "--n1", str(args.n1 if tac_team == 0 else 1)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     r = parse(out, tac_team, args.n1)
     r.update({"game": i, "map": m, "tac_team": tac_team})
     t = r.get("teams", {})
@@ -90,6 +90,7 @@ def main():
     ap.add_argument("--maps", default=None)
     ap.add_argument("--pool", default="std", choices=["std", "big"])
     ap.add_argument("--minutes", type=float, default=60.0)
+    ap.add_argument("--game-minutes", type=float, default=30.0, help="game-time cap before scoring by points")
     args = ap.parse_args()
     if args.maps is None:
         args.maps = ",".join(BIG_MAPS if args.pool == "big" else DEFAULT_MAPS)

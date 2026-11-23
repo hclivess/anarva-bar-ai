@@ -90,11 +90,14 @@ def main():
     ap.add_argument("--map", default="Avalanche 3.4")
     ap.add_argument("--n1", type=int, default=1, help="number of ai1 copies (all allied)")
     ap.add_argument("--minutes", type=float, default=20.0, help="wall-clock limit")
+    ap.add_argument("--game-minutes", type=float, default=30.0, help="game-time cap (harness widget)")
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
     harness = os.path.join(os.path.dirname(os.path.abspath(__file__)), "harness")
     shutil.copytree(harness, args.out, dirs_exist_ok=True)
+    with open(os.path.join(args.out, "springsettings.cfg"), "a") as f:
+        f.write("HarnessMaxFrames = %d\n" % int(args.game_minutes * 60 * 30))
     script = os.path.join(args.out, "script.txt")
     with open(script, "w") as f:
         f.write(make_script(args))
