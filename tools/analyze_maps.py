@@ -20,6 +20,7 @@ import py7zr
 SQUARE = 8           # elmos per heightmap square
 CELL = 4             # analysis cell = 4 heightmap squares = 32 elmos
 MAX_SLOPE = 0.41     # bot movedef max slope (vbot/kbot), a game fact
+MAX_WADE = 22.0      # bot movedef max water depth (elmos), a game fact
 
 
 def read_archive(path):
@@ -106,9 +107,9 @@ def passability(smf):
                     a = hm[(z0 + dz) * hw + (x0 + dx)]
                     slope = max(slope, abs(hm[(z0 + dz) * hw + (x0 + dx + 1)] - a), abs(hm[(z0 + dz + 1) * hw + (x0 + dx)] - a))
             slope /= SQUARE
-            under = sum(1 for v in hs if v < 0) >= 3
-            water += under
-            grid[gz * gw + gx] = 1 if (slope <= MAX_SLOPE and not under) else 0
+            water += sum(1 for v in hs if v < 0) >= 3
+            deep = sum(hs) / 4.0 < -MAX_WADE  # bots wade shallow water
+            grid[gz * gw + gx] = 1 if (slope <= MAX_SLOPE and not deep) else 0
     return grid, gw, gh, water / float(gw * gh)
 
 
@@ -139,14 +140,14 @@ def path_and_choke(grid, gw, gh, a, b):
                     prev[v] = u
                     heapq.heappush(pq, (nd, v))
     if t not in dist:
-        return None, None
+        return None, None, None
     path, u = [], t
     while u != s:
         path.append(u)
         u = prev[u]
     path.reverse()
     # width across the path direction, sampled every few cells, ignoring the base areas themselves
-    widths = []
+    widths, wpos = [], []
     for i in range(4, len(path) - 4, 2):
         (x0, z0), (x1, z1) = path[i - 2], path[i + 2]
         dx, dz = x1 - x0, z1 - z0
@@ -162,13 +163,52 @@ def path_and_choke(grid, gw, gh, a, b):
                 k += 1
                 w += 1
         widths.append(w)
+        wpos.append(i)
     # a choke is a narrow stretch, not a single bump: narrowest 5-sample moving median along the path
     if len(widths) >= 5:
         smooth = [sorted(widths[i - 2:i + 3])[2] for i in range(2, len(widths) - 2)]
+        spos = wpos[2:len(widths) - 2]
     else:
-        smooth = widths
-    return dist[t] * CELL * SQUARE, (min(smooth) * CELL * SQUARE if smooth else None)
+        smooth, spos = widths, wpos
+    choke = (min(smooth) * CELL * SQUARE) if smooth else None
+    # per side: the narrowest point on that side's half of the path (skip the outer 15%: the bases)
+    sides = []
+    n = len(path)
+    for lo, hi in ((0.15, 0.5), (0.5, 0.85)):
+        best = None
+        for w, i in zip(smooth, spos):
+            if lo * n <= i < hi * n and (best is None or w < best[0]):
+                best = (w, i)
+        sides.append((path[best[1]], best[0] * CELL * SQUARE) if best else None)
+    return dist[t] * CELL * SQUARE, choke, sides
 
+
+def cell_height(hm, hw, gx, gz):
+    x0, z0 = gx * CELL + CELL // 2, gz * CELL + CELL // 2
+    return hm[z0 * hw + x0]
+
+
+def high_ground(grid, gw, gh, hm, hw, choke_cell, own_start):
+    """Highest passable cell overlooking the choke from our side: within ~500 elmos of the choke,
+    no farther from our start than the choke itself. Returns (x, z, height gain) in elmos."""
+    cx, cz = choke_cell
+    base_h = cell_height(hm, hw, cx, cz)
+    own = (own_start[0] / (CELL * SQUARE), own_start[1] / (CELL * SQUARE))
+    dchoke = math.hypot(cx - own[0], cz - own[1])
+    R = int(500 / (CELL * SQUARE))
+    best = None
+    for gz in range(max(0, cz - R), min(gh, cz + R + 1)):
+        for gx in range(max(0, cx - R), min(gw, cx + R + 1)):
+            if not grid[gz * gw + gx] or math.hypot(gx - cx, gz - cz) > R:
+                continue
+            if math.hypot(gx - own[0], gz - own[1]) > dchoke:
+                continue  # stay on our side of the choke
+            gain = cell_height(hm, hw, gx, gz) - base_h
+            if best is None or gain > best[2]:
+                best = (gx, gz, gain)
+    if not best:
+        return None
+    return ((best[0] + 0.5) * CELL * SQUARE, (best[1] + 0.5) * CELL * SQUARE, best[2])
 
 def analyze(path):
     files, smf_name, info_name = read_archive(path)
@@ -191,13 +231,26 @@ def analyze(path):
     rep = {"file": os.path.basename(path), "name": mapname, "size": size, "starts": starts[:16],
            "mex": len(spots), "water": round(water, 3)}
     if len(starts) >= 2:
-        d, choke = path_and_choke(grid, gw, gh, starts[0], starts[1])
+        # overall: start 0 vs the start farthest from it (on team maps start 1 is often a teammate)
+        far0 = max(range(len(starts)), key=lambda j: math.dist(starts[0], starts[j]))
+        d, choke, _ = path_and_choke(grid, gw, gh, starts[0], starts[far0])
         rep["base_path"] = round(d) if d else None
-        rep["base_straight"] = round(math.dist(starts[0], starts[1]))
+        rep["base_straight"] = round(math.dist(starts[0], starts[far0]))
         rep["choke_width"] = round(choke) if choke else None
-        # extractors closer to start 0 than to start 1: what each side can claim
-        near = sum(1 for s in spots if math.dist(s[:2], starts[0]) < math.dist(s[:2], starts[1]))
+        near = sum(1 for s in spots if math.dist(s[:2], starts[0]) < math.dist(s[:2], starts[far0]))
         rep["mex_per_side"] = [near, len(spots) - near]
+        # per start (up to 8): our choke toward the farthest start, and the high ground over it
+        rep["defence"] = []
+        for i, st in enumerate(starts[:8]):
+            far = max(range(len(starts)), key=lambda j: math.dist(st, starts[j]))
+            _, _, sides = path_and_choke(grid, gw, gh, st, starts[far])
+            sd = sides[0] if sides else None
+            if not sd:
+                continue
+            (ccx, ccz), w = sd
+            hg = high_ground(grid, gw, gh, smf["hm"], smf["hw"], (ccx, ccz), st)
+            rep["defence"].append({"start": st, "choke": [(ccx + 0.5) * CELL * SQUARE, (ccz + 0.5) * CELL * SQUARE], "width": w,
+                                   "high": [hg[0], hg[1]] if hg else None, "gain": round(hg[2]) if hg else 0})
     return rep
 
 
@@ -217,12 +270,20 @@ def main():
     json.dump(reports, open(out_json, "w"), indent=1)
     lines = ["// GENERATED by tools/analyze_maps.py: pre-match map analysis. Do not edit.",
              "namespace MapFacts {", "",
-             "class SMap { float basePath; float straight; float choke; int mex; float water; }", "",
+             "class SMap { float basePath; float straight; float choke; int mex; float water;",
+             "  array<float> sx, sz, cx, cz, hx, hz, gain; }  // per analysed start: start, choke point, high ground", "",
              "dictionary maps;", "", "void Init()", "{"]
     for r in reports:
-        lines.append('\t{ SMap m; m.basePath = %s; m.straight = %s; m.choke = %s; m.mex = %d; m.water = %s; maps.set("%s", @m); }'
+        d = [x for x in (r.get("defence") or []) if x and x.get("high")]
+        def arr(vals):
+            return "{" + ", ".join("%.0f" % v for v in vals) + "}"
+        lines.append('\t{ SMap m; m.basePath = %s; m.straight = %s; m.choke = %s; m.mex = %d; m.water = %s;'
+                     ' m.sx = %s; m.sz = %s; m.cx = %s; m.cz = %s; m.hx = %s; m.hz = %s; m.gain = %s; maps.set("%s", @m); }'
                      % (float(r.get("base_path") or -1), float(r.get("base_straight") or -1), float(r.get("choke_width") or -1),
-                        r["mex"], r["water"], r["name"].replace('"', "")))
+                        r["mex"], r["water"],
+                        arr(x["start"][0] for x in d), arr(x["start"][1] for x in d), arr(x["choke"][0] for x in d),
+                        arr(x["choke"][1] for x in d), arr(x["high"][0] for x in d), arr(x["high"][1] for x in d),
+                        arr(x["gain"] for x in d), r["name"].replace('"', "")))
     lines += ["}", "", "SMap@ Get(const string& in name)", "{", "\tSMap@ m;", "\tif (maps.get(name, @m))", "\t\treturn m;",
               "\treturn null;", "}", "", "}  // namespace MapFacts"]
     open(out_as, "w", encoding="utf-8", newline="\n").write("\n".join(lines) + "\n")

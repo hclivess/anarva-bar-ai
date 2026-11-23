@@ -36,7 +36,8 @@ const bool F_FUSREC = false;
 const bool F_NEWRECALL = false;
 const bool F_MAPECO = false;
 const bool F_COMMSAFE = false;
-const bool F_DETAIL = false;    // 1vN: defeat in detail - size against one opponent's army, not their sum  // commander only works inside the zone our army protects    // constructor share from free extractor spots (map analysis) // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
+const bool F_DETAIL = false;
+const bool F_TERRAIN = false;   // fortify the choke from the high ground (map analysis)    // 1vN: defeat in detail - size against one opponent's army, not their sum  // commander only works inside the zone our army protects    // constructor share from free extractor spots (map analysis) // need-based recall (false = first-gen 40%-of-peak rule)    // recycle fusions once AFUS carry the grid    // constructor-rich T1 opener (false = BARb hard opener)     // attack/raid quotas sized from needed power
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -1057,9 +1058,63 @@ void InitFortify()
 	@wallDef = Side("armdrag", "cordrag", "legdrag");
 }
 
+/*
+ * Terrain fortification: the choke on our side of the path to the enemy, and the highest ground
+ * overlooking it (offline map analysis). Turrets on the high ground (reach, fire from above), teeth
+ * across the choke mouth (attackers stall under fire). Done while we can't win an open fight
+ * (power < needed) or whenever we're outnumbered (1vN), as long as the deficit lasts.
+ */
+int myStart = -2;
+bool TerrainFortify()
+{
+	MapFacts::SMap@ m = Brain::Production::mapInfo;
+	if (m is null || m.hx.length() == 0 || !HasBase())
+		return false;
+	if (myStart == -2) {
+		myStart = -1;
+		float best = 1e9f;
+		for (uint i = 0; i < m.sx.length(); ++i) {
+			const float d = basePos.distance2D(AIFloat3(m.sx[i], 0.f, m.sz[i]));
+			if (d < best && d < 0.25f * AiMax(m.straight, 1.f)) {  // must actually be our start
+				best = d;
+				myStart = int(i);
+			}
+		}
+		AiLog("[ANV] Terrain: " + (myStart < 0 ? "our start isn't an analysed one" : ("choke at (" + int(m.cx[myStart]) + "," + int(m.cz[myStart])
+			+ "), high ground (" + int(m.hx[myStart]) + "," + int(m.hz[myStart]) + ") +" + int(m.gain[myStart]) + " elmos")));
+	}
+	if (myStart < 0)
+		return false;
+	const bool outnumbered = ai.GetEnemyTeamSize() > 1;
+	if ((Brain::Director::ratio >= 1.f && !outnumbered) || ai.frame - lastFortify < 30 * SECOND)
+		return true;  // handled (nothing to do now)
+	const float m_inc = aiEconomyMgr.metal.income;
+	CCircuitDef@ tur = (m_inc >= 45.f && turT3 !is null && turT3.IsAvailable(ai.frame)) ? turT3
+		: ((m_inc >= 18.f && turT2 !is null && turT2.IsAvailable(ai.frame)) ? turT2 : turT1);
+	if (tur is null || !tur.IsAvailable(ai.frame))
+		return true;
+	lastFortify = ai.frame;
+	++forts;
+	const AIFloat3 high(m.hx[myStart], 0.f, m.hz[myStart]);
+	const AIFloat3 choke(m.cx[myStart], 0.f, m.cz[myStart]);
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, high, SQUARE_SIZE * 12, true, 3 * MINUTE));
+	if (wallDef !is null && wallDef.IsAvailable(ai.frame) && forts % 2 == 1) {
+		AIFloat3 dir = choke - AIFloat3(m.sx[myStart], 0.f, m.sz[myStart]);
+		const float len = AiMax(1.f, dir.Length2D());
+		dir = dir / len;
+		const AIFloat3 side(-dir.z, 0.f, dir.x);
+		for (int k = -3; k <= 3; ++k)
+			aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, wallDef, choke + side * (48.f * k), 0.f, true, 3 * MINUTE));
+	}
+	AiLog("[ANV] Terrain: " + tur.GetName() + " on high ground (+" + int(m.gain[myStart]) + ")" + (forts % 2 == 1 ? " + teeth across the choke" : ""));
+	return true;
+}
+
 void Fortify()
 {
-	if (!F_FORTIFY)
+	if (!F_FORTIFY && !F_TERRAIN)
+		return;
+	if (F_TERRAIN && TerrainFortify())
 		return;
 	const int p = Brain::Director::posture;
 	if ((p != Brain::Director::HOLD && p != Brain::Director::TURTLE) || ai.frame < 5 * MINUTE

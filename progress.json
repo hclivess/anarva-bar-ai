@@ -326,8 +326,13 @@
                         },
                         {
                             "id":  "m2-detail",
-                            "desc":  "1v2: best + defeat-in-detail sizing + waves/quota",
-                            "result":  "running"
+                            "desc":  "1v2: defeat-in-detail sizing + waves/quota",
+                            "result":  "1W 11L (first 1v2 win, Throne)"
+                        },
+                        {
+                            "id":  "vsbots",
+                            "desc":  "STUDY: public replays where one human beats 3-15 BARbs (15 games)",
+                            "result":  "playing back"
                         }
                     ],
     "findings":  [
@@ -348,7 +353,8 @@
                      "Side/map confound: with games==maps each map is played from one side only; compare variants paired, and move to both-sides (16 games) for final numbers.",
                      "Method: modules ship ON only after winning head-to-head vs first-gen; defaults = best-measured config.",
                      "Harness: games capped at 30 game-min, points verdict from min 20, 60 min wall; variants tested directly vs base (paired) on both sides.",
-                     "Production chooser must leave constructors to the core (~30% of factory weights are builders); debt: measured marginal value of a constructor."
+                     "Production chooser must leave constructors to the core (~30% of factory weights are builders); debt: measured marginal value of a constructor.",
+                     "Approach change (user): fewer blind A/B batches; study how humans beat multiple BARbs and derive the reasoning."
                  ],
     "replay_analysis":  {
                             "local_index":  "ref/replays.csv (1054 replays)",
