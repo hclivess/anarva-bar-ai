@@ -107,4 +107,7 @@ else is off pending tests (see the status table in [README.md](README.md)).
 | abs1 | **current best vs BARb hard**, 16 games both sides | **6W 6D 4L (1.5)**; 3 of 4 losses are commander kills; water weakest |
 | r11 | + commander safety vs BARb hard, 16 games | **9W 3D 4L (2.25)**, 6 commander kills, ≥2:1 on every map type: **M1 met, shipped** |
 | m2-base | 1v2 vs BARb hard, big maps, separated starts | **0W 11L 1D**: out-ecoes each BARb, but the army is ~40% of their combined; the commander dies when pushed back |
-| m2-fortify | 1v2 + Fortify | running |
+| m2-fortify | 1v2 + Fortify | 0W 9L 1D: no help |
+| m2-commsafe | 1v2 + commander works only in the protected zone | 0W 3L: the base itself gets overrun; root cause is the economy |
+| r12 | 1v1 vs BARb: + waste handling (converters, nanos) | 6W 7L 3D (0.86) vs 2.25: rejected |
+| r13 | 1v1 vs BARb: + moho gate + payback tech gate | running |

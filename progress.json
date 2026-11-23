@@ -123,7 +123,7 @@
                          "name":  "Overflow: nanos + converters",
                          "flag":  "F_WASTE",
                          "default":  "off",
-                         "evidence":  "untested alone"
+                         "evidence":  "r12: 6-7-3 vs BARb (control 9-4-3): rejected"
                      },
                      {
                          "name":  "Assist redirect by deficit",
@@ -306,7 +306,17 @@
                         },
                         {
                             "id":  "m2-commsafe",
-                            "desc":  "1v2 + commander only works inside protected zone",
+                            "desc":  "1v2 + commander protected-zone rule (3 games)",
+                            "result":  "0W 3L: commander dies ~600 from base, idle - base overrun; root cause is economy (each BARb out-eco\u0027d ~1.3x, combined ~0.65x)"
+                        },
+                        {
+                            "id":  "r12",
+                            "desc":  "1v1 vs BARb: best + F_WASTE",
+                            "result":  "6W 7L 3D (0.86) vs control 2.25 -\u003e rejected"
+                        },
+                        {
+                            "id":  "r13",
+                            "desc":  "1v1 vs BARb: best + F_ECOGATE + F_TECH",
                             "result":  "running"
                         }
                     ],
