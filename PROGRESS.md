@@ -59,7 +59,8 @@ else is off pending tests (see the status table in [README.md](README.md)).
 
 ## In progress / next
 
-- [ ] Round 7: production chooser (with constructor share) vs base. Leading 3–0 after 3 of 16 games.
+- [x] Round 7: production chooser vs base. Even (4–1–4), not yet a gain.
+- [ ] Round 8: constructor-rich opener alone (the economy is the lever: top winners reach 53 m/s at 10 min, we reach ~25–30)
 - [ ] Rework waves: launch when the gathered force can win *its* fight, and don't hold units at home
   while the map is lost.
 - [ ] One-at-a-time tests: scale knob, tech gate, moho gate, waste, redirect, fortify.
@@ -93,5 +94,8 @@ else is off pending tests (see the status table in [README.md](README.md)).
 | h9 | default + waves + quotas vs first build | 2W 1L 1D, 3 incomplete |
 | h10 | default + production vs first build | 3W 2L, 3 incomplete |
 | r6 | default + production (± waves) vs default, both sides | 0W 4L 2D after 6 games: no constructors from the chooser; stopped and fixed |
-| r7a | default + production (fixed) + waves + quotas vs default | 1 draw, 2 losses so far (running) |
-| r7b | default + production (fixed) vs default | **3W 0L so far** (running) |
+| r7a | default + production (fixed) + waves + quotas vs default | 3W 2D 4L (10 of 16): no gain |
+| r7b | default + production (fixed) vs default | 4W 1D 4L (10 of 16): even; losses on mixed/water with an eco gap |
+| perf | throughput | 7 parallel engines run below real time with idle CPU; now 1 variant × 4 games in parallel |
+| team replays | top ≤4v4 team games | boom harder and T2 5–6 min earlier than duels |
+| r8 | default + constructor-rich opener vs default | running |

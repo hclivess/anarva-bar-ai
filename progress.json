@@ -240,12 +240,27 @@
                         },
                         {
                             "id":  "r7a",
-                            "desc":  "base+prod(fixed: core builder share)+waves+quota vs base, 16 games",
-                            "result":  "running"
+                            "desc":  "base+prod(fixed)+waves+quota vs base (10 of 16 games)",
+                            "result":  "3W 2D 4L, 1 incomplete: not a gain"
                         },
                         {
                             "id":  "r7b",
-                            "desc":  "base+prod(fixed) vs base, 16 games",
+                            "desc":  "base+prod(fixed) vs base (10 of 16)",
+                            "result":  "4W 1D 4L, 1 incomplete: even; losses on mixed/water with large eco gap"
+                        },
+                        {
+                            "id":  "perf",
+                            "desc":  "throughput",
+                            "result":  "7 parallel engines: 6-7 min load + sim below realtime with idle CPU; 1 engine: ~3.4 game-min per wall-min. Use 1 variant x 4 parallel."
+                        },
+                        {
+                            "id":  "team-replays",
+                            "desc":  "top team games \u003c=4v4 (25 player-games)",
+                            "result":  "34 m/s at 5m, 58 at 10m (duels 25/48); T2 ~10.6 min vs ~16 in duels"
+                        },
+                        {
+                            "id":  "r8",
+                            "desc":  "base+constructor-rich opener vs base, 16 games",
                             "result":  "running"
                         }
                     ],

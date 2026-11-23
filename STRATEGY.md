@@ -176,6 +176,7 @@ Sidestepping slow projectiles, and spreading out against splash, are per-unit mi
   b2 with zero fusions and 750 E/s at 30 minutes, and it lost every open map. Pros can run 11-16 E:M
   because their metal income is huge. We keep BARb's energy curve and recover metal efficiency
   elsewhere: the army share, the moho gate and recycling.
+- **Team games are different.** Top team players (≤4v4, 25 player-games rated 35+) boom harder: about 34 m/s at minute 5 and 58 at 10 (duels: 25 and 48). They go T2 about **5-6 minutes earlier** (10.6 vs ~16 min), with eco value near 2× army at minute 10 (duels: ~1.5×). Allies share the front, so the planning horizon is longer, and the horizon formula is what has to capture that, not a copied timing. In 1vN, Anarvā has no allies covering it, which points the other way.
 - **Unit choices** come from capabilities read at runtime (damage against air, surface and underwater,
   health, range, speed, cost), so a balance patch changes the choice automatically.
 
