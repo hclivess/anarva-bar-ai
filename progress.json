@@ -373,6 +373,11 @@
    "id": "c2-base",
    "desc": "current build (turret by power/metal, wreck hold share, lead-time anti-nuke), 1v2 x12",
    "result": "0W 10L 2 points-draws, value share 0.36, best games 0.86/0.94"
+  },
+  {
+   "id": "l2-long",
+   "desc": "current build 1v2, games to 60 game-min (no 30-min points cut)",
+   "result": "0-6, all outright losses at 26-36 min (one at 14): the 30-min points draws were snapshots, not near-wins"
   }
  ],
  "findings": [
@@ -400,7 +405,8 @@
   "Edict (1 human vs 2 allied BARbs, Comet Catcher): ~20 light turrets + ~30 mines on the lanes by 8 min, static defence above each bot's 3-8 min, mass Gatling tanks 10-14 min, T2 at 13, push at 20 with 2x the bots' army. Defence first when the enemy comes to you.",
   "1v3 single games after deficit-sized terrain defence: bots reach 43-91 M/s each vs ours 20-25; our extractors fall to 3-5. The deficit measure (needPower in power units) is too small when the enemy is unscouted; turret count stays low.",
   "Refrog (1 human vs 2 allied BARbs, Center Command, 139 min): the factory cycles constructor, rez bot (cornecro), raiders, assault every round from minute 5; income passes the bots by minute 10 (45 vs 35 each) and reaches 2x by minute 15. Rez bots as a steady metal source alongside the army.",
-  "All-in at 12 min in a 1v2 (lost ~3000 metal far from home): trade estimate from ~85 s of kills swung 0.7 -> 5.1 on a few cheap kills, needed power fell 130 -> 21. Fix candidate F_STAKE: weight evidence by the army at stake."
+  "All-in at 12 min in a 1v2 (lost ~3000 metal far from home): trade estimate from ~85 s of kills swung 0.7 -> 5.1 on a few cheap kills, needed power fell 130 -> 21. Fix candidate F_STAKE: weight evidence by the army at stake.",
+  "Against two allied BARb-hard, Anarva is overrun by 26-36 min on every map type. 1v1 (2.25 vs BARb) does not carry over: the combined bots out-earn us ~3x and the script layer can't do the human counters (just-in-time army needs enemy positions; kill zones, transports, micro need unit commands)."
  ],
  "replay_analysis": {
   "local_index": "ref/replays.csv (1054 replays)",
