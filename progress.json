@@ -378,6 +378,11 @@
    "id": "l2-long",
    "desc": "current build 1v2, games to 60 game-min (no 30-min points cut)",
    "result": "0-6, all outright losses at 26-36 min (one at 14): the 30-min points draws were snapshots, not near-wins"
+  },
+  {
+   "id": "z2-rez",
+   "desc": "1v2, 8 games each, 45-min games: F_REZ (bug fixed) vs base",
+   "result": "0-8 both; value share 0.04 vs 0.13, survival 38.8 vs 38.6 min: rejected"
   }
  ],
  "findings": [
@@ -406,7 +411,8 @@
   "1v3 single games after deficit-sized terrain defence: bots reach 43-91 M/s each vs ours 20-25; our extractors fall to 3-5. The deficit measure (needPower in power units) is too small when the enemy is unscouted; turret count stays low.",
   "Refrog (1 human vs 2 allied BARbs, Center Command, 139 min): the factory cycles constructor, rez bot (cornecro), raiders, assault every round from minute 5; income passes the bots by minute 10 (45 vs 35 each) and reaches 2x by minute 15. Rez bots as a steady metal source alongside the army.",
   "All-in at 12 min in a 1v2 (lost ~3000 metal far from home): trade estimate from ~85 s of kills swung 0.7 -> 5.1 on a few cheap kills, needed power fell 130 -> 21. Fix candidate F_STAKE: weight evidence by the army at stake.",
-  "Against two allied BARb-hard, Anarva is overrun by 26-36 min on every map type. 1v1 (2.25 vs BARb) does not carry over: the combined bots out-earn us ~3x and the script layer can't do the human counters (just-in-time army needs enemy positions; kill zones, transports, micro need unit commands)."
+  "Against two allied BARb-hard, Anarva is overrun by 26-36 min on every map type. 1v1 (2.25 vs BARb) does not carry over: the combined bots out-earn us ~3x and the script layer can't do the human counters (just-in-time army needs enemy positions; kill zones, transports, micro need unit commands).",
+  "1v2 income curve (Comet Catcher): Anarva matches each BARb until ~12 min (29.5 vs 26-40 M/s), then stalls at ~30 while the bots compound to 110 by 24 min and 240 by 36. Our outer extractors fall (13 -> 6) and T2/fusion only appears ~20-24 min."
  ],
  "replay_analysis": {
   "local_index": "ref/replays.csv (1054 replays)",
