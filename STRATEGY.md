@@ -291,7 +291,12 @@ whatever the AI interface can't see (projectiles, burn zones).
 ## 22. How humans beat several hard BARbs (solo replays)
 
 Six public replays of **one human alone, no allied bots, against 3–14 hard or hard-aggressive
-BARbs**, played back headless and measured every minute (`tools/fetch_vsbots.py`,
+BARbs**. **Correction:** three of the six were free-for-all, with each bot on its own team, so the bots also
+fought each other (MR_Okay and BRICS_PLUS on Greenest Fields, the Oort Cloud game). The truly allied
+1vN games are Knizek (vs 4 hard-aggressive, Ancient Bastion, a walled base map), NoviceKing99 (vs 3 hard,
+Shore to Shore) and FloBoo (vs 8, Full Metal Plate, a flat all-metal map). Edict (vs 2 on Comet Catcher),
+Gundlach (vs 4, Ring Atoll) and Refrog (vs 2) are queued for playback. The table mixes both kinds; the
+boom pattern holds in the allied games too, but the army ratio is lower in FFA,, played back headless and measured every minute (`tools/fetch_vsbots.py`,
 `tools/analyze_vsbots.py`):
 
 | minute | human income vs ONE bot | human army vs ALL bots combined |

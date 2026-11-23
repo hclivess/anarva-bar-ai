@@ -1057,6 +1057,9 @@ int lastFortify = 0, forts = 0;
 int terrainBuilt = 0;
 float terrainHit = 0.f, hitAtLastOrder = -1.f;
 CCircuitDef@ terrainDef = null;
+float terrainPower = 0.f;            // power of the turrets standing at our choke
+CCircuitDef@ mlvDef, mineDef;        // minelayer vehicle and its light land mine
+int minelayers = 0, mlvOrderedAt = -10000;
 void OnTerrainLoss(const AIFloat3& in pos, float costM)
 {
 	MapFacts::SMap@ m = Brain::Production::mapInfo;
@@ -1074,6 +1077,8 @@ void InitFortify()
 	@turT2 = Side("armhlt", "corhlt", "legmg");
 	@turT3 = Side("armpb", "corvipe", "legbastion");
 	@wallDef = Side("armdrag", "cordrag", "legdrag");
+	@mlvDef = Side("armmlv", "cormlv", "legmlv");
+	@mineDef = Side("armmine1", "cormine1", "legmine1");
 }
 
 /*
@@ -1106,27 +1111,38 @@ bool TerrainFortify()
 	const bool outnumbered = ai.GetEnemyTeamSize() > 1;
 	if ((Brain::Director::ratio >= 1.f && !outnumbered) || ai.frame - lastFortify < 30 * SECOND)
 		return true;  // handled (nothing to do now)
-	// the last order still building (its task lives 3 min): wait for it
-	if (terrainBuilt < forts && ai.frame - lastFortify < 3 * MINUTE)
-		return true;
-	// nothing came at our choke or our base since the last turret: the turrets there suffice
+	/*
+	 * How much defence: when the enemy comes to us, defence is the cheaper form of war (Clausewitz), so
+	 * the choke takes turrets while the army can't cover what we need: deficit = power needed - army
+	 * power - turret power already standing there. Plus one more whenever something came at us since
+	 * the last order (the measured pressure). Humans vs several BARbs put ~20 light turrets and ~30 mines
+	 * on the lanes in the first 8 minutes (Edict, Comet Catcher 1v2).
+	 */
 	const float hit = terrainHit + Brain::Assess::lostNearTotal;
-	if (forts > 0 && hit <= hitAtLastOrder)
+	const float deficit = Brain::Director::needPower - Brain::Director::OurPower() - terrainPower;
+	if (forts > 0 && deficit <= 0.f && hit <= hitAtLastOrder)
 		return true;
 	const float m_inc = aiEconomyMgr.metal.income;
 	CCircuitDef@ tur = (m_inc >= 45.f && turT3 !is null && turT3.IsAvailable(ai.frame)) ? turT3
 		: ((m_inc >= 18.f && turT2 !is null && turT2.IsAvailable(ai.frame)) ? turT2 : turT1);
 	if (tur is null || !tur.IsAvailable(ai.frame))
 		return true;
+	// orders still unbuilt (tasks live 3 min) count against the deficit; expired ones are forgotten
+	if (ai.frame - lastFortify >= 3 * MINUTE)
+		terrainBuilt = forts;
+	const int pending = forts - terrainBuilt;
+	const int need = (deficit > 0.f) ? int(ceil(deficit / AiMax(1.f, tur.power))) : 1;
+	const int n = AiMin(need - pending, AiMax(1, aiBuilderMgr.GetWorkerCount()));
+	if (n < 1)
+		return true;
 	lastFortify = ai.frame;
-	if (terrainBuilt < forts)
-		terrainBuilt = forts;  // the previous order expired unbuilt: don't wait on it forever
-	++forts;
+	forts += n;
 	hitAtLastOrder = hit;
 	@terrainDef = tur;
 	const AIFloat3 high(m.hx[myStart], 0.f, m.hz[myStart]);
 	const AIFloat3 choke(m.cx[myStart], 0.f, m.cz[myStart]);
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, high, SQUARE_SIZE * 12, true, 3 * MINUTE));
+	for (int k = 0; k < n; ++k)
+		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, high, SQUARE_SIZE * (12 + 4 * k), true, 3 * MINUTE));
 	if (wallDef !is null && wallDef.IsAvailable(ai.frame) && forts % 2 == 1) {
 		AIFloat3 dir = choke - AIFloat3(m.sx[myStart], 0.f, m.sz[myStart]);
 		const float len = AiMax(1.f, dir.Length2D());
@@ -1135,7 +1151,17 @@ bool TerrainFortify()
 		for (int k = -3; k <= 3; ++k)
 			aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, wallDef, choke + side * (48.f * k), 0.f, true, 3 * MINUTE));
 	}
-	AiLog("[ANV] Terrain: " + tur.GetName() + " on high ground (+" + int(m.gain[myStart]) + ")" + (forts % 2 == 1 ? " + teeth across the choke" : ""));
+	// mines in the choke mouth, on the enemy's side of the teeth: BARb walks its lanes and never sweeps
+	if (minelayers > 0 && mineDef !is null && mineDef.IsAvailable(ai.frame)) {
+		AIFloat3 dir = choke - AIFloat3(m.sx[myStart], 0.f, m.sz[myStart]);
+		dir = dir / AiMax(1.f, dir.Length2D());
+		const AIFloat3 side(-dir.z, 0.f, dir.x);
+		for (int k = -2; k <= 2; ++k)
+			aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, mineDef,
+				choke + dir * (96.f + 48.f * (forts % 3)) + side * (64.f * k), 0.f, true, 3 * MINUTE));
+	}
+	AiLog("[ANV] Terrain: " + n + "x " + tur.GetName() + " on high ground (+" + int(m.gain[myStart]) + ")" + (forts % 2 == 1 ? " + teeth across the choke" : "")
+		+ (minelayers > 0 ? " + mines" : "") + " deficit=" + int(deficit));
 	return true;
 }
 
@@ -1372,8 +1398,23 @@ IUnitTask@ ExpandTask(CCircuitUnit@ fac)
 	return null;
 }
 
+IUnitTask@ MineLayerTask(CCircuitUnit@ fac)
+{
+	if (!F_TERRAIN || Strategic::myStart < 0 || Strategic::minelayers > 0 || Strategic::mlvDef is null
+		|| ai.frame - Strategic::mlvOrderedAt < 2 * MINUTE || !Strategic::mlvDef.IsAvailable(ai.frame)
+		|| Facts::BuildOptions(fac.circuitDef.GetName()).find(Strategic::mlvDef.GetName()) < 0)
+		return null;
+	Strategic::mlvOrderedAt = ai.frame;
+	AiLog("[ANV] Terrain: recruiting a minelayer");
+	return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, Strategic::mlvDef,
+		fac.GetPos(ai.frame), 64.f));
+}
+
 IUnitTask@ MakeTask(CCircuitUnit@ fac)
 {
+	IUnitTask@ ml = MineLayerTask(fac);
+	if (ml !is null)
+		return ml;
 	IUnitTask@ ex = ExpandTask(fac);
 	if (ex !is null)
 		return ex;
@@ -2133,8 +2174,12 @@ void OnUnitFinished(CCircuitUnit@ unit)
 	Recycler::OnFinished(unit);
 	Intel::OnFinished(unit);
 	Strategic::OnFinished(unit);
-	if (F_TERRAIN && Strategic::terrainDef !is null && unit.circuitDef is Strategic::terrainDef)
+	if (F_TERRAIN && Strategic::terrainDef !is null && unit.circuitDef is Strategic::terrainDef) {
 		++Strategic::terrainBuilt;
+		Strategic::terrainPower += unit.circuitDef.power;
+	}
+	if (Strategic::mlvDef !is null && unit.circuitDef is Strategic::mlvDef)
+		++Strategic::minelayers;
 	Economist::OnFinished(unit);
 	Production::OnFinished(unit);
 	if (F_CONVERT) Convert::OnFinished(unit);
@@ -2176,6 +2221,10 @@ void OnUnitDestroyed(CCircuitUnit@ unit)
 			+ " task=" + (unit.task is null ? -1 : int(unit.task.GetType())) + " t=" + Minute() + "m posture=" + Director::names[Director::posture]);
 		@commander = null;
 	}
+	if (Strategic::mlvDef !is null && unit.circuitDef is Strategic::mlvDef)
+		Strategic::minelayers = AiMax(0, Strategic::minelayers - 1);
+	if (F_TERRAIN && Strategic::terrainDef !is null && unit.circuitDef is Strategic::terrainDef)
+		Strategic::terrainPower = AiMax(0.f, Strategic::terrainPower - unit.circuitDef.power);
 	const bool recycled = Recycler::OnDestroyed(unit);
 	if (!recycled) {
 		Intel::OnLoss(unit);

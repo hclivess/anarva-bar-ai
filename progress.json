@@ -1,364 +1,373 @@
-﻿{
-    "project":  "AnarvÄ â€” Skirmish AI for Beyond All Reason (BARb/CircuitAI core + own AngelScript brain/configs)",
-    "goal":  {
-                 "statement":  "1 Anarva must be able to beat 6 BARb (hard) opponents on all types of maps",
-                 "map_types":  [
-                                   "open",
-                                   "choke",
-                                   "mixed",
-                                   "water"
-                               ],
-                 "success_metric":  "1v6 vs BARb:hard: win (or decisive points win at 40 min) on every map type, repeated across factions",
-                 "status":  "in_progress"
-             },
-    "milestones":  [
-                       {
-                           "id":  "M1",
-                           "desc":  "1v1 vs BARb hard: \u003e= 2:1 win ratio across all map types",
-                           "status":  "met",
-                           "result":  "2.25 vs BARb hard (9-3-4, 16 games both sides), \u003e=2:1 on every map type"
-                       },
-                       {
-                           "id":  "M2",
-                           "desc":  "1v2 vs BARb hard: win majority on all map types",
-                           "status":  "in_progress",
-                           "result":  null
-                       },
-                       {
-                           "id":  "M3",
-                           "desc":  "1v3",
-                           "status":  "todo",
-                           "result":  null
-                       },
-                       {
-                           "id":  "M4",
-                           "desc":  "1v6 on all map types",
-                           "status":  "todo",
-                           "result":  null
-                       }
-                   ],
-    "install":  {
-                    "source":  "Anarva/stable",
-                    "installed_to":  "C:/Hry/Beyond-All-Reason/data/AI/Skirmish/Anarva/stable",
-                    "installer":  "tools/install.ps1",
-                    "profiles":  {
-                                     "anarva":  "main",
-                                     "anarva_b":  "A/B test variant (same scripts, config/anarva_b)"
-                                 }
-                },
-    "features":  [
-                     {
-                         "name":  "Eco recycling + T1 salvage",
-                         "flag":  "F_RECYCLE",
-                         "default":  "on",
-                         "evidence":  "first build"
-                     },
-                     {
-                         "name":  "Fusion recycling (AFUS carry grid)",
-                         "flag":  "F_FUSREC",
-                         "default":  "off",
-                         "evidence":  "harmful as always-on (h6-\u003eh7)"
-                     },
-                     {
-                         "name":  "Jammer intel (phantom threat, eyes, Juno)",
-                         "flag":  "F_INTEL",
-                         "default":  "on",
-                         "evidence":  "first build"
-                     },
-                     {
-                         "name":  "Timed scouting + scout quota \u003e=3",
-                         "flag":  "F_SCOUT",
-                         "default":  "off",
-                         "evidence":  "harmful as always-on"
-                     },
-                     {
-                         "name":  "Strategic structures (luxuries gated on force ratio)",
-                         "flag":  "F_STRAT",
-                         "default":  "on",
-                         "evidence":  "first build"
-                     },
-                     {
-                         "name":  "Static AA counter",
-                         "flag":  "F_AA",
-                         "default":  "off",
-                         "evidence":  "harmful as always-on"
-                     },
-                     {
-                         "name":  "Broken-squad recall (first-gen rule)",
-                         "flag":  "F_RECALL (+F_NEWRECALL off)",
-                         "default":  "on",
-                         "evidence":  "first build"
-                     },
-                     {
-                         "name":  "Capability-based production (+rez, core builder share)",
-                         "flag":  "F_PROD",
-                         "default":  "off (testing)",
-                         "evidence":  "r7 even, r10 2-1-8 vs base: loses fights; off"
-                     },
-                     {
-                         "name":  "Director-sized waves + quotas",
-                         "flag":  "F_WAVES,F_QUOTA",
-                         "default":  "off",
-                         "evidence":  "net negative (r7a); rework"
-                     },
-                     {
-                         "name":  "Scale knob (buildpowerRatio from surplus/deficit)",
-                         "flag":  "F_SCALE",
-                         "default":  "on",
-                         "evidence":  "r9: 9-4-3 vs base"
-                     },
-                     {
-                         "name":  "Payback tech gate",
-                         "flag":  "F_TECH",
-                         "default":  "off",
-                         "evidence":  "untested alone"
-                     },
-                     {
-                         "name":  "Moho energy gate",
-                         "flag":  "F_ECOGATE",
-                         "default":  "off",
-                         "evidence":  "untested alone"
-                     },
-                     {
-                         "name":  "Overflow: nanos + converters",
-                         "flag":  "F_WASTE",
-                         "default":  "off",
-                         "evidence":  "r12: 6-7-3 vs BARb (control 9-4-3): rejected"
-                     },
-                     {
-                         "name":  "Assist redirect by deficit",
-                         "flag":  "F_REDIRECT",
-                         "default":  "off",
-                         "evidence":  "untested alone"
-                     },
-                     {
-                         "name":  "Fortify (turrets + teeth at fronts)",
-                         "flag":  "F_FORTIFY",
-                         "default":  "off",
-                         "evidence":  "untested alone"
-                     },
-                     {
-                         "name":  "Constructor-rich opener",
-                         "flag":  "F_OPENER",
-                         "default":  "on",
-                         "evidence":  "r8: 13-2-1 vs base"
-                     },
-                     {
-                         "name":  "Commander safety (hide from min 3, threat 5, danger radius 1200)",
-                         "flag":  "config commander.json",
-                         "default":  "on",
-                         "evidence":  "r11: 1.5 -\u003e 2.25 vs BARb; debt: replace fixed values with live threat-vs-escort rule"
-                     }
-                 ],
-    "tools":  {
-                  "run_match.py":  "one headless match, --n1 N opponents",
-                  "batch.py":  "parallel batch + scoreboard by map type",
-                  "run_replay.py":  "headless replay playback with analyzer widget",
-                  "index_replays.py":  "index local replays by skill",
-                  "fetch_replays.py":  "download high-skill public replays (api.bar-rts.com + OVH storage)",
-                  "patch_jammer_roles.py":  "tag jammer UnitDefs with enemy role"
-              },
-    "experiments":  [
-                        {
-                            "id":  "t1",
-                            "desc":  "first Anarva build vs BARb hard, Avalanche",
-                            "result":  "behind at 45m; revealed army power undercount and reclaim-as-loss heat bug (both fixed)"
-                        },
-                        {
-                            "id":  "role-hist",
-                            "desc":  "fight task histogram over 40 min",
-                            "result":  "ARTY 109, DEFEND 107, ATTACK 0-6, RAID 3-4: armies almost never launch; factory/eco split starves army"
-                        },
-                        {
-                            "id":  "b1",
-                            "desc":  "baseline: first-gen Anarva vs BARb hard 1v1, 12 games all map types",
-                            "result":  "7W 3L 2D (ratio 2.33); open 2-1, choke 3-0, mixed 1-1, water 1-1; mostly points wins at 40m; only 1 commander kill; all losses from team-1 start"
-                        },
-                        {
-                            "id":  "replays-top-duels",
-                            "desc":  "12 player-games, skill 38-55",
-                            "result":  "winners: 54 m/s at 10m, army ~0.9x eco value, little static D; E:M 18-\u003e11-\u003e13-16-\u003e22-25"
-                        },
-                        {
-                            "id":  "b2",
-                            "desc":  "new build vs BARb",
-                            "result":  "stopped: lower E:M curve locked out fusion; reverted"
-                        },
-                        {
-                            "id":  "b3",
-                            "desc":  "new build (BARb E curve) vs BARb hard, 12 games",
-                            "result":  "3W 8L (0.38) - eco death spiral: Production starved constructors + scale knob cut eco when behind"
-                        },
-                        {
-                            "id":  "h1",
-                            "desc":  "all modules vs first-gen Anarva (head-to-head, 8 maps)",
-                            "result":  "3W 4L 1D"
-                        },
-                        {
-                            "id":  "h2",
-                            "desc":  "PROD+SCALE off vs first-gen",
-                            "result":  "2W 4L 2D (worse than h1 -\u003e those modules help after starvation fix)"
-                        },
-                        {
-                            "id":  "h3",
-                            "desc":  "all modules + strategic gated on ratio vs first-gen",
-                            "result":  "1W 5L 2D"
-                        },
-                        {
-                            "id":  "h4",
-                            "desc":  "no STRAT/FORTIFY vs first-gen",
-                            "result":  "0W 6L 2D; early commander deaths on Altair; mixed+water lost in all variants"
-                        },
-                        {
-                            "id":  "h5",
-                            "desc":  "first-gen configs+opener, all modules vs first-gen (6 games, stopped)",
-                            "result":  "1W 4L 1D"
-                        },
-                        {
-                            "id":  "h6",
-                            "desc":  "first-gen configs, modules mostly off vs first-gen (6 games)",
-                            "result":  "0W 5L 1D -\u003e always-on scouting/AA/recall/fusion-recycle hurt"
-                        },
-                        {
-                            "id":  "h7",
-                            "desc":  "SANITY: everything new off (incl. scouting, AA, new recall, fusrec) vs first-gen",
-                            "result":  "5W 3L (1.67): harness sane; this is the new default"
-                        },
-                        {
-                            "id":  "h8",
-                            "desc":  "h7 + reasoning modules (prod, scale, waves, quota, ecogate, fortify, waste, tech, redirect)",
-                            "result":  "3W 4L 1D -\u003e bundle still net negative; test one at a time"
-                        },
-                        {
-                            "id":  "h9",
-                            "desc":  "default + waves+quota vs first-gen",
-                            "result":  "2W 1L 1D, 3 incomplete (wall clock) - slightly positive, inconclusive"
-                        },
-                        {
-                            "id":  "h10",
-                            "desc":  "default + production(+rez) vs first-gen",
-                            "result":  "3W 2L, 3 incomplete; decisive EoH win where base only won on points - neutral/positive"
-                        },
-                        {
-                            "id":  "r6",
-                            "desc":  "base+prod(+waves) vs base, 6 of 16 games",
-                            "result":  "0W 4L 2D -\u003e chooser never picked constructors (core mix has ~30% builders): income flat ~12 m/s for 20 min. Stopped."
-                        },
-                        {
-                            "id":  "r7a",
-                            "desc":  "base+prod(fixed)+waves+quota vs base (10 of 16 games)",
-                            "result":  "3W 2D 4L, 1 incomplete: not a gain"
-                        },
-                        {
-                            "id":  "r7b",
-                            "desc":  "base+prod(fixed) vs base (10 of 16)",
-                            "result":  "4W 1D 4L, 1 incomplete: even; losses on mixed/water with large eco gap"
-                        },
-                        {
-                            "id":  "perf",
-                            "desc":  "throughput",
-                            "result":  "7 parallel engines: 6-7 min load + sim below realtime with idle CPU; 1 engine: ~3.4 game-min per wall-min. Use 1 variant x 4 parallel."
-                        },
-                        {
-                            "id":  "team-replays",
-                            "desc":  "top team games \u003c=4v4 (25 player-games)",
-                            "result":  "34 m/s at 5m, 58 at 10m (duels 25/48); T2 ~10.6 min vs ~16 in duels"
-                        },
-                        {
-                            "id":  "r8",
-                            "desc":  "base + constructor-rich opener vs base, 16 games both sides",
-                            "result":  "13W 2L 1D (6.5) - 4 commander kills; open 3-1, choke 2-1, mixed 4-0, water 4-0 -\u003e SHIPPED ON"
-                        },
-                        {
-                            "id":  "r9",
-                            "desc":  "base(+opener) + scale knob vs base, 16 games",
-                            "result":  "9W 4L 3D (2.25) -\u003e SHIPPED ON; losses: EoH, Altair commander deaths from T1 start"
-                        },
-                        {
-                            "id":  "r10",
-                            "desc":  "base(+opener+scale) + production + map eco vs base (11 of 16)",
-                            "result":  "2W 1D 8L: chooser loses fights (kills 48 vs 172); stays OFF; unit-value model needs work"
-                        },
-                        {
-                            "id":  "abs1",
-                            "desc":  "current best (opener+scale) vs BARb hard, 16 games both sides, 30 min",
-                            "result":  "6W 6D 4L (1.5); mixed 3-0, water 1-2; 3 of 4 losses = commander kills. In-family gains (13-2, 9-4) only partly transfer to BARb -\u003e BARb is the yardstick"
-                        },
-                        {
-                            "id":  "r11",
-                            "desc":  "best + commander safety vs BARb hard, 16 games both sides",
-                            "result":  "9W 3D 4L (2.25), 6 commander kills; open 2-1, choke 2-1, mixed 3-1, water 2-1 -\u003e M1 met; SHIPPED"
-                        },
-                        {
-                            "id":  "m2-base",
-                            "desc":  "1v2 vs BARb hard, big pool, separated start boxes, 12 games",
-                            "result":  "0W 11L 1D: out-ecoes each BARb but army ~40% of combined; commander dies when pushed back (no holding defence)"
-                        },
-                        {
-                            "id":  "m2-fortify",
-                            "desc":  "1v2 + F_FORTIFY (10 games)",
-                            "result":  "0W 9L 1D: no help"
-                        },
-                        {
-                            "id":  "diag-comm",
-                            "desc":  "commander tracking in 1v2",
-                            "result":  "commander spends the game on builder tasks 300-1600 elmos from base"
-                        },
-                        {
-                            "id":  "m2-commsafe",
-                            "desc":  "1v2 + commander protected-zone rule (3 games)",
-                            "result":  "0W 3L: commander dies ~600 from base, idle - base overrun; root cause is economy (each BARb out-eco\u0027d ~1.3x, combined ~0.65x)"
-                        },
-                        {
-                            "id":  "r12",
-                            "desc":  "1v1 vs BARb: best + F_WASTE",
-                            "result":  "6W 7L 3D (0.86) vs control 2.25 -\u003e rejected"
-                        },
-                        {
-                            "id":  "r13",
-                            "desc":  "1v1 vs BARb: best + F_ECOGATE + F_TECH",
-                            "result":  "9W 5L 2D (1.80) vs control 2.25: neutral on wins; much larger economies on big maps, weak on small Avalanche"
-                        },
-                        {
-                            "id":  "m2-ecotech",
-                            "desc":  "1v2: best + ECOGATE + TECH (6 games)",
-                            "result":  "0W 6L"
-                        },
-                        {
-                            "id":  "m2-detail",
-                            "desc":  "1v2: defeat-in-detail sizing + waves/quota",
-                            "result":  "1W 11L (first 1v2 win, Throne)"
-                        },
-                        {
-                            "id":  "vsbots",
-                            "desc":  "STUDY: public replays where one human beats 3-15 BARbs (15 games)",
-                            "result":  "playing back"
-                        }
-                    ],
-    "findings":  [
-                     "BARb spends ~57-66% of metal on mobile-constructor (static) tasks; army stays tiny (army_m ~6k vs static ~50k at 40 min).",
-                     "Raid squads only end when their leader dies -\u003e survivors raid alone (the \u0027one by one\u0027 trickle).",
-                     "Attack squads launch only at quota.attack (60 power) and abort below the quota they were created with.",
-                     "BARb never builds Juno, anti-nuke, EMP/tac launcher, nukes, shields or walls (not in any build list it reaches).",
-                     "Core reclaims old energy only when a new generator finishes and only within 1000 elmos of base.",
-                     "Threat ranges only project for armed units, so jammer phantom threat works through enemy group influence, not the threat map.",
-                     "GetFightType() is only on IFighterTask (needs cast\u003cIFighterTask\u003e).",
-                     "Lobby hides non-whitelisted AIs: devmode.txt + Settings\u003eDeveloper\u003euntick simple AI list. Only the bot\u0027s owner needs Anarva installed.",
-                     "Core gathers squads to max(quota, enemy 2nd-biggest group threat): unreachable once enemy blobs -\u003e armies never launch. Fixed by script-owned wave tasks.",
-                     "buildpowerRatio = constructor-vs-army knob (factory adds builder while buildpower \u003c income*ratio).",
-                     "Moho: +6 m/s for +17 E/s upkeep; T1 mex 3 E/s. Upgrades gated by energy headroom.",
-                     "Top duel winners keep army value ~= eco value by 10 min; losers over-invest in static defence.",
-                     "Config changes since first-gen (opener, ms_pull/buildpower, commander hide) are shared by every variant and must be bisected separately (profile anarva_fg, flag F_OPENER).",
-                     "Geothermals are a core fallback only (energy planner ranks anywhere-placeable energy); script cannot see vents.",
-                     "Side/map confound: with games==maps each map is played from one side only; compare variants paired, and move to both-sides (16 games) for final numbers.",
-                     "Method: modules ship ON only after winning head-to-head vs first-gen; defaults = best-measured config.",
-                     "Harness: games capped at 30 game-min, points verdict from min 20, 60 min wall; variants tested directly vs base (paired) on both sides.",
-                     "Production chooser must leave constructors to the core (~30% of factory weights are builders); debt: measured marginal value of a constructor.",
-                     "Approach change (user): fewer blind A/B batches; study how humans beat multiple BARbs and derive the reasoning."
-                 ],
-    "replay_analysis":  {
-                            "local_index":  "ref/replays.csv (1054 replays)",
-                            "public_source":  "https://api.bar-rts.com/replays (list/detail) + OVH storage for .sdfz",
-                            "status":  "fetching top-skill duels; analyzing 6 local top-skill games"
-                        }
+{
+ "project": "Anarv\u00c4\u0081 \u00e2\u20ac\u201d Skirmish AI for Beyond All Reason (BARb/CircuitAI core + own AngelScript brain/configs)",
+ "goal": {
+  "statement": "1 Anarva must be able to beat 6 BARb (hard) opponents on all types of maps",
+  "map_types": [
+   "open",
+   "choke",
+   "mixed",
+   "water"
+  ],
+  "success_metric": "1v6 vs BARb:hard: win (or decisive points win at 40 min) on every map type, repeated across factions",
+  "status": "in_progress"
+ },
+ "milestones": [
+  {
+   "id": "M1",
+   "desc": "1v1 vs BARb hard: >= 2:1 win ratio across all map types",
+   "status": "met",
+   "result": "2.25 vs BARb hard (9-3-4, 16 games both sides), >=2:1 on every map type"
+  },
+  {
+   "id": "M2",
+   "desc": "1v2 vs BARb hard: win majority on all map types",
+   "status": "in_progress",
+   "result": null
+  },
+  {
+   "id": "M3",
+   "desc": "1v3",
+   "status": "todo",
+   "result": null
+  },
+  {
+   "id": "M4",
+   "desc": "1v6 on all map types",
+   "status": "todo",
+   "result": null
+  }
+ ],
+ "install": {
+  "source": "Anarva/stable",
+  "installed_to": "C:/Hry/Beyond-All-Reason/data/AI/Skirmish/Anarva/stable",
+  "installer": "tools/install.ps1",
+  "profiles": {
+   "anarva": "main",
+   "anarva_b": "A/B test variant (same scripts, config/anarva_b)"
+  }
+ },
+ "features": [
+  {
+   "name": "Eco recycling + T1 salvage",
+   "flag": "F_RECYCLE",
+   "default": "on",
+   "evidence": "first build"
+  },
+  {
+   "name": "Fusion recycling (AFUS carry grid)",
+   "flag": "F_FUSREC",
+   "default": "off",
+   "evidence": "harmful as always-on (h6->h7)"
+  },
+  {
+   "name": "Jammer intel (phantom threat, eyes, Juno)",
+   "flag": "F_INTEL",
+   "default": "on",
+   "evidence": "first build"
+  },
+  {
+   "name": "Timed scouting + scout quota >=3",
+   "flag": "F_SCOUT",
+   "default": "off",
+   "evidence": "harmful as always-on"
+  },
+  {
+   "name": "Strategic structures (luxuries gated on force ratio)",
+   "flag": "F_STRAT",
+   "default": "on",
+   "evidence": "first build"
+  },
+  {
+   "name": "Static AA counter",
+   "flag": "F_AA",
+   "default": "off",
+   "evidence": "harmful as always-on"
+  },
+  {
+   "name": "Broken-squad recall (first-gen rule)",
+   "flag": "F_RECALL (+F_NEWRECALL off)",
+   "default": "on",
+   "evidence": "first build"
+  },
+  {
+   "name": "Capability-based production (+rez, core builder share)",
+   "flag": "F_PROD",
+   "default": "off (testing)",
+   "evidence": "r7 even, r10 2-1-8 vs base: loses fights; off"
+  },
+  {
+   "name": "Director-sized waves + quotas",
+   "flag": "F_WAVES,F_QUOTA",
+   "default": "off",
+   "evidence": "net negative (r7a); rework"
+  },
+  {
+   "name": "Scale knob (buildpowerRatio from surplus/deficit)",
+   "flag": "F_SCALE",
+   "default": "on",
+   "evidence": "r9: 9-4-3 vs base"
+  },
+  {
+   "name": "Payback tech gate",
+   "flag": "F_TECH",
+   "default": "off",
+   "evidence": "untested alone"
+  },
+  {
+   "name": "Moho energy gate",
+   "flag": "F_ECOGATE",
+   "default": "off",
+   "evidence": "untested alone"
+  },
+  {
+   "name": "Overflow: nanos + converters",
+   "flag": "F_WASTE",
+   "default": "off",
+   "evidence": "r12: 6-7-3 vs BARb (control 9-4-3): rejected"
+  },
+  {
+   "name": "Assist redirect by deficit",
+   "flag": "F_REDIRECT",
+   "default": "off",
+   "evidence": "untested alone"
+  },
+  {
+   "name": "Fortify (turrets + teeth at fronts)",
+   "flag": "F_FORTIFY",
+   "default": "off",
+   "evidence": "untested alone"
+  },
+  {
+   "name": "Constructor-rich opener",
+   "flag": "F_OPENER",
+   "default": "on",
+   "evidence": "r8: 13-2-1 vs base"
+  },
+  {
+   "name": "Commander safety (hide from min 3, threat 5, danger radius 1200)",
+   "flag": "config commander.json",
+   "default": "on",
+   "evidence": "r11: 1.5 -> 2.25 vs BARb; debt: replace fixed values with live threat-vs-escort rule"
+  }
+ ],
+ "tools": {
+  "run_match.py": "one headless match, --n1 N opponents",
+  "batch.py": "parallel batch + scoreboard by map type",
+  "run_replay.py": "headless replay playback with analyzer widget",
+  "index_replays.py": "index local replays by skill",
+  "fetch_replays.py": "download high-skill public replays (api.bar-rts.com + OVH storage)",
+  "patch_jammer_roles.py": "tag jammer UnitDefs with enemy role"
+ },
+ "experiments": [
+  {
+   "id": "t1",
+   "desc": "first Anarva build vs BARb hard, Avalanche",
+   "result": "behind at 45m; revealed army power undercount and reclaim-as-loss heat bug (both fixed)"
+  },
+  {
+   "id": "role-hist",
+   "desc": "fight task histogram over 40 min",
+   "result": "ARTY 109, DEFEND 107, ATTACK 0-6, RAID 3-4: armies almost never launch; factory/eco split starves army"
+  },
+  {
+   "id": "b1",
+   "desc": "baseline: first-gen Anarva vs BARb hard 1v1, 12 games all map types",
+   "result": "7W 3L 2D (ratio 2.33); open 2-1, choke 3-0, mixed 1-1, water 1-1; mostly points wins at 40m; only 1 commander kill; all losses from team-1 start"
+  },
+  {
+   "id": "replays-top-duels",
+   "desc": "12 player-games, skill 38-55",
+   "result": "winners: 54 m/s at 10m, army ~0.9x eco value, little static D; E:M 18->11->13-16->22-25"
+  },
+  {
+   "id": "b2",
+   "desc": "new build vs BARb",
+   "result": "stopped: lower E:M curve locked out fusion; reverted"
+  },
+  {
+   "id": "b3",
+   "desc": "new build (BARb E curve) vs BARb hard, 12 games",
+   "result": "3W 8L (0.38) - eco death spiral: Production starved constructors + scale knob cut eco when behind"
+  },
+  {
+   "id": "h1",
+   "desc": "all modules vs first-gen Anarva (head-to-head, 8 maps)",
+   "result": "3W 4L 1D"
+  },
+  {
+   "id": "h2",
+   "desc": "PROD+SCALE off vs first-gen",
+   "result": "2W 4L 2D (worse than h1 -> those modules help after starvation fix)"
+  },
+  {
+   "id": "h3",
+   "desc": "all modules + strategic gated on ratio vs first-gen",
+   "result": "1W 5L 2D"
+  },
+  {
+   "id": "h4",
+   "desc": "no STRAT/FORTIFY vs first-gen",
+   "result": "0W 6L 2D; early commander deaths on Altair; mixed+water lost in all variants"
+  },
+  {
+   "id": "h5",
+   "desc": "first-gen configs+opener, all modules vs first-gen (6 games, stopped)",
+   "result": "1W 4L 1D"
+  },
+  {
+   "id": "h6",
+   "desc": "first-gen configs, modules mostly off vs first-gen (6 games)",
+   "result": "0W 5L 1D -> always-on scouting/AA/recall/fusion-recycle hurt"
+  },
+  {
+   "id": "h7",
+   "desc": "SANITY: everything new off (incl. scouting, AA, new recall, fusrec) vs first-gen",
+   "result": "5W 3L (1.67): harness sane; this is the new default"
+  },
+  {
+   "id": "h8",
+   "desc": "h7 + reasoning modules (prod, scale, waves, quota, ecogate, fortify, waste, tech, redirect)",
+   "result": "3W 4L 1D -> bundle still net negative; test one at a time"
+  },
+  {
+   "id": "h9",
+   "desc": "default + waves+quota vs first-gen",
+   "result": "2W 1L 1D, 3 incomplete (wall clock) - slightly positive, inconclusive"
+  },
+  {
+   "id": "h10",
+   "desc": "default + production(+rez) vs first-gen",
+   "result": "3W 2L, 3 incomplete; decisive EoH win where base only won on points - neutral/positive"
+  },
+  {
+   "id": "r6",
+   "desc": "base+prod(+waves) vs base, 6 of 16 games",
+   "result": "0W 4L 2D -> chooser never picked constructors (core mix has ~30% builders): income flat ~12 m/s for 20 min. Stopped."
+  },
+  {
+   "id": "r7a",
+   "desc": "base+prod(fixed)+waves+quota vs base (10 of 16 games)",
+   "result": "3W 2D 4L, 1 incomplete: not a gain"
+  },
+  {
+   "id": "r7b",
+   "desc": "base+prod(fixed) vs base (10 of 16)",
+   "result": "4W 1D 4L, 1 incomplete: even; losses on mixed/water with large eco gap"
+  },
+  {
+   "id": "perf",
+   "desc": "throughput",
+   "result": "7 parallel engines: 6-7 min load + sim below realtime with idle CPU; 1 engine: ~3.4 game-min per wall-min. Use 1 variant x 4 parallel."
+  },
+  {
+   "id": "team-replays",
+   "desc": "top team games <=4v4 (25 player-games)",
+   "result": "34 m/s at 5m, 58 at 10m (duels 25/48); T2 ~10.6 min vs ~16 in duels"
+  },
+  {
+   "id": "r8",
+   "desc": "base + constructor-rich opener vs base, 16 games both sides",
+   "result": "13W 2L 1D (6.5) - 4 commander kills; open 3-1, choke 2-1, mixed 4-0, water 4-0 -> SHIPPED ON"
+  },
+  {
+   "id": "r9",
+   "desc": "base(+opener) + scale knob vs base, 16 games",
+   "result": "9W 4L 3D (2.25) -> SHIPPED ON; losses: EoH, Altair commander deaths from T1 start"
+  },
+  {
+   "id": "r10",
+   "desc": "base(+opener+scale) + production + map eco vs base (11 of 16)",
+   "result": "2W 1D 8L: chooser loses fights (kills 48 vs 172); stays OFF; unit-value model needs work"
+  },
+  {
+   "id": "abs1",
+   "desc": "current best (opener+scale) vs BARb hard, 16 games both sides, 30 min",
+   "result": "6W 6D 4L (1.5); mixed 3-0, water 1-2; 3 of 4 losses = commander kills. In-family gains (13-2, 9-4) only partly transfer to BARb -> BARb is the yardstick"
+  },
+  {
+   "id": "r11",
+   "desc": "best + commander safety vs BARb hard, 16 games both sides",
+   "result": "9W 3D 4L (2.25), 6 commander kills; open 2-1, choke 2-1, mixed 3-1, water 2-1 -> M1 met; SHIPPED"
+  },
+  {
+   "id": "m2-base",
+   "desc": "1v2 vs BARb hard, big pool, separated start boxes, 12 games",
+   "result": "0W 11L 1D: out-ecoes each BARb but army ~40% of combined; commander dies when pushed back (no holding defence)"
+  },
+  {
+   "id": "m2-fortify",
+   "desc": "1v2 + F_FORTIFY (10 games)",
+   "result": "0W 9L 1D: no help"
+  },
+  {
+   "id": "diag-comm",
+   "desc": "commander tracking in 1v2",
+   "result": "commander spends the game on builder tasks 300-1600 elmos from base"
+  },
+  {
+   "id": "m2-commsafe",
+   "desc": "1v2 + commander protected-zone rule (3 games)",
+   "result": "0W 3L: commander dies ~600 from base, idle - base overrun; root cause is economy (each BARb out-eco'd ~1.3x, combined ~0.65x)"
+  },
+  {
+   "id": "r12",
+   "desc": "1v1 vs BARb: best + F_WASTE",
+   "result": "6W 7L 3D (0.86) vs control 2.25 -> rejected"
+  },
+  {
+   "id": "r13",
+   "desc": "1v1 vs BARb: best + F_ECOGATE + F_TECH",
+   "result": "9W 5L 2D (1.80) vs control 2.25: neutral on wins; much larger economies on big maps, weak on small Avalanche"
+  },
+  {
+   "id": "m2-ecotech",
+   "desc": "1v2: best + ECOGATE + TECH (6 games)",
+   "result": "0W 6L"
+  },
+  {
+   "id": "m2-detail",
+   "desc": "1v2: defeat-in-detail sizing + waves/quota",
+   "result": "1W 11L (first 1v2 win, Throne)"
+  },
+  {
+   "id": "vsbots",
+   "desc": "STUDY: public replays where one human beats 3-15 BARbs (15 games)",
+   "result": "playing back"
+  },
+  {
+   "id": "b3-expand",
+   "desc": "1v3 BARb-hard, 6 maps: baseline vs F_EXPAND+F_CONVERT",
+   "result": "baseline 0-6 (3 outright), expand+convert 0-6 (5 outright): rejected, stays off"
+  }
+ ],
+ "findings": [
+  "BARb spends ~57-66% of metal on mobile-constructor (static) tasks; army stays tiny (army_m ~6k vs static ~50k at 40 min).",
+  "Raid squads only end when their leader dies -> survivors raid alone (the 'one by one' trickle).",
+  "Attack squads launch only at quota.attack (60 power) and abort below the quota they were created with.",
+  "BARb never builds Juno, anti-nuke, EMP/tac launcher, nukes, shields or walls (not in any build list it reaches).",
+  "Core reclaims old energy only when a new generator finishes and only within 1000 elmos of base.",
+  "Threat ranges only project for armed units, so jammer phantom threat works through enemy group influence, not the threat map.",
+  "GetFightType() is only on IFighterTask (needs cast<IFighterTask>).",
+  "Lobby hides non-whitelisted AIs: devmode.txt + Settings>Developer>untick simple AI list. Only the bot's owner needs Anarva installed.",
+  "Core gathers squads to max(quota, enemy 2nd-biggest group threat): unreachable once enemy blobs -> armies never launch. Fixed by script-owned wave tasks.",
+  "buildpowerRatio = constructor-vs-army knob (factory adds builder while buildpower < income*ratio).",
+  "Moho: +6 m/s for +17 E/s upkeep; T1 mex 3 E/s. Upgrades gated by energy headroom.",
+  "Top duel winners keep army value ~= eco value by 10 min; losers over-invest in static defence.",
+  "Config changes since first-gen (opener, ms_pull/buildpower, commander hide) are shared by every variant and must be bisected separately (profile anarva_fg, flag F_OPENER).",
+  "Geothermals are a core fallback only (energy planner ranks anywhere-placeable energy); script cannot see vents.",
+  "Side/map confound: with games==maps each map is played from one side only; compare variants paired, and move to both-sides (16 games) for final numbers.",
+  "Method: modules ship ON only after winning head-to-head vs first-gen; defaults = best-measured config.",
+  "Harness: games capped at 30 game-min, points verdict from min 20, 60 min wall; variants tested directly vs base (paired) on both sides.",
+  "Production chooser must leave constructors to the core (~30% of factory weights are builders); debt: measured marginal value of a constructor.",
+  "Approach change (user): fewer blind A/B batches; study how humans beat multiple BARbs and derive the reasoning.",
+  "1v3: every loss ends with army ~0, extractors collapsing 10-25 -> 2-5, commander dying at home 20-28 min. Expansion pulls the commander out (dies 1000-1400 from base).",
+  "Replay study correction: 3 of 6 'human vs several BARbs' games were FFA (bots fight each other). Allied 1vN: Knizek 1v4 (Ancient Bastion), NoviceKing99 1v3, FloBoo 1v8, Edict 1v2 Comet Catcher.",
+  "Edict (1 human vs 2 allied BARbs, Comet Catcher): ~20 light turrets + ~30 mines on the lanes by 8 min, static defence above each bot's 3-8 min, mass Gatling tanks 10-14 min, T2 at 13, push at 20 with 2x the bots' army. Defence first when the enemy comes to you.",
+  "1v3 single games after deficit-sized terrain defence: bots reach 43-91 M/s each vs ours 20-25; our extractors fall to 3-5. The deficit measure (needPower in power units) is too small when the enemy is unscouted; turret count stays low."
+ ],
+ "replay_analysis": {
+  "local_index": "ref/replays.csv (1054 replays)",
+  "public_source": "https://api.bar-rts.com/replays (list/detail) + OVH storage for .sdfz",
+  "status": "fetching top-skill duels; analyzing 6 local top-skill games"
+ }
 }
