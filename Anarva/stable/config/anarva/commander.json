@@ -17,10 +17,10 @@
 
 			// Commander hides if ("time" elapsed) and ("threat" exceeds value or enemy has "air")
 			"hide": {
-				"time": 420,  // seconds
-				"threat": 8,
+				"time": 180,  // anarva_cs: commander = win condition; hide from min 3
+				"threat": 5,
 				"air": true,
-				"task_rad": [2000, 800.0]  // [<peace_radius>, <danger_radius>] value -1 for deactivation was -1, 800
+				"task_rad": [2000.0, 1200.0]  // [<peace_radius>, <danger_radius>] value -1 for deactivation was -1, 800
 			},
 
 			"assist_fac": 3,  // commander assists factory with high priority till number of constructors reached
@@ -38,10 +38,10 @@
 
 			// Commander hides if ("time" elapsed) and ("threat" exceeds value or enemy has "air")
 			"hide": {
-				"time": 240,  // seconds
-				"threat": 7,
+				"time": 180,  // anarva_cs: commander = win condition; hide from min 3
+				"threat": 5,
 				"air": true,
-				"task_rad": [2000, 800.0]  // [<peace_radius>, <danger_radius>] peace radius was -1
+				"task_rad": [2000.0, 1200.0]  // [<peace_radius>, <danger_radius>] peace radius was -1
 			},
 
 			"assist_fac": 3,  // commander assists factory with high priority till number of constructors reached

@@ -27,6 +27,7 @@ build. Status as of this commit:
 | Strategic: anti-nuke when an enemy silo appears; EMP/tactical launcher, nuke under anti-nuke cover and shields, only while our army covers what we need | **on** | first build; luxury spending is now gated on the force ratio |
 | Broken-squad recall (first-gen rule) | **on** | first build |
 | Constructor-rich opener (constructors alternate with raider escorts) | **on** | **13–2–1 vs the previous build** (round 8) |
+| Commander safety (the commander is the win condition: hide earlier, at lower threat, wider danger radius) | **on** | **1.5 → 2.25 vs BARb-hard** (round 11) |
 | Production chooser: units scored from live abilities (Lanchester damage × health, reach, sight gap, screening, travel time vs horizon); rez bots from the wreck pool; constructors left to the core's mix | testing, leading | 3–0 vs base in the first games of round 7 |
 | Director-sized waves and quotas (army needed to win = enemy + jammer guess ÷ trade efficiency) | off | net negative so far: holds units back, costs map control |
 | Director scale knob (constructors vs army from scouted surplus/deficit; the economy is cut only when pushed back at home) | **on** | **9–4–3 vs the previous build** (round 9) |
@@ -40,10 +41,7 @@ micro limits). Every experiment and its result is logged in [PROGRESS.md](PROGRE
 
 **Goal:** one Anarvā beats six BARb (hard) opponents on every map type.
 
-**Honest status:** the first build beat BARb-hard 7–3 in 1v1, mostly on points. Bundling many new
-modules at once regressed it (3–8), mainly through economic starvation. That's why every module is now
-proven one at a time. The 1v6 goal hasn't been attempted yet: the 1v1 build has to be clearly stronger
-first.
+**Status:** in 1v1 the current build beats BARb-hard **9–4 with 3 draws (2.25)**, 16 games from both sides, with at least 2:1 on every map type (milestone M1). Bundling many modules at once once regressed it (3–8, through economic starvation), so every module is now proven one at a time. Next: 1v2, then 1v3, then 1v6.
 ## Install
 
 You need Beyond All Reason installed and started at least once (so it has downloaded an engine).

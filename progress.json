@@ -15,13 +15,13 @@
                        {
                            "id":  "M1",
                            "desc":  "1v1 vs BARb hard: \u003e= 2:1 win ratio across all map types",
-                           "status":  "in_progress",
-                           "result":  "current best 1.5 vs BARb hard (16 games, 30 min); first build 2.33 under harsher setup"
+                           "status":  "met",
+                           "result":  "2.25 vs BARb hard (9-3-4, 16 games both sides), \u003e=2:1 on every map type"
                        },
                        {
                            "id":  "M2",
                            "desc":  "1v2 vs BARb hard: win majority on all map types",
-                           "status":  "todo",
+                           "status":  "in_progress",
                            "result":  null
                        },
                        {
@@ -142,6 +142,12 @@
                          "flag":  "F_OPENER",
                          "default":  "on",
                          "evidence":  "r8: 13-2-1 vs base"
+                     },
+                     {
+                         "name":  "Commander safety (hide from min 3, threat 5, danger radius 1200)",
+                         "flag":  "config commander.json",
+                         "default":  "on",
+                         "evidence":  "r11: 1.5 -\u003e 2.25 vs BARb; debt: replace fixed values with live threat-vs-escort rule"
                      }
                  ],
     "tools":  {
@@ -280,8 +286,8 @@
                         },
                         {
                             "id":  "r11",
-                            "desc":  "best + commander safety config (anarva_cs) vs BARb hard",
-                            "result":  "running"
+                            "desc":  "best + commander safety vs BARb hard, 16 games both sides",
+                            "result":  "9W 3D 4L (2.25), 6 commander kills; open 2-1, choke 2-1, mixed 3-1, water 2-1 -\u003e M1 met; SHIPPED"
                         }
                     ],
     "findings":  [
