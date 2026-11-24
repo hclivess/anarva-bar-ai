@@ -723,7 +723,7 @@
 				"threat": {"air": 2.0, "water": 0.0, "surf":0.0}
 			},
 			"legrezbot": {
-				"role": ["support"],
+				"role": ["builder"],  // Anarva: a rez bot revives and reclaims (was "support")
 				"retreat": 0.6,
 				"limit":60
 			},

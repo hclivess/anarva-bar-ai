@@ -966,7 +966,7 @@
 			}
 		},
 		"armrectr": {
-			"role": ["support"],		//["builder"],	["raider", "support"]	//["skirmish", "support"],
+			"role": ["builder"],		// Anarva: a rez bot revives and reclaims (was "support": used as an escort, never rezzed)
 			//"attribute": ["support"],
 			"retreat": 0.6,
 			//"buildspeed": 0.1,
@@ -1442,7 +1442,7 @@
 			"limit": 40
 		},
 		"cornecro": {
-			"role": ["scout"], // 1st role was "raider"; scout cause there is no other scout on core
+			"role": ["builder"], // Anarva: a rez bot revives and reclaims (was "scout": used as Cortex's scout, never rezzed)
 			"limit": 60,
 			"retreat": 0.6
 		},

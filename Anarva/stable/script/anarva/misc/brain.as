@@ -44,7 +44,7 @@ const bool F_DEFSIZE = false;   // terrain defence sized to the metal deficit (f
 const bool F_ENERGY = false;    // energy decided live (with profile anarva_e, where the fixed curve is off)
 const bool F_STAKE = false;     // trade estimate weighted by the army at stake (no all-in on a few kills)
 const bool F_COMMZONE = false;  // commander works only inside the zone where nothing of ours has died (with F_COMMSAFE)
-const bool F_REZ = false;       // rez-bot fleet sized to the wreck metal on the map
+const bool F_REZ = true;        // rez-bot fleet sized to the wreck metal on the map (measured via the bridge)
 const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
 const bool F_HOLD = true;       // just-in-time extractor defence: meet each incoming enemy group at the extractor it is heading for (C++ bridge)
 const bool F_ARTYHIGH = true;   // core switch: artillery fires from the spot it reaches soonest, height-aware range (C++)
@@ -57,7 +57,7 @@ const bool F_ECORECLAIM = false; // reclaim the energy plant whose metal now is 
 const bool F_FOCUS = false;     // core switch: each unit focuses the visible enemy in range with the highest threat per remaining health
 const bool F_DECIDE = false;    // core switch: every dice roll in the core replaced by a computed choice (unit/role pick, constructor, retreat, superweapon, chance, map points)
 const bool F_RAIDRESP = false;  // answer raids already in progress: the 'arrive before the enemy' test can never pass once they are there
-const bool F_RECLAIM = false;   // constructors reclaim wreck fields when the metal, minus walk and risk, beats their current job
+const bool F_RECLAIM = true;    // constructors and rez bots reclaim/revive wreck fields when the metal, minus walk and risk, beats their current job
 const bool F_DEFRISK = false;   // a turret is built only where it is more likely to survive than not (cover vs the danger that can reach it)
 const bool F_BUILDERSAFE = false; // constructors leave a job when (1-P) x job - P x own cost is worth less than assisting a factory
 const bool F_HOLDALL = false;   // the just-in-time defence covers every constructor and structure, not only extractors
@@ -1986,9 +1986,13 @@ CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 	 * leave wrecks the enemy can take too, so those count half. One more bot while pool > fleet cost + bot
 	 * (each bot must have at least its own cost to bring back). Debt: subtract what was already harvested.
 	 */
-	const float pool = F_REZ
-		? WRECK_SHARE * (Brain::Assess::lostNearTotal + HoldShare() * (Brain::Assess::lostFarTotal + Brain::Assess::killedTotal))
-		: 0.5f * (Brain::Assess::lostNear + Brain::Assess::lostFar + Brain::Assess::killed);
+	// the wreck metal actually on the map (bridge), not an estimate from what died
+	float pool = 0.f;
+	{
+		array<AIFloat3> wp; array<float> wm; array<bool> wr;
+		const uint w = AiGetWrecks(wp, wm, wr);
+		for (uint i = 0; i < w; ++i) pool += wm[i];
+	}
 	float fleet = 0.f;
 	for (uint i = 0; i < rezBots.length(); ++i)
 		fleet += rezBots[i].circuitDef.costM;
@@ -2087,12 +2091,11 @@ IUnitTask@ MohoConTask(CCircuitUnit@ fac)
 
 IUnitTask@ MakeTask(CCircuitUnit@ fac)
 {
-	if (F_REZ && !F_PROD && !fac.circuitDef.IsMobile()) {
+	if (F_REZ && !fac.circuitDef.IsMobile()) {
 		CCircuitDef@ rez = RezToBuild(fac.circuitDef);
 		if (rez !is null) {
 			++rezOrders;
-			AiLog("[ANV] Rez: +" + rez.GetName() + " fleet=" + rezBots.length() + " pool~" + int(WRECK_SHARE * (Brain::Assess::lostNearTotal
-				+ HoldShare() * (Brain::Assess::lostFarTotal + Brain::Assess::killedTotal))));
+			AiLog("[ANV] Rez: +" + rez.GetName() + " fleet=" + rezBots.length());
 			return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, rez, fac.GetPos(ai.frame), 64.f));
 		}
 	}
@@ -3402,7 +3405,10 @@ void ReclaimUpdate()
 		IBuilderTask@ cur = cast<IBuilderTask>(best.task);
 		const float curV = (cur !is null && cur.buildDef !is null) ? Brain::Economist::MetalValue(cur.buildDef) * best.circuitDef.buildSpeed / bp : best.circuitDef.buildSpeed / bp * income * 20.f;
 		if (metal - walk - risk <= curV) continue;
-		IUnitTask@ t = aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, wp[i], R, 2 * MINUTE));
+		// a rez bot revives what can be revived (at least the wreck's metal back as a working unit) unless energy would stall
+		const bool canRez = Brain::Production::rezDefs.findByRef(best.circuitDef) >= 0 && wr[i] && !aiEconomyMgr.isEnergyStalling;
+		IUnitTask@ t = canRez ? aiBuilderMgr.Enqueue(TaskB::Resurrect(Task::Priority::HIGH, wp[i], metal, 2 * MINUTE, R))
+			: aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, wp[i], R, 2 * MINUTE));
 		if (t is null) continue;
 		aiBuilderMgr.AssignTask(best, t);
 		reclaimTasks.insertLast(t);
