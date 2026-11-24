@@ -3219,6 +3219,7 @@ float CommFog(const AIFloat3& in p, float tHome, float seenThreat, float seenSpe
 }
 float commDanger = 0.f, commCover = 0.f, commDps = 0.f;
 CCircuitUnit@ riskUnit = null;  // whose danger is being measured (the commander, or any builder)
+float riskHealth = 0.f;          // >0: measure a structure being built (its health), not riskUnit's
 void CommForces(const AIFloat3& in p, float tHome)
 {
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
@@ -3258,11 +3259,13 @@ float RiskPDeath(const AIFloat3& in p, float tHome)
 	const float d2 = commDanger * commDanger, c2 = commCover * commCover;
 	const float lose = d2 / AiMax(1e-3f, d2 + c2);  // the fight there goes against us
 	// ...and it can't walk out: time to burn through its health vs time back to cover
-	const float tKill = riskUnit.circuitDef.health / AiMax(1e-3f, commDps);
+	const float tKill = (riskHealth > 0.f ? riskHealth : riskUnit.circuitDef.health) / AiMax(1e-3f, commDps);
 	return lose * tHome / AiMax(1e-3f, tHome + tKill);
 }
 float CommPDeath(const AIFloat3& in p, float tHome) { @riskUnit = commander; return RiskPDeath(p, tHome); }
-float UnitPDeath(CCircuitUnit@ u, const AIFloat3& in p, float tHome) { @riskUnit = u; return RiskPDeath(p, tHome); }
+float UnitPDeath(CCircuitUnit@ u, const AIFloat3& in p, float tHome) { @riskUnit = u; riskHealth = 0.f; return RiskPDeath(p, tHome); }
+// P that a structure being built at p dies before it is finished (tDone): its own health against what can reach it
+float JobPDeath(CCircuitUnit@ builder, const CCircuitDef@ job, const AIFloat3& in p, float tDone) { @riskUnit = builder; riskHealth = AiMax(1.f, job.health); const float r = RiskPDeath(p, tDone); riskHealth = 0.f; return r; }
 
 /*
  * Builder safety (owner: "you let your builders be decimated, no reaction"). Every constructor weighs its job
@@ -3288,11 +3291,17 @@ void BuilderSafeUpdate()
 		if (fac is null) continue;
 		const float tHome = MoveTime(d, fac.GetPos(ai.frame).distance2D(c));
 		const float P = UnitPDeath(u, c, tHome);
-		if (P <= 0.f) continue;
 		IBuilderTask@ bt = cast<IBuilderTask>(u.task);
 		const float jobV = (bt !is null && bt.buildDef !is null) ? Brain::Economist::MetalValue(bt.buildDef) : 0.f;
 		const float own = Brain::Economist::MetalValue(d);
-		const float stay = (1.f - P) * jobV - P * own;
+		// the job is at risk too (owner: kept upgrading a mex with 4 pawns on it): if the structure dies before it is
+		// finished, the metal sunk into it is lost (bounded by its full value; progress isn't visible to the script)
+		float Pj = 0.f;
+		if (bt !is null && bt.buildDef !is null) {
+			const float tDone = bt.buildDef.buildTime / AiMax(1.f, d.buildSpeed);
+			Pj = JobPDeath(u, bt.buildDef, bt.GetBuildPos(), tDone);
+		}
+		const float stay = (1.f - Pj) * jobV - Pj * jobV - P * own;
 		const float safe = d.buildSpeed / bp * income * 20.f;  // its share of our spending over the job span (Guard timeout)
 		if (stay >= safe) continue;
 		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, 20 * SECOND));
