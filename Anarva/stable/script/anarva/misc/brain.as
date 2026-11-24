@@ -513,7 +513,7 @@ void Update()
 	if (!F_REZLAB || !HasBase()) return;
 	const array<CCircuitUnit@>@ facs = Intel::allFactories;
 	for (uint i = 0; i < facs.length(); ++i) {
-		const array<string>@ opts = Facts::BuildOptions(facs[i].circuitDef.GetName());
+		const array<string> opts = Facts::BuildOptions(facs[i].circuitDef.GetName());
 		for (uint k = 0; k < opts.length(); ++k)
 			if (Production::rezDefs.findByRef(ai.GetCircuitDef(opts[k])) >= 0) return;  // we can already make rez bots
 	}
