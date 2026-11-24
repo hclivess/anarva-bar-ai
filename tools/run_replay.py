@@ -38,7 +38,8 @@ def play(args, demo):
     # parallel replays each need their own local server port
     port = 20000 + (abs(hash(demo)) % 20000)
     with open(os.path.join(out, "springsettings.cfg"), "a") as cfg:
-        cfg.write(f"HostPortDefault = {port}\nHostPort = {port}\n")
+        # analysis runs: loading several replays at once takes minutes; the engine's 30 s hang watchdog would kill them
+        cfg.write(f"HostPortDefault = {port}\nHostPort = {port}\nHangTimeout = 0\n")
     env = dict(os.environ, SPRING_DATADIR=BAR_DATA)
     with open(os.path.join(out, "stdout.txt"), "w") as log:
         p = subprocess.Popen([engine, "--write-dir", out, os.path.abspath(demo)], env=env, stdout=log,
