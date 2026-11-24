@@ -948,7 +948,7 @@ index 54fef916..45f203d5 100644
  	}
  	candidates.clear();
 diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
-index 719442f0..58d9fde0 100644
+index 719442f0..de12f0e4 100644
 --- a/src/circuit/module/MilitaryManager.cpp
 +++ b/src/circuit/module/MilitaryManager.cpp
 @@ -6,6 +6,8 @@
@@ -1083,7 +1083,7 @@ index 719442f0..58d9fde0 100644
  	ClearScoutPosition(unit->GetTask());
  	CMetalManager* metalMgr = circuit->GetMetalManager();
  	const CMetalData::Clusters& clusters = metalMgr->GetClusters();
-@@ -1317,13 +1357,15 @@ void CMilitaryManager::DiceBigGun()
+@@ -1317,18 +1357,27 @@ void CMilitaryManager::DiceBigGun()
  		return;
  	}
  
@@ -1103,8 +1103,20 @@ index 719442f0..58d9fde0 100644
  		}
  	}
  	bigGunDef = candidates[choice].first;
+ }
+ 
++float CMilitaryManager::GetBaseDefRange() const
++{
++	// Anarva: our side ends half-way to the enemy (same rule as the script's OnOurSide); no 0.3 x diagonal, no clamp
++	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
++	return std::max(1.f, 0.5f * basePos.distance2D(circuit->GetEnemyManager()->GetEnemyPos()));
++}
++
+ float CMilitaryManager::ClampMobileCostRatio() const
+ {
+ 	const float enemyMobileCost = circuit->GetEnemyManager()->GetEnemyMobileCost();
 diff --git a/src/circuit/module/MilitaryManager.h b/src/circuit/module/MilitaryManager.h
-index f752cb27..174b6e23 100644
+index f752cb27..fb1e85b2 100644
 --- a/src/circuit/module/MilitaryManager.h
 +++ b/src/circuit/module/MilitaryManager.h
 @@ -109,6 +109,12 @@ public:
@@ -1120,6 +1132,15 @@ index f752cb27..174b6e23 100644
  	virtual CRetreatTask* EnqueueRetreat() override;
  private:
  	virtual void DequeueTask(IUnitTask* task, bool done = false) override;
+@@ -164,7 +170,7 @@ public:
+ 	CCircuitDef* GetLowSonar(const CCircuitUnit* builder = nullptr) const;
+ 
+ 	void SetBaseDefRange(float range) { defence->SetBaseRange(range); }
+-	float GetBaseDefRange() const { return defence->GetBaseRange(); }
++	float GetBaseDefRange() const;  // Anarva: half the way from our base to the enemy centre (our side), live
+ 	float GetCommDefRadBegin() const { return defence->GetCommRadBegin(); }
+ 	float GetCommDefRad(float baseDist) const { return defence->GetCommRad(baseDist); }
+ 	unsigned int GetGuardTaskNum() const { return defence->GetGuardTaskNum(); }
 diff --git a/src/circuit/resource/MetalManager.cpp b/src/circuit/resource/MetalManager.cpp
 index 97de6587..5d2717b8 100644
 --- a/src/circuit/resource/MetalManager.cpp
@@ -2279,7 +2300,7 @@ index 981b94f9..16b5c6df 100644
  
  } // namespace circuit
 diff --git a/src/circuit/task/fighter/FighterTask.cpp b/src/circuit/task/fighter/FighterTask.cpp
-index 0400f8d6..4782d296 100644
+index 0400f8d6..4d9eb4a0 100644
 --- a/src/circuit/task/fighter/FighterTask.cpp
 +++ b/src/circuit/task/fighter/FighterTask.cpp
 @@ -6,6 +6,8 @@
@@ -2340,6 +2361,15 @@ index 0400f8d6..4782d296 100644
  }
  
  void IFighterTask::OnUnitDestroyed(CCircuitUnit* unit, CEnemyInfo* attacker)
+@@ -194,7 +182,7 @@ void IFighterTask::Attack(CCircuitUnit* unit, const int frame)
+ 
+ 	CCircuitDef* cdef = unit->GetCircuitDef();
+ 	AIFloat3 dir = unit->GetPos(frame) - tPos;
+-	if (cdef->IsPlane() || (std::fabs(dir.y) > cdef->GetMaxRange() * 0.5f)) {
++	if (cdef->IsPlane() || (cdef->GetRangeAt(-dir.y) < dir.Length2D())) {  // Anarva: out of reach from here -> direct
+ 		unit->Attack(GetTarget(), GetTarget()->GetUnit()->IsCloaked(), frame + FRAMES_PER_SEC * 60);
+ 		return;
+ 	}
 @@ -203,7 +191,7 @@ void IFighterTask::Attack(CCircuitUnit* unit, const int frame)
  	CCircuitDef* edef = GetTarget()->GetCircuitDef();
  	const bool isStatic = (edef != nullptr) && !edef->IsMobile();
@@ -2453,7 +2483,7 @@ index 9aee3cb8..75e155e9 100644
  	const int noChaseCat = cdef->GetNoChaseCategory();
  	const float range = std::max(unit->GetUnit()->GetMaxRange() + threatMap->GetSquareSize() * 2,
 diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
-index 154ce4bf..ba81f902 100644
+index 154ce4bf..809979e3 100644
 --- a/src/circuit/task/fighter/SquadTask.cpp
 +++ b/src/circuit/task/fighter/SquadTask.cpp
 @@ -6,6 +6,7 @@
@@ -2516,7 +2546,34 @@ index 154ce4bf..ba81f902 100644
  	for (CCircuitUnit* unit : validUnits) {
  		const float sqDist = groupPos.SqDistance2D(unit->GetLastPos());
  		if (sqDist > sqMaxDist) {
-@@ -387,10 +403,129 @@ void ISquadTask::Attack(const int frame)
+@@ -344,19 +360,15 @@ NSMicroPather::HitFunc ISquadTask::GetHitTest() const
+ 	const int sectorXSize = terrainMgr->GetSectorXSize();
+ 	const int convert = terrainMgr->GetConvertStoP();
+ 	const float aimLift = leader->GetCircuitDef()->GetHeight() * 0.5f;  // TODO: Use aim-pos of attacker and enemy
+-	const float maxHeight = leader->GetCircuitDef()->GetMaxRange() * 0.4f;
+-	return [&sectors, sectorXSize, aimLift, maxHeight, convert](int2 start, int2 end) {  // losTest
++	const CCircuitDef* shooter = leader->GetCircuitDef();
++	return [&sectors, sectorXSize, aimLift, shooter, convert](int2 start, int2 end) {  // losTest
+ 		const float startHeight = sectors[start.y * sectorXSize + start.x].maxElevation + aimLift;
+ 		const float diffHeight = sectors[end.y * sectorXSize + end.x].maxElevation + SQUARE_SIZE - startHeight;
+-		// check vertical angle
+-		const float absDiffHeight = std::fabs(diffHeight);
+-		if (absDiffHeight > maxHeight) {
+-			const float dirX = (end.x - start.x) * convert;
+-			const float dirY = (end.y - start.y) * convert;
+-			const float len = std::sqrt(SQUARE(dirX) + SQUARE(dirY) + SQUARE(absDiffHeight));
+-			if (absDiffHeight > SQRT_3_2 * len) {  // cos(a) > sqrt(3)/2; a < 30 deg
+-				return false;
+-			}
++		// Anarva: the engine's reach at this height difference decides (no 60-degree limit, no 0.4 x range shortcut)
++		const float dirX = (end.x - start.x) * convert;
++		const float dirY = (end.y - start.y) * convert;
++		if (shooter->GetRangeAt(diffHeight) < std::sqrt(SQUARE(dirX) + SQUARE(dirY))) {
++			return false;
+ 		}
+ 		// All octant line draw
+ 		const int dx =  abs(end.x - start.x), sx = start.x < end.x ? 1 : -1;
+@@ -387,17 +399,136 @@ void ISquadTask::Attack(const int frame)
  	Attack(frame, GetTarget()->GetUnit()->IsCloaked());
  }
  
@@ -2647,7 +2704,15 @@ index 154ce4bf..ba81f902 100644
  	attackFrame = isRepeatAttack ? frame : attackFrame;
  
  	auto it = rangeUnits.begin()->second.begin();
-@@ -421,17 +556,29 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+ 	std::advance(it, rangeUnits.begin()->second.size() / 2);  // TODO: Optimize
+ 	AIFloat3 dir = (*it)->GetPos(frame) - tPos;
+ 
+-	if (leader->GetCircuitDef()->IsPlane() || (std::fabs(dir.y) > leader->GetCircuitDef()->GetMaxRange() * 0.5f)) {
++	if (leader->GetCircuitDef()->IsPlane() || (leader->GetCircuitDef()->GetRangeAt(-dir.y) < dir.Length2D())) {  // Anarva: out of reach from here -> direct
+ 		if (isRepeatAttack) {
+ 			for (CCircuitUnit* unit : units) {
+ 				if (unit->Blocker() != nullptr) {
+@@ -421,17 +552,29 @@ void ISquadTask::Attack(const int frame, const bool isGround)
  	int row = 0;
  	for (const auto& kv : rangeUnits) {
  		CCircuitDef* rowDef = (*kv.second.begin())->GetCircuitDef();
@@ -2683,7 +2748,7 @@ index 154ce4bf..ba81f902 100644
  		if (delta > maxDelta) {
  			delta = maxDelta;
  		}
-@@ -459,9 +606,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+@@ -459,9 +602,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
  				|| (unit->GetTargetTile() != targetTile))
  			{
  				const float angle = alpha + beta;
@@ -2782,7 +2847,7 @@ index 5f061310..46525b2d 100644
  }
  
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a922..bf38d7a2 100644
+index a0f5a922..16a636e2 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -2802,10 +2867,12 @@ index a0f5a922..bf38d7a2 100644
  	upkeepM      = def->GetUpkeep(resM);
  	upkeepE      = def->GetUpkeep(resE);
  	extractsM    = def->GetExtractsResource(resM);  // FIXME: ZK = 0.001f
-@@ -230,6 +233,10 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -229,7 +232,11 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 	isPlane           = !def->IsHoverAttack() && isAbleToFly;
  	isStealth         = def->IsStealth();
  	isSonarStealth    = def->IsSonarStealth();
- 	isTurnLarge       = (speed / (def->GetTurnRate() + DIV0_SLACK) > 0.09f);  // empirical magic number
+-	isTurnLarge       = (speed / (def->GetTurnRate() + DIV0_SLACK) > 0.09f);  // empirical magic number
++	isTurnLarge       = false;  // Anarva: unused; waypoint spacing comes from the turning diameter (TravelAction)
 +	turnRate          = def->GetTurnRate() * FRAMES_PER_SEC * 360.f / 65536.f;  // Anarva: deg/s
 +	turnInPlace       = def->IsTurnInPlace();
 +	accel             = def->GetMaxAcceleration() * FRAMES_PER_SEC * FRAMES_PER_SEC;
@@ -3152,6 +3219,38 @@ index 834905fe..591df5f1 100644
  };
  
  } // namespace circuit
+diff --git a/src/circuit/unit/action/TravelAction.cpp b/src/circuit/unit/action/TravelAction.cpp
+index 96098603..ed7c57e3 100644
+--- a/src/circuit/unit/action/TravelAction.cpp
++++ b/src/circuit/unit/action/TravelAction.cpp
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "unit/action/TravelAction.h"
++#include <cmath>
+ #include "unit/CircuitUnit.h"
+ #include "unit/CircuitDef.h"
+ #include "task/UnitTask.h"
+@@ -28,14 +29,11 @@ ITravelAction::ITravelAction(CCircuitUnit* owner, Type type, int squareSize, flo
+ 	CCircuitUnit* unit = static_cast<CCircuitUnit*>(ownerList);
+ 	CCircuitDef* cdef = unit->GetCircuitDef();
+ 	int size = std::max(cdef->GetMoveXSize(), cdef->GetMoveZSize());
+-	int incMod = std::max(size / 4, 1);
+-	if (cdef->IsPlane()) {
+-		incMod *= 8;
+-	} else if (cdef->IsAbleToFly()) {
+-		incMod *= 3;
+-	} else if (cdef->IsTurnLarge()) {
+-		incMod *= 2;
+-	}
++	// Anarva: waypoints at least a turning diameter apart (radius v / omega from speed and turn rate), else the unit
++	// circles them; and at least its own footprint. No x8/x3/x2 multipliers or 0.09 'magic number'.
++	const float omega = std::max(1e-3f, cdef->turnRate) * float(M_PI) / 180.f;  // rad/s
++	const float turnDiameter = 2.f * cdef->GetSpeed() / omega;
++	int incMod = std::max(std::max(size / 4, 1), int(std::ceil(turnDiameter / DEFAULT_SLACK)));
+ 	increment = incMod * DEFAULT_SLACK / squareSize + 1;
+ 	minSqDist = squareSize * increment;  // / 2;
+ 	minSqDist *= minSqDist;
 diff --git a/src/circuit/unit/enemy/EnemyManager.h b/src/circuit/unit/enemy/EnemyManager.h
 index 372f9c9f..8c9bf7ea 100644
 --- a/src/circuit/unit/enemy/EnemyManager.h
