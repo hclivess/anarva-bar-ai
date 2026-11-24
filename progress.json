@@ -187,6 +187,41 @@
     }
    },
    "decision": "on by default: better share and fewer outright losses in both rounds (pooled 0.44 vs 0.26, 3 vs 6 outright)"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "F_HEIGHTSQUAD (squad standoff scaled by engine range at the target spot height) on vs off, 2 concurrent rounds x 8, 1v2",
+   "results": {
+    "on": {
+     "share": [
+      0.33,
+      0.32
+     ],
+     "outright": [
+      2,
+      1
+     ],
+     "dmg_out_in": [
+      0.97,
+      0.93
+     ]
+    },
+    "off": {
+     "share": [
+      0.79,
+      0.37
+     ],
+     "outright": [
+      0,
+      1
+     ],
+     "dmg_out_in": [
+      1.09,
+      0.88
+     ]
+    }
+   },
+   "decision": "kept off: worse share and damage ratio in both rounds"
   }
  ],
  "install": {
