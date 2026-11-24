@@ -1529,7 +1529,7 @@ index b62de532..6b361bd2 100644
  			if (enemy->IsInRadarOrLOS()) {
  				if (((targetCat & noChaseCat) == 0) && !enemy->IsBeingBuilt()) {
 diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
-index 154ce4bf..88db2ca2 100644
+index 154ce4bf..9eeabd69 100644
 --- a/src/circuit/task/fighter/SquadTask.cpp
 +++ b/src/circuit/task/fighter/SquadTask.cpp
 @@ -6,6 +6,7 @@
@@ -1540,18 +1540,20 @@ index 154ce4bf..88db2ca2 100644
  #include "map/InfluenceMap.h"
  #include "map/ThreatMap.h"
  #include "module/BuilderManager.h"
-@@ -16,6 +17,10 @@
+@@ -16,6 +17,12 @@
  #include "unit/action/TravelAction.h"
  #include "CircuitAI.h"
  #include "util/Utils.h"
 +#include "util/AnarvaSwitches.h"
++#include "Mod.h"
++#include "spring/SpringCallback.h"
 +#include <unordered_map>
 +#include "terrain/TerrainData.h"
 +#include "terrain/TerrainManager.h"
  
  #include <cmath>
  
-@@ -387,10 +392,129 @@ void ISquadTask::Attack(const int frame)
+@@ -387,10 +394,129 @@ void ISquadTask::Attack(const int frame)
  	Attack(frame, GetTarget()->GetUnit()->IsCloaked());
  }
  
@@ -1682,7 +1684,34 @@ index 154ce4bf..88db2ca2 100644
  	attackFrame = isRepeatAttack ? frame : attackFrame;
  
  	auto it = rangeUnits.begin()->second.begin();
-@@ -459,9 +583,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+@@ -428,10 +554,25 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+ 		if ((row++ == 0) && (isStatic || !GetTarget()->IsInRadarOrLOS())) {
+ 			range0 = std::min(kv.first, rowDef->GetLosRadius()) * RANGE_MOD;
+ 		}
+-		const float maxDelta = (M_PI * 0.9f) / kv.second.size();
++		float maxDelta = (M_PI * 0.9f) / kv.second.size();
+ 		// NOTE: float delta = asinf(cdef->GetRadius() / range);
+ 		//       but sin of a small angle is similar to that angle, omit asinf() call
+ 		float delta = (3.0f * (rowDef->GetRadius() + aoe)) / (range + DIV0_SLACK);
++		if (anarva::switches.decide) {
++			// Anarva (#46): one splash hits two of ours only when they stand closer than 2 x (our radius + its blast);
++			// that is the spacing. The arc: with the game's flanking bonus (damage grows when hits come from several
++			// directions) the whole circle around the target is worth using; without it, a half circle (no walk
++			// around the back).
++			static int flankMode = -1;
++			if (flankMode < 0) {
++				springai::Mod* mod = manager->GetCircuit()->GetCallback()->GetMod();
++				flankMode = mod->GetFlankingBonusModeDefault();
++				delete mod;
++			}
++			const float arc = (flankMode > 0) ? 2.f * M_PI : M_PI;
++			maxDelta = arc / kv.second.size();
++			delta = (2.0f * (rowDef->GetRadius() + aoe)) / (range + DIV0_SLACK);
++		}
+ 		if (delta > maxDelta) {
+ 			delta = maxDelta;
+ 		}
+@@ -459,9 +600,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
  				|| (unit->GetTargetTile() != targetTile))
  			{
  				const float angle = alpha + beta;
