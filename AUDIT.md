@@ -41,14 +41,20 @@ generated from unit files (`tools/gen_facts.py`), order lifetimes (walk + build 
 span (planning horizon), fortification spacing (unit radii), trade estimate (horizon decay, located kills),
 production weights, economic position (#41), raided extractors (#43).
 
+**Timers are decisions too (second pass):** orders carry no expiry clock (`NO_EXPIRY`: an order lasts until the AI
+changes it); waits, scheduler periods, fallback tasks and checks run on the engine's slow-update tick (`SLOW_UPDATE`,
+the AI's own decision rhythm) and the script modules on the same tick; work tasks last until done; leads come from
+intercept, flight or update time; fake enemies are remembered while they could still be there; the heat grid cell is a
+camera's sight diameter; metal clusters are what one turret holds.
+
 **Still numbers, and why:**
-- Polling cadences (`ai.frame % N`, factory waits, `THREAT_UPDATE_RATE`) and engine command expiries
-  (`FRAMES_PER_SEC * 60` on unit orders): when to look again, not what to do. To do: re-evaluate on events.
-- Zero-K-only paths that never run in BAR (pylon grid, jump range, disarm/slow params) and map-analysis internals
-  (GridAnalyzer, MicroPather, metal-spot grouping `cluster_range`).
-- Config parse defaults for keys whose values no longer reach a decision.
-- Geometry and engine facts kept by name: `sqrt(0.5)` ballistics, `1.4 ~ sqrt(2)` diagonals, the engine's capture
-  formula (AntiCapAction), `EXPECTED_TURN = 90` (mean of a uniform 0-180 turn).
+- Geometry, units and engine facts kept by name: `sqrt(0.5)` ballistics, `~sqrt(2)` diagonals, 30 frames per second,
+  the engine's capture formula (AntiCapAction), `EXPECTED_TURN = 90` (mean of a uniform 0-180 turn), numeric guards.
+- Algorithm internals that make no game decision: pathfinder (MicroPather) and map-analysis (GridAnalyzer) code,
+  the distance-matrix shortcut in metal clustering.
+- Zero-K-only code that never runs in BAR (pylon grid, jump range).
+- Log formatting and the once-a-minute status log line.
+- Config values that are still parsed but no longer reach any decision (left in the JSON for now).
 
 ## Highest impact, on by default (fix order)
 
