@@ -548,7 +548,24 @@ void Update()
 	}
 	ours = aiEconomyMgr.metal.income;
 	const float perMex = ours / float(AiMax(1, int(Economist::mexes.length())));
-	theirs = float(enemyMex) * perMex;
+	// Unseen spots on their side count as theirs with the chance they've been taken since we last looked there
+	// (dark time against the time they need to cross the map), the same model the scouts use; seen-open ones don't.
+	float unseen = 0.f;
+	{
+		array<AIFloat3> msp; array<float> msi; array<bool> mso;
+		const uint ns = AiGetMetalSpots(msp, msi, mso);
+		float sp = 0.f; uint nm = 0;
+		for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile()) { sp += ed[i].speed; ++nm; }
+		const float speed = nm > 0 ? sp / float(nm) : AiMax(1.f, Director::allSpeed);
+		const float cross = AiTerrainDiagonal() / AiMax(1.f, speed);
+		const bool scouted = Scout::lastSeen.length() == uint(Intel::gw * Intel::gh);
+		for (uint i = 0; i < ns; ++i) {
+			if (!mso[i] || Assess::OnOurSide(msp[i]) || AiIsInLOS(msp[i])) continue;
+			const float age = scouted ? float(ai.frame - Scout::lastSeen[Intel::CellOf(msp[i])]) / SECOND : float(ai.frame) / SECOND;
+			unseen += AiMin(1.f, age / AiMax(1.f, cross));
+		}
+	}
+	theirs = (float(enemyMex) + unseen) * perMex;
 	behind = ours < theirs;
 	// the core's constructor rule (decide): builds constructors while build power < income x ratio
 	if (F_DECIDE) {
