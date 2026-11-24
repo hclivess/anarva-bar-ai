@@ -62,7 +62,13 @@ function widget:Initialize()
 	Spring.Echo("[REPLAY] MAP " .. tostring(Game.mapName) .. " " .. Game.mapSizeX .. "x" .. Game.mapSizeZ)
 end
 
+local MAXF = 25 * 1800  -- the library needs early/mid-game features; winners and length come from the index
 function widget:GameFrame(n)
+	if n >= MAXF then
+		Spring.Echo("[REPLAY] CAP f=" .. n)
+		Spring.SendCommands("quitforce")
+		return
+	end
 	if n % 90 == 1 then  -- pick up commanders that existed before the widget saw them
 		for _, uid in ipairs(Spring.GetAllUnits()) do
 			if not comms[uid] then
@@ -138,7 +144,31 @@ end
 function widget:UnitFinished(unitID, unitDefID, teamID)
 	local ud = UnitDefs[unitDefID]
 	if ud and teamID ~= gaia then
-		Spring.Echo(string.format("[REPLAY] BUILT f=%d team=%d %s m=%d", Spring.GetGameFrame(), teamID, ud.name, ud.metalCost))
+		-- kind facts for clustering: tech level, air, sea, static, builder, armed, longest weapon range
+		local cp = ud.customParams or {}
+		local tl = tonumber(cp.techlevel) or 1
+		local range = 0
+		for _, w in ipairs(ud.weapons or {}) do
+			local wd = WeaponDefs[w.weaponDef]
+			if wd and wd.range and wd.range > range then range = wd.range end
+		end
+		local md = ud.moveDef and ud.moveDef.name or ""
+		local sea = (ud.minWaterDepth or 0) > 0 or (md:find("boat") ~= nil) or (md:find("uboat") ~= nil)
+		Spring.Echo(string.format("[REPLAY] BUILT f=%d team=%d %s m=%d tl=%d air=%d sea=%d static=%d builder=%d armed=%d range=%d fac=%d",
+			Spring.GetGameFrame(), teamID, ud.name, ud.metalCost, tl, ud.canFly and 1 or 0, sea and 1 or 0,
+			(ud.canMove and not ud.isFactory) and 0 or 1, ud.isBuilder and 1 or 0, #(ud.weapons or {}) > 0 and 1 or 0, range, ud.isFactory and 1 or 0))
+	end
+end
+
+local firstHit = {}
+function widget:UnitDamaged(unitID, unitDefID, unitTeam, damage, paralyzer, weaponDefID, projectileID, attackerID, attackerDefID, attackerTeam)
+	if attackerTeam and unitTeam and attackerTeam ~= unitTeam and attackerTeam ~= gaia and unitTeam ~= gaia and not firstHit[attackerTeam] then
+		local a1 = select(6, Spring.GetTeamInfo(attackerTeam, false))
+		local a2 = select(6, Spring.GetTeamInfo(unitTeam, false))
+		if a1 ~= a2 then
+			firstHit[attackerTeam] = true
+			Spring.Echo(string.format("[REPLAY] FIRSTHIT f=%d team=%d", Spring.GetGameFrame(), attackerTeam))
+		end
 	end
 end
 
