@@ -1903,6 +1903,16 @@ bool NeedBuilder()
 
 // Our current army, as the candidates would join it (Lanchester: strength ~ total damage x total health).
 float armyH = 0.f, armyD = 0.f, armyCost = 0.f, armyRange = 0.f, armyLos = 0.f, armySpeed = 0.f, wArty = 0.f, wStaticCost = 0.f;
+// how much less the enemy can shoot aircraft than ground units: (their surface damage + 1) / (their air damage + 1)
+float airExposure = 1.f;
+void MeasureEnemyAA()
+{
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	float surf = 0.f, air = 0.f;
+	for (uint i = 0; i < n; ++i) { if (ed[i] is null) continue; surf += ed[i].surfThrDmg; air += ed[i].airThrDmg; }
+	airExposure = (surf + 1.f) / (air + 1.f);
+}
 
 void MeasureArmy(float wAir, float wSurf, float wSub)
 {
@@ -1955,6 +1965,9 @@ float Score(CCircuitDef@ d, float wAir, float wSurf, float wSub, float wStatic, 
 	// Screens: vs heavies/artillery, hp per metal soaks expensive shots (relative to our army's).
 	if (armyCost > 0.f && armyH > 0.f)
 		s *= 1.f + wHeavy * (hp / d.costM) / (armyH / armyCost);
+	// Counter: aircraft are worth as much more as the enemy can't shoot them (owner: T2 gunships beat Behemoth, no AA)
+	if (d.IsAbleToFly())
+		s *= airExposure;
 	// Time is a resource: a unit is worth the share of the planning horizon it actually spends fighting.
 	const float H = Brain::Economist::Horizon();
 	const float dist = Brain::Assess::frontDist > 0.f ? Brain::Assess::frontDist : AiTerrainDiagonal() * 0.5f;
@@ -2146,6 +2159,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	const float wHeavy = AiMin(1.f, (aiEnemyMgr.GetEnemyCost(RT::HEAVY) + aiEnemyMgr.GetEnemyCost(RT::ARTY)) / surf);
 
 	MeasureArmy(wAir, wSurf, wSub);
+	MeasureEnemyAA();
 	wArty = AiMin(1.f, aiEnemyMgr.GetEnemyCost(RT::ARTY) / surf);
 	wStaticCost = AiMin(1.f, aiEnemyMgr.GetEnemyCost(RT::STATIC) / (surf + aiEnemyMgr.GetEnemyCost(RT::STATIC)));
 	array<CCircuitDef@> cands;
