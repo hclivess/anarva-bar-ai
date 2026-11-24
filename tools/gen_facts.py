@@ -35,6 +35,16 @@ def scan(units_dir):
             if cap and eff:
                 e = float(eff.group(1)) / (float(eff.group(3)) if eff.group(3) else 1.0)
                 d["conv"] = (float(cap.group(1)), e)
+            # weapon/ability facts the script API can't see: stockpile time (s), metal per shot, shield radius
+            st = [float(x) for x in re.findall(r"\bstockpiletime\s*=\s*([\d.]+)", text, re.I)]
+            if st:
+                d["stockpiletime"] = max(st)
+            mps = [float(x) for x in re.findall(r"\bmetalpershot\s*=\s*([\d.]+)", text, re.I)]
+            if mps and max(mps) > 0:
+                d["metalpershot"] = max(mps)
+            sr = [float(x) for x in re.findall(r"\bshield_radius\s*=\s*([\d.]+)", text, re.I)]
+            if sr:
+                d["shieldradius"] = max(sr)
             bo = re.search(r"\bbuildoptions\s*=\s*\{(.*?)\}", text, re.S | re.I)
             d["buildoptions"] = re.findall(r'"([a-z0-9_]+)"', bo.group(1)) if bo else []
             defs[name] = d
@@ -95,6 +105,14 @@ def main():
     lines.append("	return null;")
     lines.append("}")
     lines.append("")
+    for key, fn in (("stockpiletime", "StockpileTime"), ("metalpershot", "ShotMetal"), ("shieldradius", "ShieldRadius"),
+                    ("extractsmetal", "ExtractsMetal"), ("energyupkeep", "EnergyUpkeep")):
+        items = sorted((n, d[key]) for n, d in defs.items() if key in d)
+        lines.append("dictionary %s_ = {" % key)
+        lines.append(",\n".join('\t{"%s", %g}' % (n, v) for n, v in items))
+        lines.append("};")
+        lines.append("float %s(const string& in name) { double v = 0; %s_.get(name, v); return float(v); }" % (fn, key))
+        lines.append("")
     lines.append("array<string> BuildOptions(const string& in fac)")
     lines.append("{")
     lines.append("\tarray<string>@ o;")

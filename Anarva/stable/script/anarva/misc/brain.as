@@ -98,6 +98,26 @@ string F1(float v) { return formatFloat(v, "", 0, 1); }
 AIFloat3 basePos = AIFloat3(-1.f, 0.f, -1.f);
 bool HasBase() { return basePos.x >= 0.f; }
 
+// How long an order may wait before it is forgotten: the time to finish it - the walk from base plus its build time at
+// our mean constructor's build power (frames). Replaces fixed 2/3/5-minute lifetimes.
+int OrderLife(const CCircuitDef@ d, const AIFloat3& in pos)
+{
+	const float workers = float(AiMax(1, int(aiBuilderMgr.GetWorkerCount())));
+	const float bp = AiMax(1e-3f, aiBuilderMgr.GetBuildPower() / workers);
+	const float speed = AiMax(1.f, (commander !is null) ? commander.circuitDef.speed : Brain::Director::allSpeed);
+	const float walk = HasBase() ? basePos.distance2D(pos) / speed : 0.f;
+	return int((walk + ((d is null) ? 0.f : d.buildTime) / bp) * SECOND) + 1;
+}
+// The same for a reclaim of this much metal (reclaim runs at build power)
+int ReclaimLife(float metal, const AIFloat3& in pos)
+{
+	const float workers = float(AiMax(1, int(aiBuilderMgr.GetWorkerCount())));
+	const float bp = AiMax(1e-3f, aiBuilderMgr.GetBuildPower() / workers);
+	const float speed = AiMax(1.f, (commander !is null) ? commander.circuitDef.speed : Brain::Director::allSpeed);
+	const float walk = HasBase() ? basePos.distance2D(pos) / speed : 0.f;
+	return int((walk + metal / bp) * SECOND) + 1;
+}
+
 void RemoveUnit(array<CCircuitUnit@>@ list, CCircuitUnit@ unit)
 {
 	int idx = list.findByRef(unit);
@@ -284,10 +304,10 @@ void Update()
 	blockedMax = 0.f;
 	if (storeDef is null || !storeDef.IsAvailable(ai.frame) || want <= 0.f || !HasBase()) return;
 	// one order at a time: outstanding until one more storage exists or the task would have timed out
-	if (countAtOrder >= 0 && storeDef.count <= countAtOrder && ai.frame - orderFrame < 3 * MINUTE) return;
+	if (countAtOrder >= 0 && storeDef.count <= countAtOrder && ai.frame - orderFrame < OrderLife(storeDef, basePos)) return;
 	const float saved = AiMin(want, storeDef.storageM);
 	if (saved <= Economist::MetalValue(storeDef)) return;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::STORE, Task::Priority::NORMAL, storeDef, basePos, SQUARE_SIZE * 32, true, 3 * MINUTE));
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::STORE, Task::Priority::NORMAL, storeDef, basePos, 0.f, true, OrderLife(storeDef, basePos)));
 	countAtOrder = storeDef.count; orderFrame = ai.frame; ++ordered;
 	AiLog("[ANV] Storage: ordering " + storeDef.GetName() + " (reclaims held back: " + int(want) + " metal over free storage, it holds " + int(storeDef.storageM) + ")");
 }
@@ -324,7 +344,7 @@ void Update()
 	}
 	CCircuitDef@ lab = Strategic::Side("armlab", "corlab", "leglab");
 	CCircuitDef@ rez = Strategic::Side("armrectr", "cornecro", "legrezbot");
-	if (lab is null || rez is null || !lab.IsAvailable(ai.frame) || ai.frame - orderFrame < 5 * MINUTE) return;  // the order queued below lives 5 min: one at a time
+	if (lab is null || rez is null || !lab.IsAvailable(ai.frame) || ai.frame - orderFrame < OrderLife(lab, basePos)) return;  // one order at a time, for its lifetime
 	array<AIFloat3> wp; array<float> wm; array<bool> wr;
 	const uint w = AiGetWrecks(wp, wm, wr);
 	float pool = 0.f;
@@ -332,7 +352,7 @@ void Update()
 	if (pool <= Economist::MetalValue(lab) + Economist::MetalValue(rez)) return;
 	orderFrame = ai.frame;
 	++ordered;
-	aiBuilderMgr.Enqueue(TaskB::Factory(Task::Priority::HIGH, lab, basePos, lab, SQUARE_SIZE * 32, false, true, 5 * MINUTE));
+	aiBuilderMgr.Enqueue(TaskB::Factory(Task::Priority::HIGH, lab, basePos, lab, 0.f, false, true, OrderLife(lab, basePos)));
 	AiLog("[ANV] RezLab: ordering " + lab.GetName() + " (wreck metal " + int(pool) + " > lab + rez bot)");
 }
 }  // namespace RezLab
@@ -404,7 +424,7 @@ void Update()
 	if (!TurretSurvives(tur, p)) return;
 	guarded.set("" + best.id, ai.frame);
 	++orders;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, p, SQUARE_SIZE * 8, true, 3 * MINUTE));
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, p, 0.f, true, OrderLife(tur, p)));
 	AiLog("[ANV] MexPorc: " + tur.GetName() + " at raided extractor (lost " + int(bestHeat) + " metal around it > turret " + int(cost) + ")");
 }
 }  // namespace MexPorc
@@ -707,8 +727,6 @@ array<int> origMax;  // per def id; -1 = not retired
 int reclaimedCount = 0;
 int stallTicks = 0;
 
-const int MAX_PENDING = 3;
-const int RECLAIM_TIMEOUT = 90 * SECOND;
 
 void Init()
 {
@@ -878,7 +896,7 @@ void RestoreAll()
 void PrunePending()
 {
 	for (int i = int(pending.length()) - 1; i >= 0; --i) {
-		if (ai.frame - pendingFrame[i] > RECLAIM_TIMEOUT + 10 * SECOND) {
+		if (ai.frame - pendingFrame[i] > ReclaimLife(pending[i].circuitDef.costM, pending[i].GetPos(ai.frame))) {
 			int s = salvagePending.findByRef(pending[i]);
 			if (s >= 0) {
 				ai.UnitControl(pending[i], true);  // give the unit back
@@ -915,7 +933,7 @@ void Reclaim(CCircuitUnit@ u)
 		Brain::Storage::Block(u.circuitDef.costM);
 		return;
 	}
-	aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, u, RECLAIM_TIMEOUT));
+	aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, u, ReclaimLife(u.circuitDef.costM, u.GetPos(ai.frame))));
 	pending.insertLast(u);
 	pendingFrame.insertLast(ai.frame);
 }
@@ -1012,7 +1030,7 @@ void Update()
 		return;
 	}
 
-	if (int(pending.length()) >= MAX_PENDING)
+	if (pending.length() >= aiBuilderMgr.GetWorkerCount())  // one reclaim per constructor
 		return;
 
 	Salvage();
@@ -1242,7 +1260,7 @@ void OrderVision()
 		return;
 	lastEyesFrame[best] = ai.frame;
 	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, eyesDef, hot,
-		SQUARE_SIZE * 16, true, 2 * MINUTE));
+		0.f, true, OrderLife(eyesDef, hot)));
 	++eyesOrdered;
 	AiLog("[ANV] Intel: vision ordered at (" + int(hot.x) + "," + int(hot.z) + ") heat=" + F1(bestHeat) + " > camera " + int(cost));
 }
@@ -1269,10 +1287,11 @@ namespace Strategic {
 CCircuitDef@ junoDef, amdDef, tacDef, siloDef, shieldDef;
 array<CCircuitDef@> junoDefs, amdDefs, tacDefs, siloDefs, shieldDefs;
 array<CCircuitUnit@> junos, amds, tacs, silos, shields, infra;
-array<int> lastOrder(5, -10 * MINUTE);  // juno, amd, tac, silo, shield
+array<int> lastOrder(5, -10 * MINUTE);
+array<int> lastLife(5, 0);  // each kind's last order lifetime (OrderLife)  // juno, amd, tac, silo, shield
 int orders = 0;
 
-const float SHIELD_RADIUS = 550.f;
+float ShieldRadius() { return shieldDef is null ? 0.f : Facts::ShieldRadius(shieldDef.GetName()); }  // unit facts
 
 CCircuitDef@ Side(const string& in arm, const string& in cor, const string& in leg)
 {
@@ -1317,8 +1336,8 @@ float NukeRisk()
 {
 	if (amdDef is null || siloDef is null)
 		return 0.f;
-	const float workers = float(AiMax(1, aiBuilderMgr.GetWorkerCount()));
-	const float L = AMD_BUILDTIME / (CON_WORK * AiMax(1.f, workers * 0.5f)) + AMD_STOCKPILE_S;
+	// time to have an anti-nuke up: its build time at our measured build power + its stockpile time (unit facts)
+	const float L = amdDef.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower()) + Facts::StockpileTime(amdDef.GetName());
 	float feasible = 1.f;
 	if (aiEnemyMgr.GetEnemyCost(RT::NUKE) <= 0.f) {
 		if (ourT2Frame < 0)
@@ -1326,14 +1345,12 @@ float NukeRisk()
 		const float since = float(ai.frame - ourT2Frame) / SECOND + L;
 		// each enemy earns about what we do (parity prior; scouted BARbs out-earn us, so it's a floor)
 		const float enemyMetal = float(AiMax(1, ai.GetEnemyTeamSize())) * aiEconomyMgr.metal.income * since;
-		feasible = AiMin(1.f, enemyMetal / (siloDef.costM + SILO_MISSILE_M) - SILO_STOCKPILE_S / AiMax(1.f, since));
+		feasible = AiMin(1.f, enemyMetal / (siloDef.costM + Facts::ShotMetal(siloDef.GetName())) - Facts::StockpileTime(siloDef.GetName()) / AiMax(1.f, since));
 		if (feasible <= 0.f)
 			return 0.f;
 	}
 	return feasible * InfraValue() / AiMax(1.f, Brain::Economist::MetalValue(amdDef));
 }
-const float AMD_BUILDTIME = 60000.f, AMD_STOCKPILE_S = 90.f, SILO_STOCKPILE_S = 180.f, SILO_MISSILE_M = 1000.f;
-const float CON_WORK = 85.f;  // T1 constructor workertime (unit facts), the rate one builder adds
 
 void OnFinished(CCircuitUnit@ u)
 {
@@ -1343,7 +1360,7 @@ void OnFinished(CCircuitUnit@ u)
 	else if (InList(tacDefs, d))    tacs.insertLast(u);
 	else if (InList(siloDefs, d))   silos.insertLast(u);
 	else if (InList(shieldDefs, d)) shields.insertLast(u);
-	if (!d.IsMobile() && d.costM >= 250.f && !InList(shieldDefs, d))
+	if (!d.IsMobile() && !InList(shieldDefs, d))  // every structure at its metal value; the protection value sums decide
 		infra.insertLast(u);
 }
 
@@ -1355,12 +1372,12 @@ void OnDestroyed(CCircuitUnit@ u)
 
 // No cooldown clock: a kind is ready when no order of it is still outstanding (one more exists, or the build task
 // we queued has expired at its own lifetime, ORDER_LIFE, set where it is enqueued).
-const int ORDER_LIFE = 5 * MINUTE;
+
 array<int> countAtOrder(8, -1);
 bool Ready(int kind, CCircuitDef@ d)
 {
 	if (d is null || !d.IsAvailable(ai.frame)) return false;
-	return countAtOrder[kind] < 0 || d.count > countAtOrder[kind] || ai.frame - lastOrder[kind] > ORDER_LIFE;
+	return countAtOrder[kind] < 0 || d.count > countAtOrder[kind] || ai.frame - lastOrder[kind] > lastLife[kind];
 }
 
 void Order(int kind, CCircuitDef@ d, const AIFloat3& in pos, Task::Priority pri, float shake)
@@ -1368,7 +1385,8 @@ void Order(int kind, CCircuitDef@ d, const AIFloat3& in pos, Task::Priority pri,
 	lastOrder[kind] = ai.frame;
 	countAtOrder[kind] = d.count;
 	++orders;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::BIG_GUN, pri, d, pos, shake, true, ORDER_LIFE));
+	lastLife[kind] = OrderLife(d, pos);
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::BIG_GUN, pri, d, pos, shake, true, lastLife[kind]));
 	AiLog("[ANV] Strategic: ordering " + d.GetName() + " at (" + int(pos.x) + "," + int(pos.z) + ")");
 }
 
@@ -1384,6 +1402,26 @@ AIFloat3 ForwardPos(float dist)
 	return basePos + dir * (AiMin(dist, len * 0.5f) / len);
 }
 
+// Where a launcher of this reach covers the enemy's structures (their centre, or the mirror of our base when none are
+// known) while staying on our half of the way
+AIFloat3 ReachPos(const CCircuitDef@ d)
+{
+	AIFloat3 target = AiTerrainCenter() * 2.f - basePos;
+	const array<AIFloat3>@ es = Brain::Assess::enemyStatics;
+	if (es.length() > 0) {
+		target = AIFloat3(0.f, 0.f, 0.f);
+		for (uint i = 0; i < es.length(); ++i) target = target + es[i];
+		target = target / float(es.length());
+	}
+	AIFloat3 dir = target - basePos;
+	dir.y = 0.f;
+	const float len = dir.Length2D();
+	if (len < 1.f)
+		return basePos;
+	const float along = AiMin(AiMax(0.f, len - d.GetMaxRange()), len * 0.5f);
+	return basePos + dir * (along / len);
+}
+
 // Most valuable spot not yet under a shield: sum of infra cost within the shield radius.
 bool BestShieldSpot(AIFloat3& out pos, float& out value)
 {
@@ -1392,12 +1430,12 @@ bool BestShieldSpot(AIFloat3& out pos, float& out value)
 		const AIFloat3 p = infra[i].GetPos(ai.frame);
 		bool covered = false;
 		for (uint s = 0; s < shields.length() && !covered; ++s)
-			covered = shields[s].GetPos(ai.frame).distance2D(p) < SHIELD_RADIUS * 0.8f;
+			covered = shields[s].GetPos(ai.frame).distance2D(p) < ShieldRadius();  // inside the shield = covered
 		if (covered)
 			continue;
 		float v = 0.f;
 		for (uint j = 0; j < infra.length(); ++j) {
-			if (infra[j].GetPos(ai.frame).distance2D(p) < SHIELD_RADIUS * 0.85f)
+			if (infra[j].GetPos(ai.frame).distance2D(p) < ShieldRadius())
 				v += infra[j].circuitDef.costM;
 		}
 		if (v > value) {
@@ -1423,14 +1461,14 @@ void Update(bool jamAlert)
 	const uint wantAmd = (amds.length() == 0 && NukeRisk() >= 1.f) ? 1
 		: ((enemyNuke && InfraValue() > 2.f * Brain::Economist::MetalValue(amdDef) * float(amds.length() + 1)) ? amds.length() + 1 : amds.length());
 	if (amds.length() < wantAmd && Ready(1, amdDef)) {
-		Order(1, amdDef, basePos, enemyNuke ? Task::Priority::NOW : Task::Priority::HIGH, SQUARE_SIZE * 32);
+		Order(1, amdDef, basePos, enemyNuke ? Task::Priority::NOW : Task::Priority::HIGH, 0.f);  // no scatter: the block map spaces by blast radius
 		return;
 	}
 	// Juno: EMP missile that wipes radar, jammers and mines in its blast. Worth it when the enemy jammers it can wipe
 	// are worth more than it (no game clock).
 	if (jamAlert && junos.length() < 1 && Ready(0, junoDef)
 		&& aiEnemyMgr.GetEnemyCost(RT::JAMMER) > Brain::Economist::MetalValue(junoDef)) {
-		Order(0, junoDef, basePos, Task::Priority::HIGH, SQUARE_SIZE * 32);
+		Order(0, junoDef, basePos, Task::Priority::HIGH, 0.f);  // no scatter: the block map spaces by blast radius
 		return;
 	}
 	// Everything below is an investment that doesn't fight today: only when our army covers what we need.
@@ -1442,20 +1480,20 @@ void Update(bool jamAlert)
 		AIFloat3 pos;
 		float value;
 		if (BestShieldSpot(pos, value) && value > Brain::Economist::MetalValue(shieldDef)) {
-			Order(4, shieldDef, pos, Task::Priority::NORMAL, SQUARE_SIZE * 6);
+			Order(4, shieldDef, pos, Task::Priority::NORMAL, 0.f);  // no scatter: the block map spaces by blast radius
 			return;
 		}
 	}
 	// Tactical / EMP launcher, forward of base: one more while the enemy's static metal exceeds what our launchers cost.
 	const float enemyStatic = aiEnemyMgr.GetEnemyCost(RT::STATIC);
 	if (tacDef !is null && Ready(2, tacDef) && enemyStatic > Brain::Economist::MetalValue(tacDef) * float(tacs.length() + 1)) {
-		Order(2, tacDef, ForwardPos(900.f), Task::Priority::NORMAL, SQUARE_SIZE * 24);
+		Order(2, tacDef, ReachPos(tacDef), Task::Priority::NORMAL, 0.f);  // no scatter: the block map spaces by blast radius
 		return;
 	}
 	// Nuke: only under our own anti-nuke umbrella, while the enemy's static metal exceeds the silo.
 	if (amds.length() >= 1 && silos.length() < 1 && siloDef !is null && Ready(3, siloDef)
 		&& enemyStatic > Brain::Economist::MetalValue(siloDef)) {
-		Order(3, siloDef, basePos, Task::Priority::NORMAL, SQUARE_SIZE * 32);
+		Order(3, siloDef, basePos, Task::Priority::NORMAL, 0.f);  // no scatter: the block map spaces by blast radius
 		return;
 	}
 }
@@ -1481,7 +1519,10 @@ void OnTerrainLoss(const AIFloat3& in pos, float costM)
 		return;
 	const AIFloat3 high(m.hx[myStart], 0.f, m.hz[myStart]);
 	const AIFloat3 choke(m.cx[myStart], 0.f, m.cz[myStart]);
-	if (pos.distance2D(high) < 900.f || pos.distance2D(choke) < 900.f)
+	// a loss counts against the terrain spots when it falls within what a turret there would reach (no 900-elmo ring)
+	CCircuitDef@ tur = BestTurret();
+	const float reach = (tur is null) ? 0.f : tur.GetMaxRange();
+	if (pos.distance2D(high) < reach || pos.distance2D(choke) < reach)
 		terrainHit += costM;
 }
 
@@ -1525,7 +1566,7 @@ bool TerrainFortify()
 		float best = 1e9f;
 		for (uint i = 0; i < m.sx.length(); ++i) {
 			const float d = basePos.distance2D(AIFloat3(m.sx[i], 0.f, m.sz[i]));
-			if (d < best && d < 0.25f * AiMax(m.straight, 1.f)) {  // must actually be our start
+			if (d < best) {  // the nearest analysed start is ours
 				best = d;
 				myStart = int(i);
 			}
@@ -1536,7 +1577,7 @@ bool TerrainFortify()
 	if (myStart < 0)
 		return false;
 	const bool outnumbered = ai.GetEnemyTeamSize() > 1;
-	if ((Brain::Director::ratio >= 1.f && !outnumbered) || ai.frame - lastFortify < 30 * SECOND)
+	if (Brain::Director::ratio >= 1.f && !outnumbered)
 		return true;  // handled (nothing to do now)
 	/*
 	 * How much defence: one turret at the first order, then one more whenever something came at us since
@@ -1551,7 +1592,7 @@ bool TerrainFortify()
 	if (tur is null || !tur.IsAvailable(ai.frame))
 		return true;
 	// orders still unbuilt (tasks live 3 min) count against the one wanted; expired ones are forgotten
-	if (ai.frame - lastFortify >= 3 * MINUTE)
+	if (ai.frame - lastFortify >= OrderLife(terrainDef, basePos))
 		terrainBuilt = forts;
 	const int pending = forts - terrainBuilt;
 	const int n = AiMin(1 - pending, AiMax(1, aiBuilderMgr.GetWorkerCount()));
@@ -1565,14 +1606,14 @@ bool TerrainFortify()
 	const AIFloat3 choke(m.cx[myStart], 0.f, m.cz[myStart]);
 	if (!TurretSurvives(tur, high)) { forts -= n; return true; }
 	for (int k = 0; k < n; ++k)
-		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, high, SQUARE_SIZE * (12 + 4 * k), true, 3 * MINUTE));
+		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, high, tur.GetRadius() * 2.f * float(k), true, OrderLife(tur, high)));  // side by side, a turret width apart
 	if (wallDef !is null && wallDef.IsAvailable(ai.frame) && forts % 2 == 1) {
 		AIFloat3 dir = choke - AIFloat3(m.sx[myStart], 0.f, m.sz[myStart]);
 		const float len = AiMax(1.f, dir.Length2D());
 		dir = dir / len;
 		const AIFloat3 side(-dir.z, 0.f, dir.x);
 		for (int k = -3; k <= 3; ++k)
-			aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, wallDef, choke + side * (48.f * k), 0.f, true, 3 * MINUTE));
+			aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, wallDef, choke + side * (2.f * wallDef.GetRadius() * float(k)), 0.f, true, OrderLife(wallDef, choke)));  // touching
 	}
 	// mines in the choke mouth, on the enemy's side of the teeth: BARb walks its lanes and never sweeps
 	if (minelayers > 0 && mineDef !is null && mineDef.IsAvailable(ai.frame)) {
@@ -1581,7 +1622,7 @@ bool TerrainFortify()
 		const AIFloat3 side(-dir.z, 0.f, dir.x);
 		for (int k = -2; k <= 2; ++k)
 			aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, mineDef,
-				choke + dir * (96.f + 48.f * (forts % 3)) + side * (64.f * k), 0.f, true, 3 * MINUTE));
+				choke + dir * (2.f * ((wallDef !is null) ? wallDef.GetRadius() : mineDef.GetRadius()) * float(1 + forts % 3)) + side * (2.f * mineDef.GetRadius() * float(k)), 0.f, true, OrderLife(mineDef, choke)));
 	}
 	AiLog("[ANV] Terrain: " + n + "x " + tur.GetName() + " on high ground (+" + int(m.gain[myStart]) + ")" + (forts % 2 == 1 ? " + teeth across the choke" : "")
 		+ (minelayers > 0 ? " + mines" : ""));
@@ -1595,7 +1636,7 @@ void Fortify()
 	// Audit S1: no fallback constants. The cell where we lost the most metal gets a turret when that loss beats the
 	// turret and it would survive; it stands on our side of the cell by its own range, so it covers the cell. One
 	// order at a time, for the order's lifetime (3 min, below).
-	if (ai.frame - lastFortify < 3 * MINUTE) return;
+	if (ai.frame - lastFortify < OrderLife(terrainDef, basePos)) return;
 	CCircuitDef@ tur = BestTurret();
 	if (tur is null || !tur.IsAvailable(ai.frame) || !HasBase()) return;
 	int best = -1;
@@ -1611,7 +1652,7 @@ void Fortify()
 	if (!TurretSurvives(tur, tpos)) return;
 	lastFortify = ai.frame;
 	++forts;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, tpos, SQUARE_SIZE * 8, true, 3 * MINUTE));
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, tpos, 0.f, true, OrderLife(tur, tpos)));
 	AiLog("[ANV] Fortify: " + tur.GetName() + " covering the cell where we lost " + int(bestHeat) + " metal");
 }
 
@@ -1747,7 +1788,6 @@ void OnDestroyed(CCircuitUnit@ u) { RemoveUnit(rezBots, u); }
 // worth more than the rez fleet we already have: a bot pays for itself if there's more than its cost to take.
 // who ends up holding the ground where fights happened: our share of the exchange, trade / (1 + trade)
 float HoldShare() { const float tr = Brain::Assess::trade; return tr / (1.f + tr); }
-const float WRECK_SHARE = 0.6f;  // a wreck holds ~60% of the unit's metal (BAR corpse defs)
 CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 {
 	/*
@@ -1778,13 +1818,13 @@ CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 IUnitTask@ MineLayerTask(CCircuitUnit@ fac)
 {
 	if (Strategic::myStart < 0 || Strategic::minelayers > 0 || Strategic::mlvDef is null
-		|| ai.frame - Strategic::mlvOrderedAt < 2 * MINUTE || !Strategic::mlvDef.IsAvailable(ai.frame)
+		|| ai.frame - Strategic::mlvOrderedAt < OrderLife(Strategic::mlvDef, fac.GetPos(ai.frame)) || !Strategic::mlvDef.IsAvailable(ai.frame)
 		|| Facts::BuildOptions(fac.circuitDef.GetName()).find(Strategic::mlvDef.GetName()) < 0)
 		return null;
 	Strategic::mlvOrderedAt = ai.frame;
 	AiLog("[ANV] Terrain: recruiting a minelayer");
 	return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, Strategic::mlvDef,
-		fac.GetPos(ai.frame), 64.f));
+		fac.GetPos(ai.frame), fac.circuitDef.GetRadius()));
 }
 
 
@@ -1817,8 +1857,8 @@ IUnitTask@ MohoConTask(CCircuitUnit@ fac)
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	for (uint i = 0; i < all.length(); ++i) if (T2_CONS.find(all[i].circuitDef.GetName()) >= 0) ++C;
 	const float perMex = aiEconomyMgr.metal.income / float(AiMax(1, int(mx.length())));
-	const float extra = perMex * (Brain::Economist::MEX_T2_EXTRACT / Brain::Economist::MEX_T1_EXTRACT - 1.f)
-		- (Brain::Economist::MEX_T2_UPKEEP_E - Brain::Economist::MEX_T1_UPKEEP_E) / AiMax(1e-3f, Brain::Economist::energyPerMetal);
+	const float extra = perMex * (Brain::Economist::MexExtract(Brain::Economist::mexT2) / AiMax(1e-9f, Brain::Economist::MexExtract(Brain::Economist::mexT1)) - 1.f)
+		- (Brain::Economist::MexUpkeep(Brain::Economist::mexT2) - Brain::Economist::MexUpkeep(Brain::Economist::mexT1)) / AiMax(1e-3f, Brain::Economist::energyPerMetal);
 	if (extra <= 0.f) { mohoWhy = "upgrade doesn't pay its upkeep"; return null; }
 	const float tau = t2.buildTime / AiMax(1.f, con.buildSpeed);
 	const float saving = (C == 0) ? 1e9f : extra * tau * float(U * U) / (2.f * float(C) * float(C + 1));
@@ -1829,7 +1869,7 @@ IUnitTask@ MohoConTask(CCircuitUnit@ fac)
 	mohoWhy = "U=" + U + " C=" + C + " saving=" + int(AiMin(saving, 1e6f)) + " vs " + int(price);
 	if (saving <= price) return null;
 	++mohoCons;
-	return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, con, fac.GetPos(ai.frame), 64.f));
+	return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, con, fac.GetPos(ai.frame), fac.circuitDef.GetRadius()));
 }
 
 IUnitTask@ MakeTask(CCircuitUnit@ fac)
@@ -1839,7 +1879,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		if (rez !is null) {
 			++rezOrders;
 			AiLog("[ANV] Rez: +" + rez.GetName() + " fleet=" + rezBots.length());
-			return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, rez, fac.GetPos(ai.frame), 64.f));
+			return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, rez, fac.GetPos(ai.frame), fac.circuitDef.GetRadius()));
 		}
 	}
 	IUnitTask@ ml = MineLayerTask(fac);
@@ -1869,16 +1909,17 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		++rezOrders;
 		last = rez.GetName();
 		return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, rez,
-			fac.GetPos(ai.frame), 64.f));
+			fac.GetPos(ai.frame), fac.circuitDef.GetRadius()));
 	}
 
 	// Scouted enemy mix -> how much each damage domain matters.
 	const float air = aiEnemyMgr.GetEnemyCost(RT::AIR);
 	const float sub = aiEnemyMgr.GetEnemyCost(RT::SUB);
 	const float stat = aiEnemyMgr.GetEnemyThreat(RT::STATIC);
-	const float surf = AiMax(300.f, aiEnemyMgr.GetEnemyCost(RT::RAIDER) + aiEnemyMgr.GetEnemyCost(RT::ASSAULT)
+	float surf = aiEnemyMgr.GetEnemyCost(RT::RAIDER) + aiEnemyMgr.GetEnemyCost(RT::ASSAULT)
 		+ aiEnemyMgr.GetEnemyCost(RT::SKIRM) + aiEnemyMgr.GetEnemyCost(RT::RIOT) + aiEnemyMgr.GetEnemyCost(RT::HEAVY)
-		+ aiEnemyMgr.GetEnemyCost(RT::ARTY) + aiEnemyMgr.GetEnemyCost(RT::STATIC) * 0.5f);
+		+ aiEnemyMgr.GetEnemyCost(RT::ARTY) + aiEnemyMgr.GetEnemyCost(RT::STATIC);
+	if (air + sub + surf <= 0.f) surf = 1.f;  // nothing seen yet: everyone starts on land
 	const float total = air + sub + surf;
 	const float wAir = air / total, wSub = sub / total, wSurf = surf / total;
 	const float wStatic = AiMin(1.f, stat / AiMax(1.f, aiEnemyMgr.mobileThreat + stat));
@@ -1938,7 +1979,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	++choices;
 	last = d.GetName();
 	return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::FIREPOWER, Task::Priority::NORMAL, d,
-		fac.GetPos(ai.frame), 64.f));
+		fac.GetPos(ai.frame), fac.circuitDef.GetRadius()));
 }
 
 string Status() { return "moho=" + mohoCons + "(" + mohoWhy + ") prod=" + choices + "/b" + builders + " rez=" + rezBots.length() + "/" + rezOrders + " last=" + last; }
@@ -1958,7 +1999,9 @@ array<CCircuitUnit@> mexes;
 CCircuitDef@ mexT1, mexT2, makerDef;
 float energyPerMetal = 0.f;   // converter exchange rate, from defs
 // Game facts the script API doesn't expose (from unitdefs: extractsmetal / energyupkeep). Not tunables.
-const float MEX_T1_EXTRACT = 1.f, MEX_T2_EXTRACT = 4.f, MEX_T1_UPKEEP_E = 3.f, MEX_T2_UPKEEP_E = 20.f;
+// extractor facts from the unit files (extractsmetal relative to T1, energy upkeep E/s)
+float MexExtract(const CCircuitDef@ d) { return (d is null) ? 0.f : Facts::ExtractsMetal(d.GetName()); }
+float MexUpkeep(const CCircuitDef@ d) { return (d is null) ? 0.f : Facts::EnergyUpkeep(d.GetName()); }
 float lastEnemySeen = 0.f;    // for when we're blind
 
 void Init()
@@ -1974,8 +2017,13 @@ void Init()
 		if (mm > 0.f && em < 0.f)
 			energyPerMetal = -em / mm;
 	}
-	if (energyPerMetal <= 0.f)
-		energyPerMetal = 70.f;  // game fact for T1 makers when the defs don't expose it
+	if (energyPerMetal <= 0.f && makerDef !is null) {
+		// the defs don't expose it: the maker's unit file (energyconv_efficiency = metal per energy)
+		Facts::InitConverters();
+		Facts::SConv@ c = Facts::Converter(makerDef.GetName());
+		if (c !is null && c.eff > 0.f)
+			energyPerMetal = 1.f / c.eff;
+	}
 	AiLog("[ANV] Economist: converter rate " + F1(energyPerMetal) + " E per M");
 }
 
@@ -2011,8 +2059,8 @@ float MohoPayback(const CCircuitDef@ lab)
 		return 1e9f;
 	const float n = float(mexes.length());
 	const float perMex = aiEconomyMgr.metal.income / n;  // upper bound: includes reclaim/makers
-	const float extraM = perMex * (MEX_T2_EXTRACT / MEX_T1_EXTRACT - 1.f);
-	const float upkeepM = (MEX_T2_UPKEEP_E - MEX_T1_UPKEEP_E) / energyPerMetal;
+	const float extraM = perMex * (MexExtract(mexT2) / AiMax(1e-9f, MexExtract(mexT1)) - 1.f);
+	const float upkeepM = (MexUpkeep(mexT2) - MexUpkeep(mexT1)) / AiMax(1e-3f, energyPerMetal);
 	const float gain = n * (extraM - upkeepM);
 	if (gain <= 0.f)
 		return 1e9f;
@@ -2094,11 +2142,10 @@ bool Allowed(const CCircuitDef@ facDef)
 namespace Assess {
 
 float lostNear = 0.f, lostFar = 0.f, killed = 0.f, frontDist = 0.f;
+float frontW = 0.f, frontWD = 0.f;  // metal lost (mobile) and metal x distance from base, decayed on the horizon
 float lostNearTotal = 0.f;  // never decays: has anything come at us since X?
 float lostFarTotal = 0.f, killedTotal = 0.f;  // never decay: wrecks stay on the map
 float enemyPrev = -1.f;
-array<float> incomeHist;  // one sample per minute
-float growth = 0.f;
 bool pushedBack = false, pushing = false;
 float trade = 1.f;
 // Where exchanges happen (C++ bridge): our side of the map = closer to our base than to any known enemy
@@ -2167,8 +2214,11 @@ void OnLoss(CCircuitUnit@ unit)
 		lostFar += d.costM;
 		lostFarTotal += d.costM;
 	}
-	if (d.IsMobile())
-		frontDist = 0.9f * frontDist + 0.1f * dist;
+	if (d.IsMobile()) {
+		frontW += d.costM;
+		frontWD += d.costM * dist;
+		frontDist = frontWD / AiMax(1e-3f, frontW);  // where our units die, by the metal lost there
+	}
 }
 
 void Update()  // every second
@@ -2177,6 +2227,8 @@ void Update()  // every second
 	const float H = AiMax(1.f, Brain::Economist::Horizon());
 	const float decay = pow(2.71828183f, -1.f / H);  // e^(-1/H); the script math has pow, not exp
 	lostNear *= decay;
+	frontW *= decay;
+	frontWD *= decay;
 	lostFar *= decay;
 	killedHome *= decay;
 	killedAway *= decay;
@@ -2195,19 +2247,13 @@ void Update()  // every second
 	pushedBack = lostNear > aiEconomyMgr.metal.income * window;
 	pushing = lostFar > lostNear && lostFar > aiEconomyMgr.metal.income * window;
 
-	if (ai.frame % MINUTE < SECOND) {
-		incomeHist.insertLast(aiEconomyMgr.metal.income);
-		const uint n = incomeHist.length();
-		if (n >= 4)
-			growth = (incomeHist[n - 1] - incomeHist[n - 4]) / AiMax(1.f, incomeHist[n - 4]);
-	}
 }
 
 string Status()
 {
 	return (pushedBack ? "PUSHED-BACK" : (pushing ? "PUSHING" : "holding")) + " trade=" + F1(trade)
 		+ " kill(h/a)=" + int(killedHome) + "/" + int(killedAway)
-		+ " lost(n/f)=" + int(lostNear) + "/" + int(lostFar) + " front=" + int(frontDist) + " growth3m=" + int(growth * 100.f) + "%";
+		+ " lost(n/f)=" + int(lostNear) + "/" + int(lostFar) + " front=" + int(frontDist);
 }
 
 }  // namespace Assess
@@ -2439,12 +2485,12 @@ void ReclaimUpdate()
 		const float walk = best.circuitDef.buildSpeed / bp * income * bt;  // what it would have built meanwhile
 		const float risk = UnitPDeath(best, wp[i], bt) * Brain::Economist::MetalValue(best.circuitDef);
 		IBuilderTask@ cur = cast<IBuilderTask>(best.task);
-		const float curV = (cur !is null && cur.buildDef !is null) ? Brain::Economist::MetalValue(cur.buildDef) * best.circuitDef.buildSpeed / bp : best.circuitDef.buildSpeed / bp * income * 20.f;
+		const float curV = (cur !is null && cur.buildDef !is null) ? Brain::Economist::MetalValue(cur.buildDef) * best.circuitDef.buildSpeed / bp : best.circuitDef.buildSpeed / bp * income * Brain::Economist::Horizon();
 		if (metal - walk - risk <= curV) continue;
 		// a rez bot revives what can be revived (at least the wreck's metal back as a working unit) unless energy would stall
 		const bool canRez = Brain::Production::rezDefs.findByRef(best.circuitDef) >= 0 && wr[i] && !aiEconomyMgr.isEnergyStalling;
-		IUnitTask@ t = canRez ? aiBuilderMgr.Enqueue(TaskB::Resurrect(Task::Priority::HIGH, wp[i], metal, 2 * MINUTE, R))
-			: aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, wp[i], metal, 2 * MINUTE, R));  // (pos, cost, timeout, radius)
+		IUnitTask@ t = canRez ? aiBuilderMgr.Enqueue(TaskB::Resurrect(Task::Priority::HIGH, wp[i], metal, ReclaimLife(metal, wp[i]), R))
+			: aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, wp[i], metal, ReclaimLife(metal, wp[i]), R));  // (pos, cost, timeout, radius)
 		if (t is null) continue;
 		aiBuilderMgr.AssignTask(best, t);
 		reclaimTasks.insertLast(t);
@@ -2539,9 +2585,9 @@ void BuilderSafeUpdate()
 			Pj = JobPDeath(u, bt.buildDef, bt.GetBuildPos(), tDone);
 		}
 		const float stay = (1.f - Pj) * jobV - Pj * jobV - P * own;
-		const float safe = d.buildSpeed / bp * income * 20.f;  // its share of our spending over the job span (Guard timeout)
+		const float safe = d.buildSpeed / bp * income * Brain::Economist::Horizon();  // its share of our spending over the planning horizon
 		if (stay >= safe) continue;
-		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, 20 * SECOND));
+		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, int(Brain::Economist::Horizon() * SECOND) + 1));
 		if (g is null) continue;
 		safeTasks.insertLast(g);
 		aiBuilderMgr.AssignTask(u, g);
@@ -2573,7 +2619,7 @@ float JobValue(IBuilderTask@ bt)
 {
 	const float share = CommShare();
 	if (bt !is null && bt.buildDef !is null) return Brain::Economist::MetalValue(bt.buildDef) * share;
-	return share * aiEconomyMgr.metal.income * 20.f;  // 20 s: the span of the jobs we hand out (Guard/Reclaim timeouts)
+	return share * aiEconomyMgr.metal.income * Brain::Economist::Horizon();  // over the planning horizon (the span of the jobs we hand out)
 }
 // Best job by gain - risk among: assisting a factory, reclaiming a wreck field (the frontline reclaim
 // strong players do with the commander: it's metal, presence and the strongest unit on the spot), and
@@ -2591,22 +2637,22 @@ IUnitTask@ CommBestJob(const AIFloat3& in from, float floorScore)
 		if (g.circuitDef.IsMobile() || g is commander) continue;
 		const bool fac = Brain::Intel::allFactories.findByRef(g) >= 0;
 		const AIFloat3 q = g.GetPos(ai.frame);
-		const float sc = (fac ? assist : 0.f) - CommPDeath(q, EscapeTime(q)) * V - q.distance2D(from) / AiMax(1.f, commander.circuitDef.speed) * assist / 20.f;  // walking costs its work
+		const float sc = (fac ? assist : 0.f) - CommPDeath(q, EscapeTime(q)) * V - q.distance2D(from) / AiMax(1.f, commander.circuitDef.speed) * assist / AiMax(1.f, Brain::Economist::Horizon());  // walking costs its work
 		if (sc > best) { best = sc; @bestU = g; bestP = q; bestKind = fac ? 0 : 2; }
 	}
 	array<AIFloat3> wp; array<float> wm; array<bool> wr;
 	const uint w = AiGetWrecks(wp, wm, wr);
-	const float R = 300.f;  // reclaim job radius handed to the core
+	const float R = commander.circuitDef.GetBuildDistance();  // reclaim area = what it reaches without walking
 	for (uint i = 0; i < w; ++i) {
 		float metal = 0.f;
 		for (uint j = 0; j < w; ++j) if (wp[j].distance2D(wp[i]) < R) metal += wm[j];
-		const float sc = metal - CommPDeath(wp[i], EscapeTime(wp[i])) * V - wp[i].distance2D(from) / AiMax(1.f, commander.circuitDef.speed) * assist / 20.f;
+		const float sc = metal - CommPDeath(wp[i], EscapeTime(wp[i])) * V - wp[i].distance2D(from) / AiMax(1.f, commander.circuitDef.speed) * assist / AiMax(1.f, Brain::Economist::Horizon());
 		if (sc > best) { best = sc; @bestU = null; bestP = wp[i]; bestKind = 1; }
 	}
 	if (bestKind < 0) return null;
-	if (bestKind == 0) return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, bestU, true, 20 * SECOND));
+	if (bestKind == 0) return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, bestU, true, int(Brain::Economist::Horizon() * SECOND) + 1));
 	if (bestKind == 1) ++commReclaims;
-	return aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, bestP, 0.f, 20 * SECOND, R));  // (pos, cost, timeout, radius)
+	return aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, bestP, 0.f, int(Brain::Economist::Horizon() * SECOND) + 1, R));  // (pos, cost, timeout, radius)
 }
 IUnitTask@ CommSafeJob(const AIFloat3& in from) { ++commRetreats; return CommBestJob(from, -1e30f); }
 
@@ -2641,7 +2687,7 @@ IUnitTask@ CommForward(const AIFloat3& in from, float curScore)
 	const float H = Brain::Economist::Horizon();
 	const AIFloat3 ec0 = aiEnemyMgr.GetEnemyPos();
 	const float V = GameValue();
-	const float rate = JobValue(null) / 20.f;  // metal/s the commander's build power carries
+	const float rate = JobValue(null) / AiMax(1.f, Brain::Economist::Horizon());  // metal/s the commander's build power carries
 	const float cost = Brain::Economist::MetalValue(Brain::Economist::mexT1);
 	int best = -1; float bestScore = curScore; float topSeen = -1e30f;
 	for (uint k = 0; k < n; ++k) {
