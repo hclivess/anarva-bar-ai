@@ -339,7 +339,7 @@ index 0be6a835..b91cfe6e 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..8f0d4213 100644
+index c3aaefe5..8fdb5a6c 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -578,7 +578,7 @@ index c3aaefe5..8f0d4213 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +957,30 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +957,31 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -594,6 +594,7 @@ index c3aaefe5..8f0d4213 100644
 +	r = engine->RegisterGlobalProperty("bool aiSwitchEngageSeen", &anarva::switches.engageSeen); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchDecide", &anarva::switches.decide); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchFocusFire", &anarva::switches.focusFire); ASSERT(r >= 0);
++	r = engine->RegisterGlobalProperty("bool aiSwitchStrafe", &anarva::switches.strafe); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyIds(array<int>@+)", asFUNCTION(Bridge_GetEnemyIds), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetMetalSpots(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetMetalSpots), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiIsInLOS(const AIFloat3& in)", asFUNCTION(Bridge_IsInLOS), asCALL_CDECL); ASSERT(r >= 0);
@@ -1217,7 +1218,7 @@ index b62de532..9062ae67 100644
  }
  
 diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
-index 154ce4bf..162509d8 100644
+index 154ce4bf..b477e183 100644
 --- a/src/circuit/task/fighter/SquadTask.cpp
 +++ b/src/circuit/task/fighter/SquadTask.cpp
 @@ -6,6 +6,7 @@
@@ -1238,7 +1239,7 @@ index 154ce4bf..162509d8 100644
  
  #include <cmath>
  
-@@ -387,8 +391,43 @@ void ISquadTask::Attack(const int frame)
+@@ -387,10 +391,98 @@ void ISquadTask::Attack(const int frame)
  	Attack(frame, GetTarget()->GetUnit()->IsCloaked());
  }
  
@@ -1274,15 +1275,71 @@ index 154ce4bf..162509d8 100644
 +	}
 +}
 +
++
++// Anarva (switch strafe): projectile dodging. Of the visible enemies that can shoot this unit, a shot is dodgeable
++// when its flight time (distance / shot speed) times our speed exceeds its blast radius plus our size. Against the
++// most threatening dodgeable shooter the unit's spot moves sideways by what it covers in one flight time, switching
++// side every flight time, so it is never where the shell lands. Instant weapons (beams) are not dodged.
++static AIFloat3 AnarvaDodge(CCircuitAI* circuit, CCircuitUnit* unit, const AIFloat3& spot, const int frame)
++{
++	CCircuitDef* udef = unit->GetCircuitDef();
++	const float v = udef->GetSpeed();
++	if (v <= 0.f) {
++		return spot;
++	}
++	const AIFloat3& up = unit->GetPos(frame);
++	CEnemyInfo* worst = nullptr;
++	float worstThreat = 0.f, worstFlight = 0.f;
++	for (auto& kv : circuit->GetEnemyInfos()) {
++		CEnemyInfo* e = kv.second;
++		CCircuitDef* edef = e->GetCircuitDef();
++		if ((edef == nullptr) || !e->IsInLOS()) {
++			continue;
++		}
++		const float d = up.distance2D(e->GetPos());
++		if (d > edef->GetMaxRange()) {
++			continue;
++		}
++		const float shot = edef->GetShotSpeed();
++		if (shot <= 0.f) {
++			continue;  // instant hit
++		}
++		const float flight = d / shot;
++		if (flight * v <= edef->GetAoe() + udef->GetRadius()) {
++			continue;  // too fast to dodge
++		}
++		if (edef->GetDefThreat() > worstThreat) {
++			worstThreat = edef->GetDefThreat();
++			worstFlight = flight;
++			worst = e;
++		}
++	}
++	if (worst == nullptr) {
++		return spot;
++	}
++	AIFloat3 dir = worst->GetPos() - up;
++	dir.y = 0.f;
++	const float len = std::max(1.f, dir.Length2D());
++	const AIFloat3 side(-dir.z / len, 0.f, dir.x / len);
++	const int period = std::max(1, (int)(worstFlight * FRAMES_PER_SEC));
++	const float sign = ((frame / period) % 2 == 0) ? 1.f : -1.f;
++	AIFloat3 out = spot + side * (sign * v * worstFlight);
++	CTerrainManager::CorrectPosition(out);
++	return out;
++}
++
  void ISquadTask::Attack(const int frame, const bool isGround)
  {
 +	if (anarva::switches.focusFire) {
 +		AnarvaFocusFire(manager->GetCircuit(), units, frame);
 +	}
  	const AIFloat3& tPos = GetTarget()->GetPos();
- 	const bool isRepeatAttack = (frame >= attackFrame + FRAMES_PER_SEC * 3);
+-	const bool isRepeatAttack = (frame >= attackFrame + FRAMES_PER_SEC * 3);
++	const bool isRepeatAttack = anarva::switches.strafe || (frame >= attackFrame + FRAMES_PER_SEC * 3);
  	attackFrame = isRepeatAttack ? frame : attackFrame;
-@@ -459,9 +498,25 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+ 
+ 	auto it = rangeUnits.begin()->second.begin();
+@@ -459,9 +551,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
  				|| (unit->GetTargetTile() != targetTile))
  			{
  				const float angle = alpha + beta;
@@ -1305,6 +1362,9 @@ index 154ce4bf..162509d8 100644
 +							CTerrainManager::CorrectPosition(newPos);
 +						}
 +					}
++				}
++				if (anarva::switches.strafe) {
++					newPos = AnarvaDodge(manager->GetCircuit(), unit, newPos, frame);
 +				}
  				unit->Attack(newPos, GetTarget(), targetTile, isGround, isStatic, frame + FRAMES_PER_SEC * 60);
  			}
@@ -1334,7 +1394,7 @@ index 64571199..a7920971 100644
  	return GetMovePosition(unit->GetArea(), pos);
  }
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a922..9105beb3 100644
+index a0f5a922..759bd820 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -1365,12 +1425,13 @@ index a0f5a922..9105beb3 100644
  	isAbleToCloak     = def->IsAbleToCloak();
  	isAbleToRepair    = def->IsAbleToRepair();
  	isAbleToReclaim   = def->IsAbleToReclaim();
-@@ -479,6 +486,24 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -479,6 +486,25 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  		waterDps += dps;
  
  		minRange = std::min(minRange, range);
 +		if (isLandWeapon && (weaponCat & circuit->GetLandCategory()) && (range > rangeModel.range) && !wd->IsShield()) {
 +			rangeModel.kind = (wt == "Cannon") ? 1 : (wt == "StarburstLauncher") ? 2 : 0;
++			rangeModel.instant = (wt == "BeamLaser") || (wt == "LightningCannon");
 +			rangeModel.range = range;
 +			rangeModel.heightMod = wd->GetHeightMod();
 +			rangeModel.speed = projectileSpeed;
@@ -1390,7 +1451,7 @@ index a0f5a922..9105beb3 100644
  		if ((weaponCat & circuit->GetAirCategory()) && isAirWeapon) {
  			float& mr = maxRange[static_cast<RangeT>(RangeType::AIR)];
  			mr = std::max(mr, range);
-@@ -568,6 +593,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -568,6 +594,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  	}
  
  	isAttacker = (airDps > .1f) || (surfDps > .1f) || (waterDps > .1f);
@@ -1408,7 +1469,7 @@ index a0f5a922..9105beb3 100644
  	if (IsMobile() && !IsAttacker()) {  // mobile bomb?
  		WeaponDef* wd = def->GetDeathExplosion();
  		aoe = wd->GetAreaOfEffect();
-@@ -843,3 +879,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
+@@ -843,3 +880,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
  }
  
  } // namespace circuit
@@ -1448,10 +1509,10 @@ index a0f5a922..9105beb3 100644
 +
 +} // namespace circuit
 diff --git a/src/circuit/unit/CircuitDef.h b/src/circuit/unit/CircuitDef.h
-index 0247bcb8..4f03b7f9 100644
+index 0247bcb8..ee94b0ec 100644
 --- a/src/circuit/unit/CircuitDef.h
 +++ b/src/circuit/unit/CircuitDef.h
-@@ -249,6 +249,10 @@ public:
+@@ -249,6 +249,12 @@ public:
  	float GetMinRange() const { return minRange; }
  	float GetMaxRange(RangeType type) const { return maxRange[static_cast<RangeT>(type)]; }
  	float GetMaxRange() const { return maxRange[static_cast<RangeT>(maxRangeType)]; }
@@ -1459,10 +1520,12 @@ index 0247bcb8..4f03b7f9 100644
 +	// above the shooter. Same rule the engine uses (CWeapon/CCannon/CStarburstLauncher::GetRange2D).
 +	float GetRangeAt(float heightDiff) const;
 +	bool IsBallistic() const { return rangeModel.kind == 1; }
++	// Anarva: speed of the main weapon's shot in elmos per second; 0 when it hits instantly (beam, lightning)
++	float GetShotSpeed() const { return rangeModel.instant ? 0.f : rangeModel.speed * FRAMES_PER_SEC; }
  	int GetThreatRange(ThreatType type) const { return threatRange[static_cast<ThreatT>(type)]; }
  	float GetShieldRadius() const { return shieldRadius; }
  	float GetMaxShield() const { return maxShield; }
-@@ -414,11 +418,25 @@ private:
+@@ -414,11 +420,26 @@ private:
  	float waterThrDmg, waterThrMod;  // underwater enemy damage
  	ThrDmgArray thrDmgMod;  // mod by role
  	float aoe;  // radius
@@ -1484,6 +1547,7 @@ index 0247bcb8..4f03b7f9 100644
 +	struct SRangeModel {
 +		int kind = 0;  // 0 sphere (lasers, missiles...), 1 cannon (ballistic), 2 starburst
 +		float range = 0.f, heightMod = 1.f, speed = 0.f, gravity = 0.f, rangeBoost = 1.f, heightBoost = 1.f;
++		bool instant = false;  // beam / lightning: no projectile to dodge
 +	} rangeModel;
  	std::array<int, static_cast<ThreatT>(ThreatType::_SIZE_)> threatRange;
  	float shieldRadius;
@@ -1601,10 +1665,10 @@ index 00000000..6e04da05
 +#endif // SRC_CIRCUIT_UTIL_ANARVADECIDE_H_
 diff --git a/src/circuit/util/AnarvaSwitches.h b/src/circuit/util/AnarvaSwitches.h
 new file mode 100644
-index 00000000..5e019aff
+index 00000000..532edfad
 --- /dev/null
 +++ b/src/circuit/util/AnarvaSwitches.h
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,29 @@
 +/*
 + * AnarvaSwitches.h
 + *
@@ -1625,7 +1689,8 @@ index 00000000..5e019aff
 +	bool scoutMap = false;
 +	bool engageSeen = false;
 +	bool decide = false;
-+	bool focusFire = false;       // each unit focuses the visible enemy in its range with the highest threat per remaining health          // every dice roll in the core replaced by a computed choice (AUDIT.md)      // gathering squads also fight enemies inside their own sight that they can beat, not only inside our defence influence        // scouts go to the targets the script ranks (vision age x stake), not the core's cluster order
++	bool focusFire = false;
++	bool strafe = false;          // in fights, units sidestep shots slow enough to dodge (flight time x our speed > blast radius)       // each unit focuses the visible enemy in its range with the highest threat per remaining health          // every dice roll in the core replaced by a computed choice (AUDIT.md)      // gathering squads also fight enemies inside their own sight that they can beat, not only inside our defence influence        // scouts go to the targets the script ranks (vision age x stake), not the core's cluster order
 +};
 +inline SSwitches switches;
 +

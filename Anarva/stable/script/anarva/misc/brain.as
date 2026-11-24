@@ -54,6 +54,7 @@ const bool F_COMMGUARD = true;  // commander goes home when a known force it can
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
 const bool F_NANOS = false;     // reclaim caretakers whose metal is worth more than the build power they actually apply
 const bool F_ECORECLAIM = false; // reclaim the energy plant whose metal now is worth more than its energy over the horizon (no fixed gates)
+const bool F_STRAFE = false;    // core switch: units sidestep dodgeable shots (flight time x our speed > blast radius)
 const bool F_FOCUS = false;     // core switch: each unit focuses the visible enemy in range with the highest threat per remaining health
 const bool F_DECIDE = false;    // core switch: every dice roll in the core replaced by a computed choice (unit/role pick, constructor, retreat, superweapon, chance, map points)
 const bool F_RAIDRESP = false;  // answer raids already in progress: the 'arrive before the enemy' test can never pass once they are there
@@ -3744,6 +3745,7 @@ void Update()  // every 30 frames
 	aiSwitchEngageSeen = F_ENGAGE;
 	aiSwitchDecide = F_DECIDE;
 	aiSwitchFocusFire = F_FOCUS;
+	aiSwitchStrafe = F_STRAFE;
 	if (F_INTEL) Intel::Update();
 	Assess::Update();
 	if (F_WASTE) Waste::Update();
