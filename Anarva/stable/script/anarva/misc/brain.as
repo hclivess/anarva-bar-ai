@@ -51,6 +51,8 @@ const bool F_ARTYHIGH = true;   // core switch: artillery fires from the spot it
 const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their range from the height of their spot (C++)
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
+const bool F_COMMRISK = false;  // commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle
+const bool F_COMMSPOT = false;  // commander retreats to the safe spot where its death explosion would destroy least (not into the eco)
 const bool F_JIT = false;       // build-power scale from the ratio at each enemy arrival time (just in time), not from everything at once
 const bool F_POWERALL = false;  // our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool
 
@@ -2733,6 +2735,13 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 	IBuilderTask@ bt = cast<IBuilderTask>(task);
 	if (bt is null)
 		return task;
+	if (F_COMMRISK) {
+		if (CommWorth(bt.GetBuildPos(), JobValue(bt)))
+			return task;
+		++commRedirects;
+		IUnitTask@ safe = CommSafeJob(comm.GetPos(ai.frame));
+		return safe is null ? task : safe;
+	}
 	if (F_COMMGUARD) {
 		const AIFloat3 bp = bt.GetBuildPos();
 		CCircuitUnit@ home = NearestFactory(bp);
@@ -2740,7 +2749,7 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 		if (CommExposure(bp, tHome) <= 0.f)
 			return task;
 		++commRedirects;
-		return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, NearestFactory(comm.GetPos(ai.frame)), true, 20 * SECOND));
+		return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, F_COMMSPOT ? CommRefuge(comm.GetPos(ai.frame)) : NearestFactory(comm.GetPos(ai.frame)), true, 20 * SECOND));
 	}
 	if (F_COMMZONE) {
 		/*
@@ -2791,6 +2800,170 @@ CCircuitUnit@ NearestFactory(const AIFloat3& in p)
 	return best;
 }
 
+
+/*
+ * Chain loss: metal of ours destroyed if something with a death explosion (radius R, damage D) dies at p.
+ * A unit at distance d takes ~D*(1-d/R); if that exceeds its health it dies and its own explosion
+ * propagates. Converters, fusions, nanos and commanders packed together are one bomb.
+ */
+float ChainLoss(const AIFloat3& in p, float R, float D, CCircuitUnit@ skip)
+{
+	if (R <= 0.f || D <= 0.f) return 0.f;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	const uint n = all.length();
+	array<bool> dead(n, false);
+	array<AIFloat3> qp = {p}; array<float> qr = {R}, qd = {D};
+	float loss = 0.f;
+	for (uint q = 0; q < qp.length() && q < 64; ++q) {
+		for (uint i = 0; i < n; ++i) {
+			if (dead[i] || all[i] is skip) continue;
+			const float d = all[i].GetPos(ai.frame).distance2D(qp[q]);
+			if (d >= qr[q]) continue;
+			const CCircuitDef@ u = all[i].circuitDef;
+			if (qd[q] * (1.f - d / qr[q]) < u.health) continue;
+			dead[i] = true;
+			loss += u.costM;
+			if (u.deathAoe > 0.f && u.deathDamage > 0.f) {
+				qp.insertLast(all[i].GetPos(ai.frame)); qr.insertLast(u.deathAoe); qd.insertLast(u.deathDamage);
+			}
+		}
+	}
+	return loss;
+}
+
+// Where the commander should wait out danger: something of ours to guard (factory or defence) that it can
+// reach before an enemy that out-guns the cover there, and where its own death would cost the least.
+CCircuitUnit@ CommRefuge(const AIFloat3& in from)
+{
+	CCircuitUnit@ best = null, leastBad = null;
+	float bestLoss = 1e9f, bestT = 1e9f, leastExp = 1e9f;
+	const float R = commander.circuitDef.deathAoe, D = commander.circuitDef.deathDamage;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) {
+		CCircuitUnit@ g = all[i];
+		const CCircuitDef@ d = g.circuitDef;
+		if (d.IsMobile() || g is commander) continue;
+		if (!d.IsRoleAny(Unit::Role::STATIC.mask) && Brain::Intel::allFactories.findByRef(g) < 0) continue;
+		if (Brain::Intel::allFactories.findByRef(g) < 0 && d.power <= 0.f) continue;  // defences and factories only
+		const AIFloat3 q = g.GetPos(ai.frame);
+		const float t = q.distance2D(from) / AiMax(1.f, commander.circuitDef.speed);
+		const float exp = CommExposure(q, t);
+		if (exp < leastExp) { leastExp = exp; @leastBad = g; }
+		if (exp > 0.f) continue;
+		const float loss = ChainLoss(q, R, D, commander);
+		if (loss < bestLoss || (loss == bestLoss && t < bestT)) { bestLoss = loss; bestT = t; @best = g; }
+	}
+	if (best !is null) { lastRefugeLoss = bestLoss; return best; }
+	return leastBad !is null ? leastBad : NearestFactory(from);
+}
+float lastRefugeLoss = 0.f;
+
+
+/*
+ * Commander risk (the most important decision: losing the last commander loses the game). The best
+ * players bring it to the front anyway: it is the strongest early unit and the biggest early build power.
+ * So the question is never "is it in danger" but "is this job worth the chance of losing everything":
+ *   risk = P(death) x V      V = everything we own (the game)
+ *   P(death) = d^2 / (d^2 + c^2)  (Lanchester square law: enemy force that can reach the spot before the
+ *              commander is back under cover, against everything that can cover it there incl. itself)
+ *   gain = metal value of the job
+ * It takes the job if gain > risk; otherwise it takes the safest job that still produces something.
+ */
+float commDanger = 0.f, commCover = 0.f, commDps = 0.f;
+void CommForces(const AIFloat3& in p, float tHome)
+{
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	commDanger = 0.f; commDps = 0.f;
+	for (uint i = 0; i < n; ++i) {
+		CCircuitDef@ d = ed[i];
+		if (d is null || d.threat <= 0.f || (ef[i] & 4) != 0) continue;
+		const float reach = AiMax(0.f, ep[i].distance2D(p) - d.GetMaxRange());
+		if (!d.IsMobile()) { if (reach <= 0.f) { commDanger += d.threat; commDps += d.surfThrDmg; } continue; }
+		if (reach / AiMax(1.f, d.speed) <= tHome) { commDanger += d.threat * eh[i]; commDps += d.surfThrDmg * eh[i]; }
+	}
+	commCover = commander.circuitDef.power;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) {
+		CCircuitUnit@ u = all[i];
+		const CCircuitDef@ d = u.circuitDef;
+		if (u is commander || d.power <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
+		const float dist = u.GetPos(ai.frame).distance2D(p);
+		if (d.IsMobile() ? (dist / AiMax(1.f, d.speed) <= tHome) : (dist <= d.GetMaxRange()))
+			commCover += d.power;
+	}
+}
+float CommPDeath(const AIFloat3& in p, float tHome)
+{
+	CommForces(p, tHome);
+	const float d2 = commDanger * commDanger, c2 = commCover * commCover;
+	const float lose = d2 / AiMax(1e-3f, d2 + c2);  // the fight there goes against us
+	// ...and it can't walk out: time to burn through its health vs time back to cover
+	const float tKill = commander.circuitDef.health / AiMax(1e-3f, commDps);
+	return lose * tHome / AiMax(1e-3f, tHome + tKill);
+}
+float GameValue()
+{
+	float v = 0.f;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) v += all[i].circuitDef.costM;
+	return v;
+}
+float EscapeTime(const AIFloat3& in p)
+{
+	CCircuitUnit@ h = NearestFactory(p);
+	return h is null ? 0.f : h.GetPos(ai.frame).distance2D(p) / AiMax(1.f, commander.circuitDef.speed);
+}
+// A build job is worth what it builds. Any other job (assist, reclaim, repair) is worth the commander's
+// share of our build power applied to our income over the job's span: that's the spending it carries.
+float JobValue(IBuilderTask@ bt)
+{
+	if (bt !is null && bt.buildDef !is null) return Brain::Economist::MetalValue(bt.buildDef);
+	const float share = commander.circuitDef.buildSpeed / AiMax(1.f, aiBuilderMgr.GetBuildPower());
+	return share * aiEconomyMgr.metal.income * 20.f;  // 20 s: the span of the jobs we hand out (Guard/Reclaim timeouts)
+}
+// Best job by gain - risk among: assisting a factory, reclaiming a wreck field (the frontline reclaim
+// strong players do with the commander: it's metal, presence and the strongest unit on the spot), and
+// reclaiming around one of our structures. Risk is P(death) there x the game. When the base is overrun
+// this can be a far outpost; with a fight won nearby it is the battlefield's wrecks.
+int commRetreats = 0, commReclaims = 0; float lastRisk = 0.f, lastGain = 0.f, lastV = 0.f;
+IUnitTask@ CommBestJob(const AIFloat3& in from, float floorScore)
+{
+	const float V = GameValue();
+	const float assist = JobValue(null);
+	CCircuitUnit@ bestU = null; AIFloat3 bestP; int bestKind = -1; float best = floorScore;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) {
+		CCircuitUnit@ g = all[i];
+		if (g.circuitDef.IsMobile() || g is commander) continue;
+		const bool fac = Brain::Intel::allFactories.findByRef(g) >= 0;
+		const AIFloat3 q = g.GetPos(ai.frame);
+		const float sc = (fac ? assist : 0.f) - CommPDeath(q, EscapeTime(q)) * V - q.distance2D(from) / AiMax(1.f, commander.circuitDef.speed) * assist / 20.f;  // walking costs its work
+		if (sc > best) { best = sc; @bestU = g; bestP = q; bestKind = fac ? 0 : 2; }
+	}
+	array<AIFloat3> wp; array<float> wm; array<bool> wr;
+	const uint w = AiGetWrecks(wp, wm, wr);
+	const float R = 300.f;  // reclaim job radius handed to the core
+	for (uint i = 0; i < w; ++i) {
+		float metal = 0.f;
+		for (uint j = 0; j < w; ++j) if (wp[j].distance2D(wp[i]) < R) metal += wm[j];
+		const float sc = metal - CommPDeath(wp[i], EscapeTime(wp[i])) * V - wp[i].distance2D(from) / AiMax(1.f, commander.circuitDef.speed) * assist / 20.f;
+		if (sc > best) { best = sc; @bestU = null; bestP = wp[i]; bestKind = 1; }
+	}
+	if (bestKind < 0) return null;
+	if (bestKind == 0) return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, bestU, true, 20 * SECOND));
+	if (bestKind == 1) ++commReclaims;
+	return aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, bestP, R, 20 * SECOND));
+}
+IUnitTask@ CommSafeJob(const AIFloat3& in from) { ++commRetreats; return CommBestJob(from, -1e30f); }
+bool CommWorth(const AIFloat3& in p, float gain)
+{
+	lastV = GameValue();
+	lastRisk = CommPDeath(p, EscapeTime(p)) * lastV;
+	lastGain = gain;
+	return gain > lastRisk;
+}
+
 // enemy threat able to reach p within the commander's trip home from p, minus what can cover it there
 float CommExposure(const AIFloat3& in p, float tHome)
 {
@@ -2822,9 +2995,30 @@ void CommGuardUpdate()
 	if (commander is null || Brain::Intel::allFactories.length() == 0) return;
 	if (commGuardTask !is null && commander.task is commGuardTask) return;
 	const AIFloat3 c = commander.GetPos(ai.frame);
+	if (F_COMMRISK) {
+		IBuilderTask@ cur = cast<IBuilderTask>(commander.task);
+		if (CommWorth(c, JobValue(cur))) {
+			// worth staying; but an assist or nothing is the commander's weakest use: is a wreck field better?
+			if (cur is null || cur.buildDef is null) {
+				IUnitTask@ better = CommBestJob(c, lastGain - lastRisk);
+				if (better !is null) { @commGuardTask = better; aiBuilderMgr.AssignTask(commander, better); }
+			}
+			return;
+		}
+		@commGuardTask = CommSafeJob(c);
+		if (commGuardTask is null) return;
+		aiBuilderMgr.AssignTask(commander, commGuardTask);
+		++commGuards;
+		AiLog("[ANV] CommRisk: leaving job, risk " + int(lastRisk) + " > gain " + int(lastGain) + " (danger " + F1(commDanger) + " cover " + F1(commCover) + " dps " + F1(commDps) + " V " + int(lastV) + ")");
+		return;
+	}
 	CCircuitUnit@ home = NearestFactory(c);
 	const float tHome = home.GetPos(ai.frame).distance2D(c) / AiMax(1.f, commander.circuitDef.speed);
 	if (CommExposure(c, tHome) <= 0.f) return;
+	if (F_COMMSPOT) {
+		@home = CommRefuge(c);
+		AiLog("[ANV] CommGuard: refuge " + home.circuitDef.GetName() + " chainLoss=" + int(lastRefugeLoss) + " commBlast=" + int(commander.circuitDef.deathAoe) + "/" + int(commander.circuitDef.deathDamage));
+	}
 	@commGuardTask = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, home, true, 20 * SECOND));
 	aiBuilderMgr.AssignTask(commander, commGuardTask);
 	++commGuards;
@@ -2889,7 +3083,7 @@ void Update()  // every 30 frames
 		if (commander !is null) {
 			const AIFloat3 cp = commander.GetPos(ai.frame);
 			AiLog("[ANV] commander at (" + int(cp.x) + "," + int(cp.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(cp) : -1.f)
-				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects + " guards=" + commGuards);
+				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects + " guards=" + commGuards + " retreats=" + commRetreats + " frontReclaims=" + commReclaims);
 		}
 		AiLog("[ANV] eco t=" + Minute() + "m workers=" + aiBuilderMgr.GetWorkerCount() + " mex=" + Economist::mexes.length()
 			+ " M inc=" + F1(aiEconomyMgr.metal.income) + " M " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)

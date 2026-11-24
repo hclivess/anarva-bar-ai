@@ -71,20 +71,21 @@ index f752cb27..9e54dea1 100644
  private:
  	virtual void DequeueTask(IUnitTask* task, bool done = false) override;
 diff --git a/src/circuit/script/BuilderScript.cpp b/src/circuit/script/BuilderScript.cpp
-index 0be6a835..ec2cfaf1 100644
+index 0be6a835..b91cfe6e 100644
 --- a/src/circuit/script/BuilderScript.cpp
 +++ b/src/circuit/script/BuilderScript.cpp
-@@ -68,6 +68,8 @@ CBuilderScript::CBuilderScript(CScriptManager* scr, CBuilderManager* mgr)
+@@ -68,6 +68,9 @@ CBuilderScript::CBuilderScript(CScriptManager* scr, CBuilderManager* mgr)
  	r = engine->RegisterObjectMethod("CBuilderManager", "IUnitTask@+ Enqueue(const SServBTask& in)", asMETHODPR(CBuilderManager, Enqueue, (const TaskB::SServBTask&), IUnitTask*), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CBuilderManager", "IUnitTask@+ EnqueueRetreat()", asMETHOD(CBuilderManager, EnqueueRetreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CBuilderManager", "uint GetWorkerCount() const", asMETHOD(CBuilderManager, GetWorkerCount), asCALL_THISCALL); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CBuilderManager", "float GetBuildPower() const", asMETHOD(CBuilderManager, GetBuildPower), asCALL_THISCALL); ASSERT(r >= 0);
 +	// Anarva: move a builder (e.g. the commander) to another task now
 +	r = engine->RegisterObjectMethod("CBuilderManager", "void AssignTask(CCircuitUnit@, IUnitTask@)", asMETHODPR(CBuilderManager, AssignTask, (CCircuitUnit*, IUnitTask*), void), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CBuilderManager", "int dangerHysteresis", asOFFSET(CBuilderManager, dangerHysteresis)); ASSERT(r >= 0);
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..218d5f2a 100644
+index c3aaefe5..cb0b7bdf 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -121,7 +122,17 @@ index c3aaefe5..218d5f2a 100644
  #include "Log.h"
  #include "Drawer.h"
  #include "Game.h"
-@@ -711,8 +723,10 @@ void CInitScript::RegisterCore()
+@@ -702,6 +714,9 @@ void CInitScript::RegisterCore()
+ 	r = engine->RegisterObjectProperty("CCircuitDef", "const float pwrDmg", asOFFSET(CCircuitDef, pwrDmg)); ASSERT(r >= 0);
+ 	r = engine->RegisterObjectProperty("CCircuitDef", "const float airThrDmg", asOFFSET(CCircuitDef, airThrDmg)); ASSERT(r >= 0);
+ 	r = engine->RegisterObjectProperty("CCircuitDef", "const float surfThrDmg", asOFFSET(CCircuitDef, surfThrDmg)); ASSERT(r >= 0);
++	r = engine->RegisterObjectProperty("CCircuitDef", "const float deathAoe", asOFFSET(CCircuitDef, deathAoe)); ASSERT(r >= 0);
++	r = engine->RegisterObjectProperty("CCircuitDef", "const float buildSpeed", asOFFSET(CCircuitDef, buildSpeed)); ASSERT(r >= 0);
++	r = engine->RegisterObjectProperty("CCircuitDef", "const float deathDamage", asOFFSET(CCircuitDef, deathDamage)); ASSERT(r >= 0);
+ 	r = engine->RegisterObjectProperty("CCircuitDef", "const float waterThrDmg", asOFFSET(CCircuitDef, waterThrDmg)); ASSERT(r >= 0);
+ 	r = engine->RegisterObjectProperty("CCircuitDef", "const float minRange", asOFFSET(CCircuitDef, minRange)); ASSERT(r >= 0);
+ 	r = engine->RegisterObjectMethod("CCircuitDef", "float GetMaxRange(Type) const", asMETHODPR(CCircuitDef, GetMaxRange, (CCircuitDef::RangeType) const, float), asCALL_THISCALL); ASSERT(r >= 0);
+@@ -711,8 +726,10 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetAirThreat() const", asMETHOD(CCircuitDef, GetAirThreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetSurfThreat() const", asMETHOD(CCircuitDef, GetSurfThreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetWaterThreat() const", asMETHOD(CCircuitDef, GetWaterThreat), asCALL_THISCALL); ASSERT(r >= 0);
@@ -133,7 +144,7 @@ index c3aaefe5..218d5f2a 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -738,6 +752,155 @@ void CInitScript::RegisterCore()
+@@ -738,6 +755,155 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitUnit", "string GetRulesParam(const string& in, const string& in) const", asFUNCTION(CCircuitUnit_GetRulesParamString), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
  }
  
@@ -289,7 +300,7 @@ index c3aaefe5..218d5f2a 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +930,25 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +933,25 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -609,7 +620,7 @@ index 154ce4bf..7720920d 100644
  			}
  
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a922..b14f41b3 100644
+index a0f5a922..2e82cf2d 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -645,7 +656,25 @@ index a0f5a922..b14f41b3 100644
  		if ((weaponCat & circuit->GetAirCategory()) && isAirWeapon) {
  			float& mr = maxRange[static_cast<RangeT>(RangeType::AIR)];
  			mr = std::max(mr, range);
-@@ -843,3 +862,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
+@@ -568,6 +587,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 	}
+ 
+ 	isAttacker = (airDps > .1f) || (surfDps > .1f) || (waterDps > .1f);
++	{  // death explosion of every def: chain reactions in dense bases, splash around dying heavies
++		WeaponDef* dwd = def->GetDeathExplosion();
++		if (dwd != nullptr) {
++			deathAoe = dwd->GetAreaOfEffect();
++			Damage* dmg = dwd->GetDamage();
++			const std::vector<float>& types = dmg->GetTypes();
++			deathDamage = types.empty() ? 0.f : types[0];
++			delete dmg;
++			delete dwd;
++		}
++	}
+ 	if (IsMobile() && !IsAttacker()) {  // mobile bomb?
+ 		WeaponDef* wd = def->GetDeathExplosion();
+ 		aoe = wd->GetAreaOfEffect();
+@@ -843,3 +873,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
  }
  
  } // namespace circuit
@@ -685,7 +714,7 @@ index a0f5a922..b14f41b3 100644
 +
 +} // namespace circuit
 diff --git a/src/circuit/unit/CircuitDef.h b/src/circuit/unit/CircuitDef.h
-index 0247bcb8..80d6a508 100644
+index 0247bcb8..7503429f 100644
 --- a/src/circuit/unit/CircuitDef.h
 +++ b/src/circuit/unit/CircuitDef.h
 @@ -249,6 +249,10 @@ public:
@@ -699,7 +728,16 @@ index 0247bcb8..80d6a508 100644
  	int GetThreatRange(ThreatType type) const { return threatRange[static_cast<ThreatT>(type)]; }
  	float GetShieldRadius() const { return shieldRadius; }
  	float GetMaxShield() const { return maxShield; }
-@@ -419,6 +423,10 @@ private:
+@@ -414,11 +418,19 @@ private:
+ 	float waterThrDmg, waterThrMod;  // underwater enemy damage
+ 	ThrDmgArray thrDmgMod;  // mod by role
+ 	float aoe;  // radius
++public:
++	float deathAoe = 0.f;     // death explosion radius (elmos), every def
++	float deathDamage = 0.f;  // death explosion default damage
++private:
+ 	float power;  // ally max threat
+ 	float defThreat;  // enemy max threat
  	float minRange;
  	RangeType maxRangeType;
  	std::array<float, static_cast<RangeT>(RangeType::_SIZE_)> maxRange;
