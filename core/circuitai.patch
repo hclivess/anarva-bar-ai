@@ -676,7 +676,7 @@ index 733f7a43..355ad0c1 100644
  	float GetClusterRange() const { return clusterRange; }
  	float GetPylonRange() const { return pylonRange; }
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
-index 54fef916..293717af 100644
+index 54fef916..311d0686 100644
 --- a/src/circuit/module/FactoryManager.cpp
 +++ b/src/circuit/module/FactoryManager.cpp
 @@ -6,6 +6,8 @@
@@ -688,16 +688,110 @@ index 54fef916..293717af 100644
  #include "module/EconomyManager.h"
  #include "module/BuilderManager.h"
  #include "module/MilitaryManager.h"
-@@ -449,7 +451,7 @@ void CFactoryManager::ReadConfig()
- 		} else {
- 			const float min = retreat.get((unsigned)0, cdef->GetRetreat()).asFloat();
- 			const float max = retreat.get((unsigned)1, cdef->GetRetreat()).asFloat();
+@@ -421,88 +423,9 @@ void CFactoryManager::ReadConfig()
+ 		}
+ 		cdef->SetOn(behaviour.get("on", true).asBool());
+ 
+-		const Json::Value& reload = behaviour["reload"];
+-		if (!reload.isNull()) {
+-			cdef->SetReloadTime(reload.asFloat() * FRAMES_PER_SEC);
+-		}
+-
+-		const Json::Value& limit = behaviour["limit"];
+-		if (!limit.isNull()) {
+-			cdef->SetMaxThisUnit(std::min(limit.asInt(), cdef->GetMaxThisUnit()));
+-		}
+-
+-		const Json::Value& since = behaviour["since"];
+-		if (!since.isNull()) {
+-			cdef->SetSinceFrame(since.asInt() * FRAMES_PER_SEC);
+-		}
+-
+-		const Json::Value& coold = behaviour["cooldown"];
+-		if (!coold.isNull()) {
+-			cdef->SetCooldown(coold.asInt() * FRAMES_PER_SEC);
+-		}
+-
+-		cdef->SetGoalBuildMod(behaviour.get("build_mod", cdef->GetGoalBuildMod()).asFloat());
+-
+-		const Json::Value& retreat = behaviour.get("retreat", cdef->GetRetreat());
+-		if (retreat.isNumeric()) {
+-			cdef->SetRetreat(retreat.asFloat());
+-		} else {
+-			const float min = retreat.get((unsigned)0, cdef->GetRetreat()).asFloat();
+-			const float max = retreat.get((unsigned)1, cdef->GetRetreat()).asFloat();
 -			cdef->SetRetreat((float)rand() / RAND_MAX * (max - min) + min);
-+			cdef->SetRetreat(0.5f * (min + max));  // Anarva: no dice; with switch decide the retreat is a live decision
+-		}
+-
+-		const Json::Value& selfDHP = behaviour["selfd_hp"];
+-		if (!selfDHP.isNull()) {
+-			cdef->SetSelfDHP(selfDHP.asFloat());
+-		}
+-
+-		const Json::Value& pwrMod = behaviour["power"];
+-		if (!pwrMod.isNull()) {
+-			cdef->ModPower(pwrMod.asFloat());
+-		}
+-		const Json::Value& thrMod = behaviour["threat"];
+-		if (!thrMod.isNull()) {
+-			if (thrMod.isNumeric()) {
+-				const float mod = thrMod.asFloat();
+-				cdef->ModDefThreat(mod);
+-				cdef->ModAirThreat(mod);
+-				cdef->ModSurfThreat(mod);
+-				cdef->ModWaterThreat(mod);
+-			} else if (thrMod.isObject()) {
+-				cdef->ModAirThreat(thrMod.get("air", 1.f).asFloat());
+-				cdef->ModSurfThreat(thrMod.get("surf", 1.f).asFloat());
+-				cdef->ModWaterThreat(thrMod.get("water", 1.f).asFloat());
+-				const float defMod = thrMod.get("default", 1.f).asFloat();
+-				cdef->ModDefThreat(defMod);
+-				const Json::Value& thrRole = thrMod["vs"];
+-				if (!thrRole.isNull()) {
+-					for (auto& kv : roleNames) {
+-						const float rolMod = thrRole.get(kv.first, defMod).asFloat();
+-						if (rolMod != defMod) {
+-							modRoles.insert(kv.second.type);
+-						}
+-						cdef->ModThreatMod(kv.second.type, rolMod);
+-					}
+-				}
+-			}
+-		}
+-
+-		const Json::Value& range = behaviour["range"];
+-		if (!range.isNull()) {
+-			if (range.isNumeric()) {
+-				cdef->SetRange(range.asFloat());
+-			} else if (range.isArray()) {
+-				cdef->SetRange(CCircuitDef::RangeType::AIR, range.get((unsigned)0, cdef->GetMaxRange(CCircuitDef::RangeType::AIR)).asFloat());
+-				cdef->SetRange(CCircuitDef::RangeType::LAND, range.get((unsigned)1, cdef->GetMaxRange(CCircuitDef::RangeType::LAND)).asFloat());
+-				cdef->SetRange(CCircuitDef::RangeType::WATER, range.get((unsigned)2, cdef->GetMaxRange(CCircuitDef::RangeType::WATER)).asFloat());
+-			} else if (range.isObject()) {
+-				cdef->SetRange(CCircuitDef::RangeType::AIR, range.get("air", cdef->GetMaxRange(CCircuitDef::RangeType::AIR)).asFloat());
+-				cdef->SetRange(CCircuitDef::RangeType::LAND, range.get("surf", cdef->GetMaxRange(CCircuitDef::RangeType::LAND)).asFloat());
+-				cdef->SetRange(CCircuitDef::RangeType::WATER, range.get("water", cdef->GetMaxRange(CCircuitDef::RangeType::WATER)).asFloat());
+-			}
+-		}
+-
++		// Anarva: no per-unit overrides of unit facts or hand-picked gates from the config (reload, limit, since,
++		// cooldown, build_mod, retreat, selfd_hp, power, threat, range, build_speed): every unit is what its def says,
++		// and when to build it / retreat it is decided live.
+ 		cdef->SetIgnore(behaviour.get("ignore", cdef->IsIgnore()).asBool());
+ 
+ 		const Json::Value& mpOffset = behaviour["midposoffset"];
+@@ -513,10 +436,6 @@ void CFactoryManager::ReadConfig()
+ 			cdef->SetMidPosOffset(x, y, z);
  		}
  
- 		const Json::Value& selfDHP = behaviour["selfd_hp"];
-@@ -1043,9 +1045,11 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+-		const Json::Value& buildSpeed = behaviour["build_speed"];
+-		if (!buildSpeed.isNull()) {
+-			cdef->SetBuildSpeed(buildSpeed.asFloat());
+-		}
+ 	}
+ 	circuit->GetAllyTeam()->NonDefaultThreats(std::move(modRoles), circuit);
+ 
+@@ -1043,9 +962,11 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const float metalIncome = std::min(economyMgr->GetAvgMetalIncome(), economyMgr->GetAvgEnergyIncome());
@@ -711,7 +805,7 @@ index 54fef916..293717af 100644
  	{
  		return nullptr;
  	}
-@@ -1063,8 +1067,8 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+@@ -1063,8 +984,8 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  			return nullptr;
  		}
  #ifdef FACTORY_CHOICE
@@ -722,7 +816,7 @@ index 54fef916..293717af 100644
  #endif
  		return Enqueue(TaskS::Recruit(CRecruitTask::RecruitType::BUILDPOWER, CRecruitTask::Priority::NORMAL, buildDef, pos, 64.f));
  	}
-@@ -1478,7 +1482,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1478,7 +1399,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const bool isStalling = economyMgr->IsMetalEmpty() &&
@@ -731,7 +825,7 @@ index 54fef916..293717af 100644
  							(metalPull * economyMgr->GetPullMtoS() > circuit->GetBuilderManager()->GetMetalPull());
  	const bool isNotReady = !economyMgr->IsExcessed() || isStalling;
  	if (isNotReady) {
-@@ -1625,7 +1629,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1625,7 +1546,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  
  	const int iS = terrainMgr->GetSectorIndex(pos);
  	auto isEnemyInArea = [&](CCircuitDef* bd) {
@@ -740,7 +834,7 @@ index 54fef916..293717af 100644
  			return true;
  		}
  		SArea* area;
-@@ -1715,18 +1719,16 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1715,18 +1636,16 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  		return {buildDef->GetId(), getPriority(isResponse)};
  	}
  
@@ -766,7 +860,7 @@ index 54fef916..293717af 100644
  			}
  		}
  	}
-@@ -1799,19 +1801,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
+@@ -1799,19 +1718,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
  	}
  
  	CCircuitDef* buildDef = nullptr;
