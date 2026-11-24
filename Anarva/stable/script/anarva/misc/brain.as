@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_SCOUTMAP = false;  // scouts go where vision is worth most: our assets an unseen enemy could have reached since we last looked (C++ switch)
 const bool F_MOHO = false;      // T2 lab builds T2 constructors while one more saves more on the extractor-upgrade queue than it costs
 const bool F_COMMFWD = false;   // (with F_COMMRISK) commander claims the free extractor spot with the best gain - risk, anywhere: the human front-builder pattern
 const bool F_COMMRISK = false;  // commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle
@@ -320,6 +321,102 @@ void Update(bool jamAlert)
 }
 
 }  // namespace Army
+
+
+/* ======================================================================== */
+/*
+ * Scouting by the value of vision (issue #48, Vritrasura108). Each cell keeps the time since we last had
+ * sight of it. What we don't see there could have reached anything of ours within (age x the enemy's
+ * mean speed), so the value of looking = our metal inside that reach. Unidentified radar dots in the
+ * cell add their likely value (new reinforcements). A cell in sight is worth nothing; a cell long dark
+ * next to our extractors or the front is worth a lot. Scouts take the best targets (core switch
+ * scoutMap); we keep one more scout while there is a dark cell worth more than a scout.
+ */
+namespace Scout {
+
+array<int> lastSeen;
+array<float> value;
+int sent = 0;
+float topValue = 0.f;
+uint worthy = 0;
+CCircuitDef@ cheapest = null;
+
+void Init()
+{
+	const int n = Intel::gw * Intel::gh;
+	lastSeen.resize(n); value.resize(n);
+	for (int c = 0; c < n; ++c) { lastSeen[c] = 0; value[c] = 0.f; }
+	array<CCircuitDef@> sc = Defs({"armflea", "armfav", "corfav", "legscout", "armpeep", "corfink", "legfig"});
+	for (uint i = 0; i < sc.length(); ++i)
+		if (cheapest is null || sc[i].costM < cheapest.costM) @cheapest = sc[i];
+}
+
+void Update()
+{
+	if (!F_SCOUTMAP) return;
+	const int n = Intel::gw * Intel::gh;
+	if (int(lastSeen.length()) != n) Init();
+	for (int c = 0; c < n; ++c)
+		if (AiIsInLOS(Intel::CellCenter(c))) lastSeen[c] = ai.frame;
+	// our metal per cell
+	array<float> ours(n, 0.f);
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) ours[Intel::CellOf(all[i].GetPos(ai.frame))] += all[i].circuitDef.costM;
+	// the enemy's mean speed and mean cost (what we have seen of them)
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	float sp = 0.f, cost = 0.f; uint ns = 0;
+	array<float> dots(n, 0.f);
+	for (uint i = 0; i < ne; ++i) {
+		if (ed[i] !is null && ed[i].IsMobile()) { sp += ed[i].speed; cost += ed[i].costM; ++ns; }
+		if ((ef[i] & 2) != 0 && (ef[i] & 1) == 0) dots[Intel::CellOf(ep[i])] += 1.f;
+	}
+	Director::MeasuredPower();
+	const float speed = ns > 0 ? sp / ns : AiMax(1.f, Director::allSpeed);
+	const float meanCost = ns > 0 ? cost / ns : 0.f;
+	// per cell: how far (in cells) something unseen there could have come since we last looked
+	array<float> reach(n, 0.f);
+	for (int c = 0; c < n; ++c) reach[c] = float(ai.frame - lastSeen[c]) / SECOND * speed / Intel::CELL;
+	// Greedy, marginal: each pick covers the assets of ours it watches over; later picks count only what is
+	// still uncovered. A scout is worth keeping while its pick's uncovered value beats what a scout costs.
+	array<bool> covered(n, false);
+	array<AIFloat3> tp; array<float> tv;
+	topValue = 0.f; worthy = 0;
+	const float scoutCost = cheapest is null ? 1e9f : Economist::MetalValue(cheapest);
+	for (uint pick = 0; pick < uint(n); ++pick) {
+		int best = -1; float bestV = 0.f;
+		for (int c = 0; c < n; ++c) {
+			if (reach[c] <= 0.f && dots[c] <= 0.f) continue;
+			float v = dots[c] * meanCost;
+			const int cx = c % Intel::gw, cz = c / Intel::gw;
+			const int r = int(reach[c]) + 1;
+			for (int z = AiMax(0, cz - r); z <= AiMin(Intel::gh - 1, cz + r); ++z)
+				for (int x = AiMax(0, cx - r); x <= AiMin(Intel::gw - 1, cx + r); ++x) {
+					const int k = z * Intel::gw + x;
+					if (covered[k]) continue;
+					if (sqrt(float((x - cx) * (x - cx) + (z - cz) * (z - cz))) <= reach[c]) v += ours[k];
+				}
+			if (v > bestV) { bestV = v; best = c; }
+		}
+		if (best < 0 || bestV <= scoutCost) break;
+		value[best] = bestV;
+		if (bestV > topValue) topValue = bestV;
+		++worthy;
+		tp.insertLast(Intel::CellCenter(best)); tv.insertLast(bestV);
+		const int bx = best % Intel::gw, bz = best / Intel::gw, br = int(reach[best]) + 1;
+		for (int z = AiMax(0, bz - br); z <= AiMin(Intel::gh - 1, bz + br); ++z)
+			for (int x = AiMax(0, bx - br); x <= AiMin(Intel::gw - 1, bx + br); ++x)
+				if (sqrt(float((x - bx) * (x - bx) + (z - bz) * (z - bz))) <= reach[best]) covered[z * Intel::gw + x] = true;
+		dots[best] = 0.f;
+		reach[best] = 0.f;
+	}
+	aiMilitaryMgr.SetScoutTargets(tp, tv);
+	aiMilitaryMgr.quota.scout = AiMax(1, int(worthy));
+}
+
+string Status() { return "scout: worthy=" + worthy + " top=" + int(topValue) + " quota=" + aiMilitaryMgr.quota.scout; }
+
+}  // namespace Scout
 
 /* ======================================================================== */
 // ---- Hold: just-in-time defence of extractors (needs the C++ bridge) ----
@@ -3203,6 +3300,7 @@ void Update()  // every 30 frames
 {
 	aiSwitchHighGroundArty = F_ARTYHIGH;
 	aiSwitchHeightSquads = F_HEIGHTSQUAD;
+	aiSwitchScoutMap = F_SCOUTMAP;
 	if (F_INTEL) Intel::Update();
 	Assess::Update();
 	if (F_WASTE) Waste::Update();
@@ -3221,6 +3319,8 @@ void Update()  // every 30 frames
 		Strategic::Update(Intel::jamAlert);
 	if (F_HOLD && ai.frame % (3 * SECOND) < SECOND)
 		Hold::Update();
+	if (F_SCOUTMAP && ai.frame % (3 * SECOND) < SECOND)
+		Scout::Update();
 	if (F_COMMGUARD && ai.frame % (2 * SECOND) < SECOND)
 		CommGuardUpdate();
 
@@ -3230,6 +3330,7 @@ void Update()  // every 30 frames
 			AiLog("[ANV] commander at (" + int(cp.x) + "," + int(cp.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(cp) : -1.f)
 				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects + " guards=" + commGuards + " retreats=" + commRetreats + " frontReclaims=" + commReclaims + " fwdClaims=" + commFwd + " fwdFailed=" + fwdFailed + " fwd(calls/busy/none)=" + fwdCalls + "/" + fwdBusy + "/" + fwdNone + " fwdBest=" + int(fwdBestSeen) + " vs cur " + int(fwdCurSeen));
 		}
+		if (F_SCOUTMAP) AiLog("[ANV] " + Scout::Status());
 		AiLog("[ANV] eco t=" + Minute() + "m workers=" + aiBuilderMgr.GetWorkerCount() + " mex=" + Economist::mexes.length()
 			+ " M inc=" + F1(aiEconomyMgr.metal.income) + " M " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
 			+ " E inc=" + F1(aiEconomyMgr.energy.income) + " E " + int(aiEconomyMgr.energy.current) + "/" + int(aiEconomyMgr.energy.storage)

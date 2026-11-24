@@ -37,10 +37,18 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
-index 719442f0..0bdc8f94 100644
+index 719442f0..c1b3c86a 100644
 --- a/src/circuit/module/MilitaryManager.cpp
 +++ b/src/circuit/module/MilitaryManager.cpp
-@@ -661,6 +661,17 @@ IFighterTask* CMilitaryManager::Enqueue(const TaskF::SFightTask& ti)
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "module/MilitaryManager.h"
++#include "util/AnarvaSwitches.h"
+ #include "module/BuilderManager.h"
+ #include "module/EconomyManager.h"
+ #include "module/FactoryManager.h"
+@@ -661,6 +662,17 @@ IFighterTask* CMilitaryManager::Enqueue(const TaskF::SFightTask& ti)
  	return task;
  }
  
@@ -58,15 +66,56 @@ index 719442f0..0bdc8f94 100644
  CRetreatTask* CMilitaryManager::EnqueueRetreat()
  {
  	CRetreatTask* task = new CRetreatTask(this);
+@@ -984,8 +996,35 @@ void CMilitaryManager::ProcessHubDefence(CBDefenceTask* task)
+ 	task->SetDefPointId(closestPoint->id);
+ }
+ 
++void CMilitaryManager::SetScoutTargets(const std::vector<AIFloat3>& pos, const std::vector<float>& value)
++{
++	scriptScoutPos = pos;
++	scriptScoutVal = value;
++}
++
+ AIFloat3 CMilitaryManager::GetScoutPosition(CCircuitUnit* unit)
+ {
++	if (anarva::switches.scoutMap && !scriptScoutPos.empty()) {
++		// Anarva: the script ranks where vision is worth most (age x stake). Take the most valuable target this
++		// scout can reach; each target goes to one scout (removed once handed out; the script refreshes the list).
++		CTerrainManager* terrainMgr = circuit->GetTerrainManager();
++		SArea* area = unit->GetArea();
++		int best = -1;
++		for (size_t i = 0; i < scriptScoutPos.size(); ++i) {
++			if (!terrainMgr->CanMoveToPos(area, scriptScoutPos[i])) {
++				continue;
++			}
++			if ((best < 0) || (scriptScoutVal[i] > scriptScoutVal[best])) {
++				best = i;
++			}
++		}
++		if (best >= 0) {
++			const AIFloat3 p = scriptScoutPos[best];
++			scriptScoutPos.erase(scriptScoutPos.begin() + best);
++			scriptScoutVal.erase(scriptScoutVal.begin() + best);
++			return p;
++		}
++	}
+ 	ClearScoutPosition(unit->GetTask());
+ 	CMetalManager* metalMgr = circuit->GetMetalManager();
+ 	const CMetalData::Clusters& clusters = metalMgr->GetClusters();
 diff --git a/src/circuit/module/MilitaryManager.h b/src/circuit/module/MilitaryManager.h
-index f752cb27..9e54dea1 100644
+index f752cb27..174b6e23 100644
 --- a/src/circuit/module/MilitaryManager.h
 +++ b/src/circuit/module/MilitaryManager.h
-@@ -109,6 +109,7 @@ public:
+@@ -109,6 +109,12 @@ public:
  	}
  
  	IFighterTask* Enqueue(const TaskF::SFightTask& ti);
 +	IFighterTask* EnqueueDefendAt(const springai::AIFloat3& pos, float maxPower);  // Anarva
++	void SetScoutTargets(const std::vector<springai::AIFloat3>& pos, const std::vector<float>& value);  // Anarva
++private:
++	std::vector<springai::AIFloat3> scriptScoutPos;  // Anarva: script-ranked scout targets (switch scoutMap)
++	std::vector<float> scriptScoutVal;
++public:
  	virtual CRetreatTask* EnqueueRetreat() override;
  private:
  	virtual void DequeueTask(IUnitTask* task, bool done = false) override;
@@ -85,7 +134,7 @@ index 0be6a835..b91cfe6e 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..1208e82f 100644
+index c3aaefe5..47223e01 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -301,7 +350,7 @@ index c3aaefe5..1208e82f 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +934,25 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +934,26 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -313,6 +362,7 @@ index c3aaefe5..1208e82f 100644
 +	r = engine->RegisterGlobalFunction("uint AiGetWrecks(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetWrecks), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHighGroundArty", &anarva::switches.highGroundArty); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHeightSquads", &anarva::switches.heightSquads); ASSERT(r >= 0);
++	r = engine->RegisterGlobalProperty("bool aiSwitchScoutMap", &anarva::switches.scoutMap); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyIds(array<int>@+)", asFUNCTION(Bridge_GetEnemyIds), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetMetalSpots(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetMetalSpots), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiIsInLOS(const AIFloat3& in)", asFUNCTION(Bridge_IsInLOS), asCALL_CDECL); ASSERT(r >= 0);
@@ -328,14 +378,42 @@ index c3aaefe5..1208e82f 100644
  
  bool CInitScript::Init()
 diff --git a/src/circuit/script/MilitaryScript.cpp b/src/circuit/script/MilitaryScript.cpp
-index 89633988..01576350 100644
+index 89633988..092100a6 100644
 --- a/src/circuit/script/MilitaryScript.cpp
 +++ b/src/circuit/script/MilitaryScript.cpp
-@@ -35,6 +35,10 @@ CMilitaryScript::CMilitaryScript(CScriptManager* scr, CMilitaryManager* mgr)
+@@ -8,6 +8,7 @@
+ #include "script/MilitaryScript.h"
+ #include "script/ScriptManager.h"
+ #include "module/MilitaryManager.h"
++#include "angelscript/add_on/scriptarray/scriptarray.h"
+ #include "util/ExtAS.h"
+ #include "angelscript/include/angelscript.h"
+ 
+@@ -15,6 +16,18 @@ namespace circuit {
+ 
+ using namespace springai;
+ 
++static void Military_SetScoutTargets(CMilitaryManager* mgr, CScriptArray* pos, CScriptArray* value)
++{
++	std::vector<springai::AIFloat3> p;
++	std::vector<float> v;
++	const asUINT n = std::min(pos->GetSize(), value->GetSize());
++	for (asUINT i = 0; i < n; ++i) {
++		p.push_back(*static_cast<springai::AIFloat3*>(pos->At(i)));
++		v.push_back(*static_cast<float*>(value->At(i)));
++	}
++	mgr->SetScoutTargets(p, v);
++}
++
+ CMilitaryScript::CMilitaryScript(CScriptManager* scr, CMilitaryManager* mgr)
+ 		: ITaskModuleScript(scr, mgr)
+ {
+@@ -35,6 +48,11 @@ CMilitaryScript::CMilitaryScript(CScriptManager* scr, CMilitaryManager* mgr)
  	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ DefaultMakeTask(CCircuitUnit@)", asMETHOD(CMilitaryManager, DefaultMakeTask), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ Enqueue(const SFightTask& in)", asMETHODPR(CMilitaryManager, Enqueue, (const TaskF::SFightTask&), IFighterTask*), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ EnqueueRetreat()", asMETHOD(CMilitaryManager, EnqueueRetreat), asCALL_THISCALL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ EnqueueDefendAt(const AIFloat3& in, float)", asMETHOD(CMilitaryManager, EnqueueDefendAt), asCALL_THISCALL); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CMilitaryManager", "void SetScoutTargets(array<AIFloat3>@+, array<float>@+)", asFUNCTION(Military_SetScoutTargets), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CMilitaryManager", "void AbortTask(IUnitTask@)", asMETHOD(CMilitaryManager, AbortTask), asCALL_THISCALL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CMilitaryManager", "void AssignTask(CCircuitUnit@, IUnitTask@)", asMETHODPR(CMilitaryManager, AssignTask, (CCircuitUnit*, IUnitTask*), void), asCALL_THISCALL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CMilitaryManager", "void ReleaseUnit(CCircuitUnit@)", asMETHODPR(CMilitaryManager, AssignTask, (CCircuitUnit*), void), asCALL_THISCALL); ASSERT(r >= 0);
@@ -751,10 +829,10 @@ index 0247bcb8..7503429f 100644
  	float maxShield;
 diff --git a/src/circuit/util/AnarvaSwitches.h b/src/circuit/util/AnarvaSwitches.h
 new file mode 100644
-index 00000000..d90bdc52
+index 00000000..975377df
 --- /dev/null
 +++ b/src/circuit/util/AnarvaSwitches.h
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,25 @@
 +/*
 + * AnarvaSwitches.h
 + *
@@ -772,6 +850,7 @@ index 00000000..d90bdc52
 +struct SSwitches {
 +	bool highGroundArty = false;  // artillery: height-aware range, firing spot reached soonest
 +	bool heightSquads = false;    // squads: each unit's standoff scaled by its range at the height it stands on
++	bool scoutMap = false;        // scouts go to the targets the script ranks (vision age x stake), not the core's cluster order
 +};
 +inline SSwitches switches;
 +
