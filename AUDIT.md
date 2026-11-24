@@ -16,6 +16,40 @@ the core reads, and the C++ core (BARb's CircuitAI + Anarva's patch).
 | JSON configs | unit-mix dice, random retreat levels, random energy caps, porcupine offsets, factory select offset | income ladders, quotas, limits, energy curve | per-unit threat/power mods, response matrix | some keys dead or misspelled |
 | C++ core | 16 | 47 | 13 | + 4 commit timeouts; rand() seeded from the clock |
 
+## Status 2026-11-24 night (code only; nothing has been played yet)
+
+**Random numbers: none left.** Every `rand()`, dice, shuffle and random scatter in the core and the scripts was
+removed, not gated: dice picks became value per metal, the constructor coin flip became "income unspent", random
+map points became the enemy centre, scatter became a golden-angle spread, the Welzl shuffle was dropped (same unique
+circle), `AiDice`/`AiRandom` are unregistered.
+
+**The `decide` switch is folded in**: BARb's constant branches behind it are deleted, so only the computed paths
+exist. All 59 script flags are folded the same way (brain.as 4008 -> ~2800 lines).
+
+**Constants replaced by facts or decisions** (each with its derivation next to it in the code):
+unit power (square law), threat map (flat in range, unknown = mean identified threat, padding = splash + movement to
+the next update, long-range guns no longer excluded), task power margins and near-base factors (parity), retreat
+(ShouldRetreat only), attack/raid/defend target choice (value per distance / per health, commander = its player's
+share), squad standoff (target slip over one reload), spacing (splash geometry, full circle with the flanking
+rule), regroup (packing radius, arrival time), joins and merges (reach time, concentration), builder job metric
+(rank, then time per value), factory choice (strength added per second), unit fallback (value per metal), energy
+(need and payback at the converter rate from converter defs), economy gates (overflow, time-to-empty/full, track
+record), porcupine planner, build chains, per-unit config overrides, commander hide/assist caps, airpads, base range
+(half-way to the enemy), waypoint spacing (turning diameter), LOS/height (engine reach at height), every 0.9/1.1/
+1.2/1.25/1.5/2x/8x/16x margin; in the scripts: recycler, intel, phantom threat, shields/AMD/silo/mex/converter facts
+generated from unit files (`tools/gen_facts.py`), order lifetimes (walk + build at mean build power), commander job
+span (planning horizon), fortification spacing (unit radii), trade estimate (horizon decay, located kills),
+production weights, economic position (#41), raided extractors (#43).
+
+**Still numbers, and why:**
+- Polling cadences (`ai.frame % N`, factory waits, `THREAT_UPDATE_RATE`) and engine command expiries
+  (`FRAMES_PER_SEC * 60` on unit orders): when to look again, not what to do. To do: re-evaluate on events.
+- Zero-K-only paths that never run in BAR (pylon grid, jump range, disarm/slow params) and map-analysis internals
+  (GridAnalyzer, MicroPather, metal-spot grouping `cluster_range`).
+- Config parse defaults for keys whose values no longer reach a decision.
+- Geometry and engine facts kept by name: `sqrt(0.5)` ballistics, `1.4 ~ sqrt(2)` diagonals, the engine's capture
+  formula (AntiCapAction), `EXPECTED_TURN = 90` (mean of a uniform 0-180 turn).
+
 ## Highest impact, on by default (fix order)
 
 1. **The army is chosen by dice.** `FactoryManager::RequiredFireDef` / `GetFacRoleDef` roll over `factory.json`
