@@ -1670,7 +1670,7 @@ index 64571199..f8df86f9 100644
  	return GetMovePosition(unit->GetArea(), pos);
  }
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a922..759bd820 100644
+index a0f5a922..bf38d7a2 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -1745,7 +1745,28 @@ index a0f5a922..759bd820 100644
  	if (IsMobile() && !IsAttacker()) {  // mobile bomb?
  		WeaponDef* wd = def->GetDeathExplosion();
  		aoe = wd->GetAreaOfEffect();
-@@ -843,3 +880,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
+@@ -619,11 +656,15 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 	//       health /= def->GetArmoredMultiple();
+ 	const float dmg = std::max(std::max(waterDmg, surfDmg), airDmg);
+ 	const float dps = std::max(std::max(waterDps, surfDps), airDps);
+-	defThrDmg = pwrDmg = sqrtf(dps) * std::pow(dmg, 0.25f) * THREAT_MOD;
+-	defThreat = power = defThrDmg * sqrtf(health + maxShield * SHIELD_MOD);
+-	airThrDmg = sqrtf(airDps) * std::pow(airDmg, 0.25f) * THREAT_MOD;
+-	surfThrDmg = sqrtf(surfDps) * std::pow(surfDmg, 0.25f) * THREAT_MOD;
+-	waterThrDmg = sqrtf(waterDps) * std::pow(waterDmg, 0.25f) * THREAT_MOD;
++	// Anarva: Lanchester square law. A unit adds sqrt(dps x durability) to its group's strength (group strength is the
++	// square of the sum); durability = health + shield, a shield point absorbing one point of damage. No hand-picked
++	// per-shot bonus (was dmg^0.25) or shield weight (was 1.5). THREAT_MOD is only the shared unit scale.
++	(void)dmg;
++	defThrDmg = pwrDmg = sqrtf(dps) * THREAT_MOD;
++	defThreat = power = defThrDmg * sqrtf(health + maxShield);
++	airThrDmg = sqrtf(airDps) * THREAT_MOD;
++	surfThrDmg = sqrtf(surfDps) * THREAT_MOD;
++	waterThrDmg = sqrtf(waterDps) * THREAT_MOD;
+ #if 0
+ 	circuit->LOG("THREAT %s | def=%f air=%f surf=%f water=%f", def->GetName(), defThreat,
+ 			airThrDmg * sqrtf(health + maxShield * SHIELD_MOD),
+@@ -843,3 +884,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
  }
  
  } // namespace circuit
@@ -1785,7 +1806,7 @@ index a0f5a922..759bd820 100644
 +
 +} // namespace circuit
 diff --git a/src/circuit/unit/CircuitDef.h b/src/circuit/unit/CircuitDef.h
-index 0247bcb8..ee94b0ec 100644
+index 0247bcb8..fa83a192 100644
 --- a/src/circuit/unit/CircuitDef.h
 +++ b/src/circuit/unit/CircuitDef.h
 @@ -249,6 +249,12 @@ public:
@@ -1801,6 +1822,19 @@ index 0247bcb8..ee94b0ec 100644
  	int GetThreatRange(ThreatType type) const { return threatRange[static_cast<ThreatT>(type)]; }
  	float GetShieldRadius() const { return shieldRadius; }
  	float GetMaxShield() const { return maxShield; }
+@@ -371,9 +377,9 @@ public:
+ 	springai::AIFloat3 GetMidPosOffset(int facing) const;
+ 
+ 	// script API
+-	float GetAirThreat() const { return airThrDmg * sqrtf(health + maxShield * SHIELD_MOD); }
+-	float GetSurfThreat() const { return surfThrDmg * sqrtf(health + maxShield * SHIELD_MOD); }
+-	float GetWaterThreat() const { return waterThrDmg * sqrtf(health + maxShield * SHIELD_MOD); }
++	float GetAirThreat() const { return airThrDmg * sqrtf(health + maxShield); }
++	float GetSurfThreat() const { return surfThrDmg * sqrtf(health + maxShield); }
++	float GetWaterThreat() const { return waterThrDmg * sqrtf(health + maxShield); }
+ 
+ private:
+ 	static RoleName* roleNames;
 @@ -414,11 +420,26 @@ private:
  	float waterThrDmg, waterThrMod;  // underwater enemy damage
  	ThrDmgArray thrDmgMod;  // mod by role
@@ -1974,6 +2008,19 @@ index 00000000..532edfad
 +} // namespace circuit
 +
 +#endif // SRC_CIRCUIT_UTIL_ANARVASWITCHES_H_
+diff --git a/src/circuit/util/Defines.h b/src/circuit/util/Defines.h
+index 9a1beba7..b48ccfc0 100644
+--- a/src/circuit/util/Defines.h
++++ b/src/circuit/util/Defines.h
+@@ -54,7 +54,7 @@ template<typename T> static inline constexpr T SQUARE(T x) { return x * x; }
+ #define THREAT_BASE		0.f
+ #define THREAT_MIN		1.0f
+ #define DEFAULT_SLACK	(SQUARE_SIZE * 8)
+-#define SHIELD_MOD		1.5f
++#define SHIELD_MOD		1.0f  // Anarva: a shield point absorbs one point of damage (was a hand-picked 1.5)
+ 
+ typedef std::vector<springai::AIFloat3> F3Vec;
+ typedef std::vector<void*> VoidVec;
 diff --git a/src/circuit/util/math/Region.cpp b/src/circuit/util/math/Region.cpp
 index d8e22df4..8fab2b21 100644
 --- a/src/circuit/util/math/Region.cpp

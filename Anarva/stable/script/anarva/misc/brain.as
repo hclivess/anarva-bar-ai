@@ -926,7 +926,7 @@ bool OnDestroyed(CCircuitUnit@ unit)
 float EnergyMake(const CCircuitDef@ d)
 {
 	// what it really makes on this map: fixed make, tidal at the map's tidal strength, wind at the map's average wind
-	return AiEnergyMake(d);
+	return AiEnergyMake(ai.GetCircuitDef(d.id));  // the bridge takes a non-const def handle
 }
 
 float BigMake()
@@ -1116,7 +1116,7 @@ void EcoReclaimUpdate()
 		CCircuitUnit@ u = all[i];
 		const CCircuitDef@ d = u.circuitDef;
 		if (d.IsMobile() || pending.findByRef(u) >= 0) continue;
-		const float make = AiEnergyMake(d);
+		const float make = AiEnergyMake(ai.GetCircuitDef(d.id));
 		if (make <= 0.f) continue;
 		const float gain = d.costM - make * H / epm;
 		if (gain > bestGain) { bestGain = gain; @best = u; bestMake = make; }
@@ -3534,7 +3534,7 @@ void ReclaimUpdate()
 		// a rez bot revives what can be revived (at least the wreck's metal back as a working unit) unless energy would stall
 		const bool canRez = Brain::Production::rezDefs.findByRef(best.circuitDef) >= 0 && wr[i] && !aiEconomyMgr.isEnergyStalling;
 		IUnitTask@ t = canRez ? aiBuilderMgr.Enqueue(TaskB::Resurrect(Task::Priority::HIGH, wp[i], metal, 2 * MINUTE, R))
-			: aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, wp[i], R, 2 * MINUTE));
+			: aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, wp[i], metal, 2 * MINUTE, R));  // (pos, cost, timeout, radius)
 		if (t is null) continue;
 		aiBuilderMgr.AssignTask(best, t);
 		reclaimTasks.insertLast(t);
@@ -3697,7 +3697,7 @@ IUnitTask@ CommBestJob(const AIFloat3& in from, float floorScore)
 	if (bestKind < 0) return null;
 	if (bestKind == 0) return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, bestU, true, 20 * SECOND));
 	if (bestKind == 1) ++commReclaims;
-	return aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, bestP, R, 20 * SECOND));
+	return aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, bestP, 0.f, 20 * SECOND, R));  // (pos, cost, timeout, radius)
 }
 IUnitTask@ CommSafeJob(const AIFloat3& in from) { ++commRetreats; return CommBestJob(from, -1e30f); }
 
