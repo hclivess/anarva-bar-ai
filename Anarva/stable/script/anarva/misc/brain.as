@@ -1039,7 +1039,7 @@ string Status()
 /* ======================================================================== */
 namespace Intel {
 
-const float CELL = 512.f;
+float CELL = 512.f;  // set in Init: a camera's sight diameter (what the grid is for)
 int gw = 1, gh = 1;
 array<float> heat;
 array<int> lastEyesFrame;   // per cell: when we last ordered vision there
@@ -1058,6 +1058,11 @@ int eyesOrdered = 0;
 
 void Init()
 {
+	{
+		const string side0 = ai.GetSideName();
+		CCircuitDef@ cam = (side0 == "cortex") ? Def("coreyes") : ((side0 == "legion") ? Def("legeyes") : Def("armeyes"));
+		if (cam !is null && cam.losRadius > 0.f) CELL = 2.f * cam.losRadius;
+	}
 	gw = AiMax(1, int(AiTerrainWidth() / CELL) + 1);
 	gh = AiMax(1, int(AiTerrainHeight() / CELL) + 1);
 	heat.resize(gw * gh);
@@ -1076,7 +1081,6 @@ void Init()
 	else if (side == "legion")  @eyesDef = Def("legeyes");
 	else                        @eyesDef = Def("armeyes");
 
-	InitPhantomThreat();
 }
 
 /*
@@ -1094,22 +1098,15 @@ float RefInfluence(const array<string>& in names)
 	return (refs.length() > 0) ? sum / refs.length() : 0.f;
 }
 
-void InitPhantomThreat()
+// A seen enemy jammer stands for hidden strength: its metal share of the enemy army we can see (live, no squad sizes)
+void UpdatePhantomThreat()
 {
-	const float t1 = RefInfluence({"armham", "armwar", "corthud", "corstorm", "armstump", "corraid", "legkark", "legcen"});
-	const float t2 = RefInfluence({"armfido", "armzeus", "corcan", "corsumo", "armbull", "correap", "legshot", "legaskirmtank"});
-	AiLog("[ANV] Intel: ref influence T1=" + F1(t1) + " T2=" + F1(t2));
+	const float visible = aiEnemyMgr.mobileThreat;
 	for (uint i = 0; i < jammerDefs.length(); ++i) {
 		CCircuitDef@ d = jammerDefs[i];
 		if (d.defDmg > 0.f)
-			continue;  // armed (e.g. commando): keep real threat
-		const bool t2tier = d.costM >= 120.f;
-		const float squad = d.IsMobile() ? 4.f : 6.f;
-		const float k = squad * (t2tier ? t2 : t1);
-		if (k <= 0.f)
-			continue;
-		d.SetThreatKernel(k);
-		AiLog("[ANV] Intel: phantom threat " + d.GetName() + " cost=" + F1(d.costM) + " kernel=" + F1(k));
+			continue;  // armed (e.g. commando): keep its real threat
+		d.SetThreatKernel(visible * d.costM / AiMax(d.costM, jammerCost));
 	}
 }
 
@@ -1194,8 +1191,10 @@ bool EyesNear(const AIFloat3& in p, float radius)
 
 void Update()
 {
+	// memory of losses on the planning horizon (as the trade estimate), no 0.995
+	const float hDecay = pow(2.71828183f, -1.f / AiMax(1.f, Brain::Economist::Horizon()));
 	for (uint i = 0; i < heat.length(); ++i)
-		heat[i] *= 0.995f;  // half-life ~2.3 min at one update per second
+		heat[i] *= hDecay;
 
 	jammerCost = aiEnemyMgr.GetEnemyCost(RT::JAMMER);
 	const bool wasAlert = jamAlert;
@@ -1203,28 +1202,15 @@ void Update()
 	if (jamAlert != wasAlert)
 		AiLog("[ANV] Intel: jammer alert " + (jamAlert ? "ON" : "OFF") + " (known jammer metal=" + F1(jammerCost) + ")");
 
-	if (ai.frame < 3 * MINUTE || !HasBase())
+	if (jamAlert)
+		UpdatePhantomThreat();
+	if (!HasBase())
 		return;
 
 	if (ai.frame % (5 * SECOND) < SECOND)
 		OrderVision();
 
-	// Real line of sight beats radar dots: a blip has no type, so no real threat, counter or target.
-	// Keep eyes on the enemy when blind or jammed: planes on a timer; ground scouts as fallback.
-	const bool blind = Brain::Director::blind;
-	if ((jamAlert || blind) && ai.frame - lastScoutFrame > 90 * SECOND && Brain::Army::scouts.length() < 4) {
-		array<CCircuitUnit@>@ facs = airFactories.length() > 0 ? airFactories : allFactories;
-		if (facs.length() > 0) {
-			CCircuitUnit@ fac = FactoryReachedSoonestIn(facs, basePos, null);
-			CCircuitDef@ scout = aiFactoryMgr.GetRoleDef(fac.circuitDef, RT::SCOUT);
-			if (scout !is null && scout.IsAvailable(ai.frame)) {
-				aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::FIREPOWER, Task::Priority::HIGH,
-					scout, fac.GetPos(ai.frame), 64.f));
-				lastScoutFrame = ai.frame;
-				AiLog("[ANV] Intel: scouting with " + scout.GetName() + (jamAlert ? " (jammers)" : " (blind)"));
-			}
-		}
-	}
+	// scouting of jammed or dark areas is decided by vision value (Scout)
 }
 
 // Put a cheap long-sight camera where we keep dying. Under a jammer, sight is the only way to see.
