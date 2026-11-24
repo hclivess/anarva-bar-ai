@@ -46,6 +46,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("root")
     ap.add_argument("--json")
+    ap.add_argument("--only", help="file listing replay paths; analyse only those (by file name)")
     a = ap.parse_args()
     dist = defaultdict(lambda: defaultdict(list))          # kind -> minute -> [fromStart]
     mix = defaultdict(lambda: defaultdict(Counter))        # kind -> phase -> cmd counts
@@ -56,7 +57,12 @@ def main():
     deaths = defaultdict(list)
     leave = defaultdict(list)                               # kind -> first minute the commander is beyond its start area
     players = Counter()
+    only = None
+    if a.only:
+        only = {os.path.splitext(os.path.basename(l.strip()))[0] for l in open(a.only) if l.strip()}
     for f in glob.glob(os.path.join(a.root, "*", "stdout.txt")):
+        if only is not None and os.path.basename(os.path.dirname(f)) not in only:
+            continue
         teams = {}
         rows = []
         for line in open(f, encoding="utf-8", errors="ignore"):

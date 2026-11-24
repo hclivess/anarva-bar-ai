@@ -479,6 +479,30 @@ among several, and the reasoning is what transfers:
   (path length ÷ speed, radar contact via losses near home). Exact contact timing needs the C++ path
   (§21).
 
+## 30. The commander, from 60 replays
+
+`tools/replay_harness` follows every commander in a replay every 5 s (position, command, armed metal of each
+side within 600, nearest enemy), plus what it builds and where it dies; `tools/analyze_comm.py` aggregates.
+60 replays, 2026-11-24:
+
+| Source | Commanders | Leaves start (median min) | Median distance out at min 3 / 5 / 8 / 11 | In contact, min 3-14 | Far builds (median distance) | Deaths |
+|---|---|---|---|---|---|---|
+| Top 1v1 duels | 48 human | 3.2 | 300 / 410 / 725 / 1160 | 6-7% | mex 1400, LLT 2700 | 18 |
+| Top team games | 72 human | 2.6 | 1400 / 2600 / 2600 / 2870 | 21-25% | LLT 3300, teeth 3100 | 24 |
+| Humans vs bots | 26 human | 2-2.8 | 380-460 / 400-1300 (trips) | 2-5% | LLT 3200-3600, radar 3050, teeth 1500, mex up to 1600 | 12 |
+| BARb in those games | 168 AI | 1.6-2.1 | ~400-780, then 350-450 all game | 5-7% | mex 500-900, LLT 600-900 | 76 |
+
+What transfers (the reasoning, not the routes):
+- First ~3 minutes: the commander builds the eco at the start (wind/solar/mex within ~300).
+- Then it is the best front builder: it walks out to claim extractors (to ~1500) and to put up a forward
+  post at the contested line (~3000: LLTs, radar, dragon's teeth). The post buys vision and area denial
+  cheaply where the fighting will be; then it comes back. In team games, where one commander's death
+  doesn't end the game, it stays out there.
+- BARb keeps its commander home and loses it there anyway (many deaths at minutes 5-6, close to home):
+  staying back is not safety.
+- Implementation: F_COMMFWD (extractor claims by gain - risk), F_COMMFOG (unseen strength counts as
+  danger), next: the forward post (value = the vision it gives, see issue #48, plus the spots it holds).
+
 ## Planned
 
 - Walls and dragon's teeth at chokes, in front of defence lines (Sun Tzu's terrain chapters; HOLD and
