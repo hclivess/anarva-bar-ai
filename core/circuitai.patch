@@ -1258,7 +1258,7 @@ index a36c4e1b..cc6b7ef6 100644
  	void ApplySafePos(const CQueryPathMulti* query);
  	void Fallback(CCircuitUnit* unit, bool proceed);
 diff --git a/src/circuit/task/fighter/AttackTask.cpp b/src/circuit/task/fighter/AttackTask.cpp
-index 2f556d6d..fdcf3487 100644
+index 2f556d6d..d85e2e3a 100644
 --- a/src/circuit/task/fighter/AttackTask.cpp
 +++ b/src/circuit/task/fighter/AttackTask.cpp
 @@ -6,6 +6,8 @@
@@ -1282,12 +1282,30 @@ index 2f556d6d..fdcf3487 100644
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
-@@ -261,17 +264,29 @@ void CAttackTask::FindTarget()
+@@ -259,19 +262,47 @@ void CAttackTask::FindTarget()
+ 
+ 	SetTarget(nullptr);  // make adequate enemy->GetTasks().size()
  	const std::vector<CEnemyManager::SEnemyGroup>& groups = circuit->GetEnemyManager()->GetEnemyGroups();
++	// Anarva (#45): a commander kill removes its player (the last commander loses the game), so it is worth that player's
++	// share of everything the enemy has that we know of
++	float enemyWorth = 0.f;
++	for (const CEnemyManager::SEnemyGroup& g : groups) {
++		enemyWorth += g.cost;
++	}
++	const float commWorth = enemyWorth / std::max(1, circuit->GetEnemyTeamSize());
  	for (unsigned i = 0; i < groups.size(); ++i) {
  		const CEnemyManager::SEnemyGroup& group = groups[i];
 -		const bool isOverpowered = maxPower * 0.125f > group.influence;
 +		bool isOverpowered = false;
++		float groupWorth = group.cost;
++		if (anarva::switches.decide) {
++			for (const ICoreUnit::Id eId : group.units) {
++				CEnemyInfo* e = circuit->GetEnemyInfo(eId);
++				if ((e != nullptr) && (e->GetCircuitDef() != nullptr) && e->GetCircuitDef()->IsEnemyRoleAny(CCircuitDef::RoleMask::COMM)) {
++					groupWorth += commWorth;
++				}
++			}
++		}
 +		float scale = 1.f;
 +		if (anarva::switches.decide) {
 +			// Anarva: a group is a target when we can beat it there: our attack power plus our own influence already at
@@ -1314,6 +1332,19 @@ index 2f556d6d..fdcf3487 100644
  
  		for (const ICoreUnit::Id eId : group.units) {
  			CEnemyInfo* enemy = circuit->GetEnemyInfo(eId);
+@@ -316,7 +347,11 @@ void CAttackTask::FindTarget()
+ 				}
+ 			}
+ 
+-			const float sqOEDist = group.vagueMetric * pos.SqDistance2D(ePos) * scale;  // Own to Enemy distance
++			// Anarva (decide, #61 press the advantage): among the groups we can beat, go where the most enemy metal is per
++			// distance travelled (time to get there per metal destroyed), not to the nearest one
++			const float sqOEDist = anarva::switches.decide
++				? pos.distance2D(ePos) / std::max(1.f, groupWorth)
++				: group.vagueMetric * pos.SqDistance2D(ePos) * scale;  // Own to Enemy distance
+ 			if (minSqDist > sqOEDist) {
+ 				minSqDist = sqOEDist;
+ 				bestTarget = enemy;
 diff --git a/src/circuit/task/fighter/DefendTask.cpp b/src/circuit/task/fighter/DefendTask.cpp
 index af382ba3..b88571ea 100644
 --- a/src/circuit/task/fighter/DefendTask.cpp
