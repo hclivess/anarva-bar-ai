@@ -50,6 +50,30 @@ in [GitHub issues](https://github.com/hclivess/anarva-bar-ai/issues).
   several BARbs out-earn each bot 2–3× (STRATEGY.md §22), and closing that economic gap is the current
   work.
 
+## The C++ core
+
+Anarvā used to run only as scripts on top of BARb's prebuilt DLL. The scripts could only see the totals the DLL
+chose to share (income, overall enemy threat, enemy cost per role), never "this enemy is here". Anarvā now
+builds its own DLL from BARb's CircuitAI source with a small patch (`core/circuitai.patch`, built by
+`tools/build_dll.sh` under MSYS2 MinGW64), so the scripts can see what the core sees. Strategy stays in script;
+the core only supplies facts and hands-free mechanics, so it rarely needs rebuilding.
+
+| Script API | What it gives |
+|---|---|
+| `AiGetEnemies(pos, vel, def, cost, flags)` | every known enemy: position, velocity, type (null for radar blips), metal cost, LOS/radar/being-built/paralyzed flags |
+| `AiGetEnemyGroups(pos, cost, threat)` | the core's clusters of enemy units: centre, metal, threat |
+| `AiGetTeamUnits()` | all our units |
+| `AiGetElevation(x, z)`, `AiMinElevation()`, `AiMaxElevation()` | terrain height |
+| `aiThreat.GetThreatAt(unit or def, pos)` | how much enemy fire a unit (type) would take at a spot |
+| `def.GetRangeAt(heightDiff)`, `def.IsBallistic()` | weapon reach from a given height, using the engine's own rule (cannons reach further downhill, lasers lose a little either way) |
+| `aiMilitaryMgr.EnqueueDefendAt(pos, power)`, `AbortTask(task)` | a defend task anchored at any spot (an expansion, a ridge), held until the script releases it |
+
+Core behaviour changed in the patch:
+- **Artillery picks its firing spot by height.** For each enemy building it could shell, it searches the ground
+  around the target for spots where the target is in range from that spot's height and the threat map shows no
+  enemy fire, then goes to the one it reaches soonest. High ground widens the set of spots that qualify, so
+  artillery climbs exactly when a hill gives it reach or safety, with no hill bonus to tune.
+
 ## Install
 
 You need Beyond All Reason installed and started at least once (so it has downloaded an engine).

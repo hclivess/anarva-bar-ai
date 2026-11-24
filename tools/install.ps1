@@ -3,7 +3,8 @@
 param(
     [string]$BarData = "C:\Hry\Beyond-All-Reason\data",
     [string]$Name = "Anarva",
-    [string]$Flags = ""   # e.g. "F_PROD=false,F_SCALE=false" for A/B variants
+    [string]$Flags = "",  # e.g. "F_PROD=false,F_SCALE=false" for A/B variants
+    [string]$Dll = ""     # custom-built SkirmishAI.dll (ref/build); default: the engine's BARb DLL
 )
 $ErrorActionPreference = "Stop"
 $src = Join-Path $PSScriptRoot "..\Anarva\stable"
@@ -17,7 +18,8 @@ if (-not $engine) { throw "No engine with BARb found under $BarData\engine" }
 if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }
 New-Item -ItemType Directory -Force $dst | Out-Null
 Copy-Item -Recurse -Force (Join-Path $src "*") $dst
-Copy-Item -Force (Join-Path $engine.FullName "AI\Skirmish\BARb\stable\SkirmishAI.dll") $dst
+if ($Dll) { Copy-Item -Force $Dll (Join-Path $dst "SkirmishAI.dll") }
+else { Copy-Item -Force (Join-Path $engine.FullName "AI\Skirmish\BARb\stable\SkirmishAI.dll") $dst }
 if ($Name -ne "Anarva") {
     $info = Join-Path $dst "AIInfo.lua"
     $text = [IO.File]::ReadAllText($info).Replace("value  = 'Anarva', -- AI name", "value  = '$Name', -- AI name") -replace "value  = 'Anarv[^']*',\r?\n(\s*desc   = 'human readable name)", "value  = '$Name',`n`$1"

@@ -728,6 +728,28 @@ void OnFinished(CCircuitUnit@ unit)
 		eyes.insertLast(unit);
 }
 
+
+// Smoke test of the C++ bridge (enemy list, groups, terrain, threat, height-aware range).
+void BridgeLog()
+{
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef);
+	float known = 0.f; uint los = 0;
+	for (uint i = 0; i < n; ++i) { known += ec[i]; if ((ef[i] & 1) != 0) ++los; }
+	array<AIFloat3> gp; array<float> gc, gt;
+	const uint g = AiGetEnemyGroups(gp, gc, gt);
+	float big = 0.f; AIFloat3 bigPos;
+	for (uint i = 0; i < g; ++i) if (gc[i] > big) { big = gc[i]; bigPos = gp[i]; }
+	string s = "[ANV] bridge enemies=" + n + " los=" + los + " knownM=" + int(known) + " groups=" + g
+		+ " biggest=" + int(big) + "@(" + int(bigPos.x) + "," + int(bigPos.z) + ") own=" + AiGetTeamUnits().length()
+		+ " elev[min,max]=" + int(AiMinElevation()) + "," + int(AiMaxElevation());
+	if (HasBase()) s += " baseElev=" + int(AiGetElevation(basePos.x, basePos.z));
+	CCircuitDef@ arty = ai.GetCircuitDef("armmart");
+	if (arty !is null) s += " mart range flat/+100/-100=" + int(arty.GetRangeAt(0)) + "/" + int(arty.GetRangeAt(-100)) + "/" + int(arty.GetRangeAt(100));
+	if (commander !is null) s += " commThreat=" + F1(aiThreat.GetThreatAt(commander, commander.GetPos(ai.frame)));
+	AiLog(s);
+}
+
 void OnDestroyed(CCircuitUnit@ unit)
 {
 	RemoveUnit(eyes, unit);
@@ -2499,6 +2521,7 @@ void Update()  // every 30 frames
 			+ " M inc=" + F1(aiEconomyMgr.metal.income) + " M " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
 			+ " E inc=" + F1(aiEconomyMgr.energy.income) + " E " + int(aiEconomyMgr.energy.current) + "/" + int(aiEconomyMgr.energy.storage)
 			+ " stall=" + aiEconomyMgr.isEnergyStalling + " expandWant=" + F1(Director::expandWant) + " bpTarget=" + F1(aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio));
+		Intel::BridgeLog();
 
 		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | groundPow=" + F1(Army::groundPower) + " units=" + Army::ground.length()
 			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " waves=" + Army::waves + " recalls=" + Army::recalls + " ft=" + Army::Hist()

@@ -9,3 +9,4 @@ Anarva/stable/libSkirmishAI.so
 # build.py output
 dist/
 build/
+runs/
