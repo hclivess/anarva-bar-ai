@@ -113,7 +113,7 @@ jobs:
           V="${{ steps.meta.outputs.version }}"
           cat > "$RUNNER_TEMP/notes.md" <<NOTES
           - Download \`anarva-$V-windows-x64.zip\` or \`anarva-$V-linux-x64.tar.gz\`, extract it and run \`install.cmd\` (Windows) or \`./install.sh\` (Linux). Needs Beyond All Reason installed and started at least once.
-          - **Pre-alpha, for testing.** Anarva beats one BARb hard in 1v1 tests; it does not yet beat two. Please report games (map, opponents, replay) as GitHub issues.
+          - **Pre-alpha, for testing.** Current state: about even with one BARb hard in 1v1 (4-4 in the last 8-game check, weakest on open maps) and not yet able to beat two. Please report games (map, opponents, replay) as GitHub issues.
           - Ships its own core library (BARb's CircuitAI 1.6.29 plus the bridge Anarva's scripts use), built for engine 2026.09.03. Only the player hosting the AI slot needs it.
           - Everything in this build, with measured results: FEATURES.md.
           - To see Anarva in the lobby: create \`devmode.txt\` in the BAR data folder (the installer offers to), restart the lobby, Settings > Developer > untick "simple AI list".
