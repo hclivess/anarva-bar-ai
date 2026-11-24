@@ -1405,7 +1405,7 @@ index 0400f8d6..d64db858 100644
  			circuit->GetBuilderManager()->Enqueue(TaskB::Repair(IBuilderTask::Priority::NOW, unit));
  		}
 diff --git a/src/circuit/task/fighter/RaidTask.cpp b/src/circuit/task/fighter/RaidTask.cpp
-index b62de532..44f629b5 100644
+index b62de532..6b361bd2 100644
 --- a/src/circuit/task/fighter/RaidTask.cpp
 +++ b/src/circuit/task/fighter/RaidTask.cpp
 @@ -6,6 +6,8 @@
@@ -1442,6 +1442,26 @@ index b62de532..44f629b5 100644
  		}
  		const float power = threatMap->GetThreatAt(ePos);
  		if (checkPower <= power) {
+@@ -346,6 +351,19 @@ bool CRaidTask::FindTarget()
+ 		}
+ 
+ 		float sqDist = pos.SqDistance2D(ePos);
++		if (anarva::switches.decide && (minPower > power) && (minSqDist > sqDist) && enemy->IsInRadarOrLOS()
++			&& ((targetCat & noChaseCat) == 0) && !enemy->IsBeingBuilt() && (edef != nullptr))
++		{
++			// Anarva (Vritrasura108 #43): raid by value per damage spent - metal of the target per point of its health -
++			// so unprotected extractors and constructors (valuable, fragile) come first; the threat filter above keeps
++			// it to targets we out-power
++			const float v = edef->GetCostM() / std::max(1.f, enemy->GetHealth());
++			if (v > maxThreat) {
++				bestTarget = enemy;
++				maxThreat = v;
++			}
++			continue;
++		}
+ 		if ((minPower > power) && (minSqDist > sqDist)) {
+ 			if (enemy->IsInRadarOrLOS()) {
+ 				if (((targetCat & noChaseCat) == 0) && !enemy->IsBeingBuilt()) {
 diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
 index 154ce4bf..b477e183 100644
 --- a/src/circuit/task/fighter/SquadTask.cpp
