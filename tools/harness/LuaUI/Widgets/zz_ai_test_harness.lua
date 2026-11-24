@@ -29,9 +29,9 @@ local function teamLine(teamID)
 	end
 	local hist = Spring.GetTeamStatsHistory(teamID, 0, Spring.GetTeamStatsHistory(teamID))
 	local last = hist and hist[#hist] or {}
-	return string.format("team=%d units=%d army_m=%d static_m=%d m_inc=%.1f e_inc=%.0f m=%d/%d e=%d/%d killed_m=%d lost_m=%d",
+	return string.format("team=%d units=%d army_m=%d static_m=%d m_inc=%.1f e_inc=%.0f m=%d/%d e=%d/%d killed_m=%d lost_m=%d dmg_out=%d dmg_in=%d",
 		teamID, #units, army, eco, mInc or 0, eInc or 0, mCur or 0, mStor or 0, eCur or 0, eStor or 0,
-		last.unitsKilled or 0, last.unitsDied or 0)
+		last.unitsKilled or 0, last.unitsDied or 0, last.damageDealt or 0, last.damageReceived or 0)
 end
 
 -- What each team has built, by kind and tech level (diagnostic: when do the bots tech, convert, expand?)
