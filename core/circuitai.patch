@@ -1929,7 +1929,7 @@ index 0247bcb8..fa83a192 100644
  	float shieldRadius;
  	float maxShield;
 diff --git a/src/circuit/unit/FactoryData.cpp b/src/circuit/unit/FactoryData.cpp
-index a16e2e21..549e42dd 100644
+index a16e2e21..5ab9b9b5 100644
 --- a/src/circuit/unit/FactoryData.cpp
 +++ b/src/circuit/unit/FactoryData.cpp
 @@ -6,6 +6,7 @@
@@ -1940,7 +1940,17 @@ index a16e2e21..549e42dd 100644
  #include "module/FactoryManager.h"
  #include "module/BuilderManager.h"  // FIXME: only for IsBuilderInArea
  #include "module/EconomyManager.h"  // FIXME: only for IsFactoryDefAvail
-@@ -99,7 +100,7 @@ CCircuitDef* CFactoryData::GetFactoryToBuild(CCircuitAI* circuit, AIFloat3 posit
+@@ -86,6 +87,9 @@ CCircuitDef* CFactoryData::GetFactoryToBuild(CCircuitAI* circuit, AIFloat3 posit
+ 		float importance;
+ 		if (isStart) {
+ 			CCircuitDef* bdef = factoryMgr->GetRoleDef(cdef, ROLE_TYPE(BUILDER));
++			if (anarva::switches.decide && ((bdef == nullptr) || !bdef->IsAvailable(frame))) {
++				continue;  // Anarva: a first factory must make constructors (the economy grows only through them)
++			}
+ 			importance = sfac.startImp * (((bdef != nullptr) && bdef->IsAvailable(frame)) ? 1.f : .1f);
+ 		} else {
+ 			importance = sfac.switchImp;
+@@ -99,10 +103,26 @@ CCircuitDef* CFactoryData::GetFactoryToBuild(CCircuitAI* circuit, AIFloat3 posit
  			((mtId >= 0) && mobileType[mtId].typeUsable))
  		{
  			availFacs.push_back(defId);
@@ -1948,7 +1958,36 @@ index a16e2e21..549e42dd 100644
 +			const float offset = minOffset + 0.5f * lenOffset;  // Anarva: no dice (middle of the range)
  			const float speedPercent = sfac.mapSpeedPerc;
  			const float mapPercent = (mtId < 0) ? airMapPerc : mobileType[mtId].areaLargest->percentOfMap;
++			if (anarva::switches.decide) {
++				// Anarva (#57): a factory is worth the best fighting strength per metal its units give (Lanchester: a
++				// group's strength per metal^2 ~ dps x hp / cost^2, i.e. (power / cost)^2 with power = sqrt(dps x hp)),
++				// times the share of the map they can go to. Amphibious reach adds nothing on a land map, so their
++				// higher cost per strength loses there; no config importance weights.
++				float best = 0.f;
++				for (CCircuitDef::Id oId : cdef->GetBuildOptions()) {
++					CCircuitDef* o = circuit->GetCircuitDef(oId);
++					if ((o == nullptr) || !o->IsMobile() || (o->GetCostM() <= 0.f) || !o->IsAvailable(frame)) {
++						continue;
++					}
++					best = std::max(best, SQUARE(o->GetPower() / o->GetCostM()));
++				}
++				percents[defId] = best * mapPercent;
++			} else {
  			percents[defId] = offset + importance * (mapPercent + speedPercent);
++			}
+ 		}
+ 	}
+ 
+@@ -111,6 +131,9 @@ CCircuitDef* CFactoryData::GetFactoryToBuild(CCircuitAI* circuit, AIFloat3 posit
+ 	}
+ 
+ 	auto cmp = [this, &percents](const CCircuitDef::Id aId, const CCircuitDef::Id bId) {
++		if (anarva::switches.decide) {
++			return percents[aId] > percents[bId];  // Anarva: by value only; no forced variety (a second copy of the best lab is fine)
++		}
+ 		if (allFactories[aId].count < allFactories[bId].count) {
+ 			return true;
+ 		} else if (allFactories[aId].count > allFactories[bId].count) {
 diff --git a/src/circuit/util/AnarvaDecide.h b/src/circuit/util/AnarvaDecide.h
 new file mode 100644
 index 00000000..6e04da05
