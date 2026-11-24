@@ -45,10 +45,22 @@ index 40517444..366cae1e 100644
  		allyTeam->RegisterEnemyFake(defId, enemyPos, timeout);
  	} else if (enemy->IsBeingBuilt()) {
 diff --git a/src/circuit/map/InfluenceMap.cpp b/src/circuit/map/InfluenceMap.cpp
-index 41276633..105e97a4 100644
+index 41276633..e4695d35 100644
 --- a/src/circuit/map/InfluenceMap.cpp
 +++ b/src/circuit/map/InfluenceMap.cpp
-@@ -335,8 +335,9 @@ void CInfluenceMap::AddUnarmed(CAllyUnit* u)
+@@ -80,8 +80,9 @@ CInfluenceMap::~CInfluenceMap()
+ void CInfluenceMap::ReadConfig()
+ {
+ 	CCircuitAI* circuit = manager->GetCircuit();
+-	const Json::Value& defence = circuit->GetSetupManager()->GetConfig()["defence"];
+-	defRadius = defence.get("infl_rad", 5.f).asFloat();
++	// Anarva: no config infl_rad; a defender's influence reaches as far as its weapon
++	(void)circuit;
++	defRadius = 0.f;
+ }
+ 
+ void CInfluenceMap::EnqueueUpdate()
+@@ -335,8 +336,9 @@ void CInfluenceMap::AddUnarmed(CAllyUnit* u)
  	int posx, posz;
  	PosToXZ(u->GetPos(circuit->GetLastFrame()), posx, posz);
  
@@ -74,7 +86,7 @@ index c054168d..071468d1 100644
  class CEnemyManager;
  class CMapManager;
 diff --git a/src/circuit/map/ThreatMap.cpp b/src/circuit/map/ThreatMap.cpp
-index 0319762c..342f5a83 100644
+index 0319762c..c471dc50 100644
 --- a/src/circuit/map/ThreatMap.cpp
 +++ b/src/circuit/map/ThreatMap.cpp
 @@ -6,6 +6,7 @@
@@ -85,7 +97,24 @@ index 0319762c..342f5a83 100644
  #include "map/MapManager.h"
  #include "module/MilitaryManager.h"  // GetRangeUnitCountCompensatorScale
  #include "scheduler/Scheduler.h"
-@@ -244,12 +245,17 @@ float CThreatMap::GetBuilderThreatAt(const AIFloat3& position) const
+@@ -63,12 +64,10 @@ CThreatMap::~CThreatMap()
+ void CThreatMap::ReadConfig()
+ {
+ 	CCircuitAI* circuit = manager->GetCircuit();
+-	const Json::Value& slack = circuit->GetSetupManager()->GetConfig()["quota"]["slack_mod"];
+-	slackMod.allMod = slack.get("all", 1.f).asFloat();
+-	slackMod.staticMod = slack.get("static", 1.f).asFloat();
+-	const Json::Value& speedSlack = slack["speed"];
+-	slackMod.speedMod = speedSlack.get((unsigned)0, 1.f).asFloat() * DEFAULT_SLACK / squareSize;
+-	slackMod.speedModMax = speedSlack.get((unsigned)1, 2).asInt() * DEFAULT_SLACK / squareSize;
++	// Anarva: no config slack_mod; padding comes from splash and movement to the next update (ApplyRange/AddEnemy)
++	(void)circuit;
++	slackMod.allMod = slackMod.staticMod = slackMod.speedMod = 0.f;
++	slackMod.speedModMax = 0;
+ }
+ 
+ void CThreatMap::InitRanges()
+@@ -244,12 +243,17 @@ float CThreatMap::GetBuilderThreatAt(const AIFloat3& position) const
  void CThreatMap::SetThreatType(CCircuitUnit* unit)
  {
  	assert(unit != nullptr);
@@ -107,7 +136,7 @@ index 0319762c..342f5a83 100644
  		threatArray = pThreatData.load()->roleThreatPtrs[role]->swimThreat.data();
  	} else {
  		threatArray = pThreatData.load()->roleThreatPtrs[role]->surfThreat.data();
-@@ -293,16 +299,14 @@ float CThreatMap::GetUnitPower(CCircuitUnit* unit) const
+@@ -293,16 +297,14 @@ float CThreatMap::GetUnitPower(CCircuitUnit* unit) const
  
  void CThreatMap::ApplyRange(CCircuitDef* cdef)
  {
@@ -127,7 +156,7 @@ index 0319762c..342f5a83 100644
  	}
  	float realRange;
  	int range;
-@@ -312,11 +316,11 @@ void CThreatMap::ApplyRange(CCircuitDef* cdef)
+@@ -312,11 +314,11 @@ void CThreatMap::ApplyRange(CCircuitDef* cdef)
  	cdef->SetThreatRange(CCircuitDef::ThreatType::AIR, range);
  
  	realRange = cdef->GetMaxRange(CCircuitDef::RangeType::LAND);
@@ -141,7 +170,7 @@ index 0319762c..342f5a83 100644
  	cdef->SetThreatRange(CCircuitDef::ThreatType::WATER, range);
  }
  
-@@ -336,12 +340,11 @@ inline AIFloat3 CThreatMap::XZToPos(int x, int z) const
+@@ -336,12 +338,11 @@ inline AIFloat3 CThreatMap::XZToPos(int x, int z) const
  
  void CThreatMap::AddEnemyUnit(SEnemyData& e)
  {
@@ -157,7 +186,7 @@ index 0319762c..342f5a83 100644
  		e.thrPos = e.pos + lead;
  		CTerrainManager::CorrectPosition(e.thrPos);
  	} else {
-@@ -397,7 +400,7 @@ void CThreatMap::AddEnemyAir(const float threat, float* drawAirThreat,
+@@ -397,7 +398,7 @@ void CThreatMap::AddEnemyAir(const float threat, float* drawAirThreat,
  			}
  
  			const int index = z * width + x;
@@ -166,7 +195,7 @@ index 0319762c..342f5a83 100644
  			// MicroPather cannot deal with negative costs
  			// (which may arise due to floating-point drift)
  			// nor with zero-cost nodes (see MP::SetMapData,
-@@ -489,7 +492,7 @@ void CThreatMap::AddEnemyAmphGradient(const float threatSurf, const float threat
+@@ -489,7 +490,7 @@ void CThreatMap::AddEnemyAmphGradient(const float threatSurf, const float threat
  			// Laser: no gradient
  			const int sum = dxSq + dzSq;
  			const int index = z * width + x;
@@ -175,7 +204,7 @@ index 0319762c..342f5a83 100644
  
  			if (sector[index].isWater) {
  				if (sum <= rangeLandSq) {
-@@ -540,7 +543,7 @@ void CThreatMap::AddDecloaker(float* drawCloakThreat, const SEnemyData& e)
+@@ -540,7 +541,7 @@ void CThreatMap::AddDecloaker(float* drawCloakThreat, const SEnemyData& e)
  			}
  
  			const int index = z * width + x;
@@ -184,7 +213,7 @@ index 0319762c..342f5a83 100644
  			drawCloakThreat[index] += heat;
  		}
  	}
-@@ -609,12 +612,24 @@ std::shared_ptr<IMainJob> CThreatMap::AirDrawer(CCircuitDef::RoleT role)
+@@ -609,12 +610,24 @@ std::shared_ptr<IMainJob> CThreatMap::AirDrawer(CCircuitDef::RoleT role)
  	std::fill(roleThreat.airThreat.begin(), roleThreat.airThreat.end(), THREAT_BASE);
  	float* drawAirThreat = roleThreat.airThreat.data();
  
@@ -211,7 +240,7 @@ index 0319762c..342f5a83 100644
  			AddEnemyAir(threat, drawAirThreat, *e, vsl);
  		}
  	}
-@@ -634,13 +649,28 @@ std::shared_ptr<IMainJob> CThreatMap::AmphDrawer(CCircuitDef::RoleT role)
+@@ -634,13 +647,28 @@ std::shared_ptr<IMainJob> CThreatMap::AmphDrawer(CCircuitDef::RoleT role)
  	float* drawAmphThreat = roleThreat.amphThreat.data();
  	float* drawSwimThreat = roleThreat.swimThreat.data();
  
@@ -5163,7 +5192,7 @@ index 0d479758..dcfec529 100644
  #define MAX_ALLOWED_WATER_DAMAGE_GMM	1e3f
  #define MAX_ALLOWED_WATER_DAMAGE_HMM	1e4f
 diff --git a/src/circuit/terrain/TerrainManager.cpp b/src/circuit/terrain/TerrainManager.cpp
-index 64571199..8dce664b 100644
+index 64571199..03594015 100644
 --- a/src/circuit/terrain/TerrainManager.cpp
 +++ b/src/circuit/terrain/TerrainManager.cpp
 @@ -6,6 +6,8 @@
@@ -5175,6 +5204,15 @@ index 64571199..8dce664b 100644
  #include "terrain/BlockRectangle.h"
  #include "terrain/BlockCircle.h"
  #include "terrain/path/PathFinder.h"
+@@ -118,7 +120,7 @@ void CTerrainManager::ReadConfig()
+ 	enum {RECTANGLE = 0, CIRCLE};
+ 	const std::array<std::string, 2> radNames = {"explosion", "expl_ally"};
+ 	enum {EXPLOSION = 0, EXPL_ALLY};
+-	minLandPercent = root["select"].get("min_land", 40.0f).asFloat();
++	minLandPercent = 50.f;  // Anarva: water map when less than half the map is reachable land (majority, no config 40)
+ 	const bool isWaterMap = IsWaterMap();
+ 
+ 	const Json::Value& clLand = block["class_land"];
 @@ -158,7 +160,11 @@ void CTerrainManager::ReadConfig()
  			default:
  			case RECTANGLE: {
