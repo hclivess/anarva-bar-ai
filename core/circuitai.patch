@@ -58,7 +58,7 @@ index e4c1d126..53b80c7e 100644
  	const float goalBuildMod = root["economy"].get("build_mod", 320.f).asFloat();
  
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..5010b71a 100644
+index 6e5da8b6..50b1ca8e 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,7 @@
@@ -78,6 +78,59 @@ index 6e5da8b6..5010b71a 100644
  		cond.metalIncome = surfEngy.get(2, -1.f).asFloat();
  		cond.energyIncome = surfEngy.get(3, -1.f).asFloat();
  		cond.score = surfEngy.get(4, -1.f).asFloat();
+@@ -1328,6 +1329,52 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+ 		return (lowerIdx < 0) || (SQUARE(curWind) / SQUARE(infos[i].data.make) * infos[i].score > infos[lowerIdx].score);
+ 	};
+ 
++	if (anarva::switches.decide) {
++		// Anarva: energy by need and payback, no income gates or count caps. Need = energy pull above income (or a
++		// stall), minus what is already queued. Choice = the plant with the shortest time to pay back: its build time at
++		// our build power plus its cost over the metal value of what it makes on this map (make / energy per metal).
++		const float pull = GetEnergyPull();
++		const float rawIncome = GetAvgEnergyIncome();
++		float queuedMake = 0.f;
++		for (IBuilderTask* task : builderMgr->GetTasks(IBuilderTask::BuildType::ENERGY)) {
++			for (const auto& e : infos) {
++				if (e.cdef == task->GetBuildDef()) {
++					queuedMake += e.data.make;
++					break;
++				}
++			}
++		}
++		const bool need = isEnergyStalling || (pull - rawIncome > queuedMake);
++		if (need) {
++			// energy per metal at the best converter we can build (game data: energyconv_capacity / efficiency)
++			float em = std::numeric_limits<float>::max();
++			for (const auto& c : convertDefs.GetInfos()) {
++				if (c.cdef->IsAvailable(frame) && (c.data.make > 0.f)) {
++					em = std::min(em, c.data.energyUse / c.data.make);
++				}
++			}
++			if (em == std::numeric_limits<float>::max()) {
++				em = 1.f / std::max(1e-3f, GetEcoEM());  // no converter known: the config's ratio, until one is
++			}
++			const float bp = std::max(1.f, builderMgr->GetBuildPower());
++			float bestPayback = std::numeric_limits<float>::max();
++			for (unsigned i = 0; i < infos.size(); ++i) {
++				const auto& engy = infos[i];
++				if (engy.data.isOld || !engy.cdef->IsAvailable(frame) || (engy.data.make <= 0.f)
++					|| !terrainMgr->CanBeBuiltAtSafe(engy.cdef, position))
++				{
++					continue;
++				}
++				const float cost = engy.cdef->GetCostM() + engy.cdef->GetCostE() / em;
++				const float payback = engy.cdef->GetBuildTime() / bp + cost / (engy.data.make / em);
++				if (payback < bestPayback) {
++					bestPayback = payback;
++					bestDef = engy.cdef;
++				}
++			}
++		}
++		isLastHope = false;
++	} else
+ 	for (unsigned i = 0; i < infos.size(); ++i) {  // sorted by high-tech first
+ 		const auto& engy = infos[i];
+ 		if (engy.data.isOld || !engy.cdef->IsAvailable(frame)
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
 index 54fef916..3ddb44de 100644
 --- a/src/circuit/module/FactoryManager.cpp
