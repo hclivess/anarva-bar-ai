@@ -64,7 +64,7 @@ namespace TaskB {
 
 SBuildTask Common(Task::BuildType type, Task::Priority priority,
 		CCircuitDef@ buildDef, const AIFloat3& in position,
-		float shake = SQUARE_SIZE * 32,  // Alter/randomize position by offset
+		float shake = 0.f,  // Anarva: no scatter by default; the core finds the nearest valid site, the block map spaces by blast radius
 		bool isActive = true,  // Should task go to general queue or remain detached?
 		int timeout = ASSIGN_TIMEOUT)
 {
@@ -99,7 +99,7 @@ SBuildTask Spot(Task::BuildType type, Task::Priority priority,
 }
 SBuildTask Factory(Task::Priority priority, CCircuitDef@ buildDef,
 		const AIFloat3& in position, CCircuitDef@ reprDef,
-		float shake = SQUARE_SIZE * 32, bool isPlop = false,
+		float shake = 0.f, bool isPlop = false,
 		bool isActive = true, int timeout = ASSIGN_TIMEOUT)
 {
 	SBuildTask ti;

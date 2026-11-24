@@ -34,7 +34,7 @@ void AiUnitAdded(CCircuitUnit@ unit, Unit::UseAs usage)
 		return;
 
 	// constructor with BASE attribute is assigned to tasks near base
-	if (cdef.costM < 200.f) {
+	if (Brain::Tech::Tier(cdef) <= 1) {  // T1 constructor (tier from unit facts, not a cost line)
 		if (energizer1 is null
 			&& (uint(cdef.count) > aiMilitaryMgr.GetGuardTaskNum() || cdef.IsAbleToFly()))
 		{

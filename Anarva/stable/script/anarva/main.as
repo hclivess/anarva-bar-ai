@@ -12,9 +12,17 @@ namespace Main {
 
 void AiMain()  // Initialize config params
 {
+	// An energy plant belongs inside the base when it costs more than the cheapest raider that could kill it outside:
+	// a raid on it would be a losing trade for us.
+	float cheapestRaider = 1e9f;
+	for (Id defId = 1, count = ai.GetDefCount(); defId <= count; ++defId) {
+		CCircuitDef@ rdef = ai.GetCircuitDef(defId);
+		if (rdef !is null && rdef.IsMobile() && rdef.IsRoleAny(Unit::Role::RAIDER.mask) && rdef.costM > 0.f)
+			cheapestRaider = AiMin(cheapestRaider, rdef.costM);
+	}
 	for (Id defId = 1, count = ai.GetDefCount(); defId <= count; ++defId) {
 		CCircuitDef@ cdef = ai.GetCircuitDef(defId);
-		if (cdef.costM >= 200.f && !cdef.IsMobile() && aiEconomyMgr.GetEnergyMake(cdef) > 1.f)
+		if (cdef.costM >= cheapestRaider && !cdef.IsMobile() && aiEconomyMgr.GetEnergyMake(cdef) > 0.f)
 			cdef.AddAttribute(Unit::Attr::BASE.type);  // Build heavy energy at base
 	}
 

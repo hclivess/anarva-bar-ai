@@ -44,10 +44,8 @@ void AiSave(OStream& ostream)
 
 void AiMakeDefence(int cluster, const AIFloat3& in pos)
 {
-	if ((ai.frame > 5 * MINUTE)
-		|| (aiEconomyMgr.metal.income > 10.f)
-		|| (aiEnemyMgr.mobileThreat > 0.f))
-	{
+	// a defence answers an army; none is worth its metal before any enemy army has been seen (no clock, no income gate)
+	if (aiEnemyMgr.mobileThreat > 0.f) {
 		aiMilitaryMgr.DefaultMakeDefence(cluster, pos);
 	}
 }
@@ -59,7 +57,8 @@ void AiMakeDefence(int cluster, const AIFloat3& in pos)
 // FIXME: Remove/replace, deprecated.
 bool AiIsAirValid()
 {
-	return aiEnemyMgr.GetEnemyThreat(Unit::Role::AA.type) <= 80.f;
+	// air pays while the enemy can shoot ground units better than aircraft (same measure as the production value)
+	return Brain::Production::airExposure >= 1.f;
 }
 
 }  // namespace Military
