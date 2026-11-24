@@ -44,6 +44,22 @@ index 40517444..366cae1e 100644
  		}
  		allyTeam->RegisterEnemyFake(defId, enemyPos, timeout);
  	} else if (enemy->IsBeingBuilt()) {
+diff --git a/src/circuit/map/InfluenceMap.cpp b/src/circuit/map/InfluenceMap.cpp
+index 41276633..105e97a4 100644
+--- a/src/circuit/map/InfluenceMap.cpp
++++ b/src/circuit/map/InfluenceMap.cpp
+@@ -335,8 +335,9 @@ void CInfluenceMap::AddUnarmed(CAllyUnit* u)
+ 	int posx, posz;
+ 	PosToXZ(u->GetPos(circuit->GetLastFrame()), posx, posz);
+ 
+-	const float val = 2.f;
+-	const int range = DEFAULT_SLACK * 4 * defRadius / squareSize;
++	// Anarva: a defender's influence reaches as far as its weapon (no config infl_rad); the value only marks presence
++	const float val = 1.f;
++	const int range = int(u->GetCircuitDef()->GetMaxRange()) / squareSize + 1;
+ 	const int rangeSq = SQUARE(range);
+ 
+ 	const int beginX = std::max(int(posx - range + 1),       0);
 diff --git a/src/circuit/map/InfluenceMap.h b/src/circuit/map/InfluenceMap.h
 index c054168d..071468d1 100644
 --- a/src/circuit/map/InfluenceMap.h
@@ -1183,7 +1199,7 @@ index 733f7a43..a11811e2 100644
  	bool IsAllyOpenMexSpot(int spotId) const;
  	bool IsOpenMexSpot(int spotId) const;
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
-index 54fef916..24c7626d 100644
+index 54fef916..cbf9d422 100644
 --- a/src/circuit/module/FactoryManager.cpp
 +++ b/src/circuit/module/FactoryManager.cpp
 @@ -6,6 +6,8 @@
@@ -1321,6 +1337,33 @@ index 54fef916..24c7626d 100644
  	}
  	circuit->GetAllyTeam()->NonDefaultThreats(std::move(modRoles), circuit);
  
+@@ -676,7 +594,7 @@ void CFactoryManager::ReadConfig()
+ 			facDef.airTiers = terrainMgr->IsWaterMap() ? facDef.waterTiers : facDef.landTiers;
+ 		}
+ 
+-		facDef.nanoCount = factory.get("caretaker", 1).asUInt();
++		facDef.nanoCount = std::numeric_limits<unsigned int>::max();  // Anarva: no config cap; the income check decides
+ 
+ 		factoryDefs[cdef->GetId()] = facDef;
+ 	}
+@@ -685,7 +603,7 @@ void CFactoryManager::ReadConfig()
+ 	const Json::Value& offset = select["offset"];
+ 	const Json::Value& speed = select["speed"];
+ 	const Json::Value& map = select["map"];
+-	airMapPerc = select.get("air_map", 80.0f).asFloat();
++	airMapPerc = 100.f;  // Anarva: aircraft reach the whole map
+ 	minOffset = offset.get((unsigned)0, -20.0f).asFloat();
+ 	const float maxOffset = offset.get((unsigned)1, 20.0f).asFloat();
+ 	lenOffset = maxOffset - minOffset;
+@@ -701,7 +619,7 @@ void CFactoryManager::ReadConfig()
+ 		kv.second.mapSpeedPerc = speedFactor * (mapSize * avgSpeed - minMapSp) + minSpPerc;
+ 	}
+ 
+-	noAirNum = select.get("no_air", 2).asUInt();
++	noAirNum = 0;  // Anarva: no "first factories are never air" rule; value decides
+ 
+ 	bpRatio = root["economy"].get("buildpower", 1.f).asFloat();
+ 	reWeight = root["response"].get("_weight_", .5f).asFloat();
 @@ -716,8 +634,7 @@ void CFactoryManager::Init()
  		scheduler->RunJobEvery(CScheduler::GameJob(&CFactoryManager::UpdateIdle, this), interval, offset + 0);
  		scheduler->RunJobEvery(CScheduler::GameJob(&CFactoryManager::Update, this), interval, offset + 2);
@@ -1359,6 +1402,15 @@ index 54fef916..24c7626d 100644
  	}
  	return nullptr;
  }
+@@ -1151,7 +1070,7 @@ CCircuitDef* CFactoryManager::GetRepresenter(const CCircuitDef* facDef) const
+ 			CTerrainManager* terrainMgr = circuit->GetTerrainManager();
+ 			SArea* area = terrainMgr->GetMobileTypeById(landDef->GetMobileId())->areaLargest;
+ 			// FIXME: area->percentOfMap < 40.0 doesn't seem right as water identifier
+-			return ((area == nullptr) || (area->percentOfMap < terrainMgr->GetMinLandPercent())) ? GetWaterDef(facDef) : landDef;
++			return ((area == nullptr) || (area->percentOfMap < 50.f)  /* Anarva: water when less than half the map is reachable land */) ? GetWaterDef(facDef) : landDef;
+ 		}
+ 	} else {
+ 		return GetWaterDef(facDef);
 @@ -1229,7 +1148,7 @@ void CFactoryManager::EnableFactory(CCircuitUnit* unit)
  	std::map<CCircuitDef*, SAssistant> nanos;
  	const AIFloat3& pos = unit->GetPos(circuit->GetLastFrame());
@@ -1541,7 +1593,7 @@ index 54fef916..24c7626d 100644
  	}
  	candidates.clear();
 diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
-index 719442f0..8df4261d 100644
+index 719442f0..d0345fd6 100644
 --- a/src/circuit/module/MilitaryManager.cpp
 +++ b/src/circuit/module/MilitaryManager.cpp
 @@ -6,6 +6,8 @@
@@ -1553,15 +1605,18 @@ index 719442f0..8df4261d 100644
  #include "module/BuilderManager.h"
  #include "module/EconomyManager.h"
  #include "module/FactoryManager.h"
-@@ -247,7 +249,7 @@ void CMilitaryManager::InitHandlers()
+@@ -247,9 +249,9 @@ void CMilitaryManager::InitHandlers()
  	const Json::Value& retreat = root["retreat"]["fighter"];
  	const float minRet = retreat.get((unsigned)0, 0.5f).asFloat();
  	const float maxRet = retreat.get((unsigned)1, 0.5f).asFloat();
 -	const float fighterRet = (float)rand() / RAND_MAX * (maxRet - minRet) + minRet;
 +	const float fighterRet = 0.5f * (minRet + maxRet);  // Anarva: no dice; with switch decide the retreat is a live decision (ShouldRetreat)
  	const float retMod = retreat.get((unsigned)2, 1.0f).asFloat();
- 	const float commMod = root["quota"]["thr_mod"].get("comm", 1.f).asFloat();
+-	const float commMod = root["quota"]["thr_mod"].get("comm", 1.f).asFloat();
++	const float commMod = 1.f;  // Anarva: the commander is its unit facts (no config multiplier)
  	std::vector<CCircuitDef*> builders;
+ 
+ 	for (CCircuitDef& cdef : circuit->GetCircuitDefs()) {
 @@ -365,27 +367,9 @@ void CMilitaryManager::ReadConfig()
  	defenceMod.min = qthrDef.get((unsigned)0, 1.f).asFloat();
  	defenceMod.len = qthrDef.get((unsigned)1, 1.f).asFloat() - defenceMod.min;
@@ -2032,18 +2087,21 @@ index f752cb27..fb1e85b2 100644
  	float GetCommDefRad(float baseDist) const { return defence->GetCommRad(baseDist); }
  	unsigned int GetGuardTaskNum() const { return defence->GetGuardTaskNum(); }
 diff --git a/src/circuit/resource/MetalManager.cpp b/src/circuit/resource/MetalManager.cpp
-index 97de6587..db37092a 100644
+index 97de6587..646f5590 100644
 --- a/src/circuit/resource/MetalManager.cpp
 +++ b/src/circuit/resource/MetalManager.cpp
-@@ -6,6 +6,7 @@
+@@ -6,8 +6,10 @@
   */
  
  #include "resource/MetalManager.h"
 +#include "util/AnarvaSwitches.h"
  #include "map/ThreatMap.h"
  #include "module/EconomyManager.h"
++#include "util/AnarvaDecide.h"
  #include "setup/SetupManager.h"  // Only for json
-@@ -153,7 +154,7 @@ void CMetalManager::ParseMetalSpots()
+ #include "scheduler/Scheduler.h"
+ #include "terrain/TerrainManager.h"
+@@ -153,7 +155,7 @@ void CMetalManager::ParseMetalSpots()
  		const unsigned width = map->GetWidth();
  		const unsigned height = map->GetHeight();
  		const float mapSize = (width / 64) * (height / 64);
@@ -2052,21 +2110,14 @@ index 97de6587..db37092a 100644
  		//  8x8  ~  80 spots +-25
  		// 24x24 ~ 240 spots +-25
  		unsigned mCount = (240.f - 80.f) / (SQUARE(24.f) - SQUARE(8.f)) * (mapSize - SQUARE(8.f)) + 80.f + offset;
-@@ -211,7 +212,17 @@ void CMetalManager::ClusterizeMetal(CCircuitDef* commDef)
+@@ -211,7 +213,10 @@ void CMetalManager::ClusterizeMetal(CCircuitDef* commDef)
  {
  	metalData->SetClusterizing(true);
  
 -	const float maxDistance = circuit->GetEconomyManager()->GetClusterRange();
 +	// Anarva: a cluster is the spots one turret holds: within the reach diameter of the cheapest armed structure the
 +	// commander can build (no config cluster_range 950)
-+	float turretReach = 0.f, turretCost = std::numeric_limits<float>::max();
-+	for (CCircuitDef::Id oId : commDef->GetBuildOptions()) {
-+		CCircuitDef* o = circuit->GetCircuitDef(oId);
-+		if ((o != nullptr) && !o->IsMobile() && (o->GetPower() > 0.f) && (o->GetMaxRange() > 0.f) && (o->GetCostM() < turretCost)) {
-+			turretCost = o->GetCostM();
-+			turretReach = o->GetMaxRange();
-+		}
-+	}
++	const float turretReach = anarva::CheapestTurretReach(circuit, commDef);
 +	const float maxDistance = std::max(float(SQUARE_SIZE), 2.f * turretReach);
  	const CMetalData::Metals& spots = metalData->GetSpots();
  	int nrows = spots.size();
@@ -2457,6 +2508,28 @@ index 89633988..092100a6 100644
  	r = engine->RegisterObjectMethod("CMilitaryManager", "void DefaultMakeDefence(int, const AIFloat3& in)", asMETHOD(CMilitaryManager, DefaultMakeDefence), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CMilitaryManager", "uint GetGuardTaskNum() const", asMETHOD(CMilitaryManager, GetGuardTaskNum), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CMilitaryManager", "const float armyCost", asOFFSET(CMilitaryManager, armyCost)); ASSERT(r >= 0);
+diff --git a/src/circuit/setup/DefenceData.cpp b/src/circuit/setup/DefenceData.cpp
+index 5d4e3b26..2b7e6910 100644
+--- a/src/circuit/setup/DefenceData.cpp
++++ b/src/circuit/setup/DefenceData.cpp
+@@ -15,6 +15,7 @@
+ #include "util/math/RagMatrix.h"
+ #include "util/math/EncloseCircle.h"
+ #include "util/Utils.h"
++#include "util/AnarvaDecide.h"
+ #include "json/json.h"
+ 
+ #include "spring/SpringMap.h"
+@@ -72,7 +73,8 @@ void CDefenceData::Init(CCircuitAI* circuit)
+ 	}
+ 
+ 	CMap* map = circuit->GetMap();
+-	const float maxDistance = pointRange;
++	// Anarva: defence points group what one turret holds (2 x the cheapest turret's reach), no config point_range
++	const float maxDistance = std::max(float(SQUARE_SIZE), 2.f * anarva::CheapestTurretReach(circuit, circuit->GetSetupManager()->GetCommChoice()));
+ 	CHierarchCluster clust;
+ 	CEncloseCircle enclose;
+ 
 diff --git a/src/circuit/setup/SetupManager.cpp b/src/circuit/setup/SetupManager.cpp
 index d809caf8..2c99a4c2 100644
 --- a/src/circuit/setup/SetupManager.cpp
@@ -5370,7 +5443,7 @@ index 96098603..ed7c57e3 100644
  	minSqDist = squareSize * increment;  // / 2;
  	minSqDist *= minSqDist;
 diff --git a/src/circuit/unit/enemy/EnemyManager.cpp b/src/circuit/unit/enemy/EnemyManager.cpp
-index 091a710f..0faecd45 100644
+index 091a710f..8270cde3 100644
 --- a/src/circuit/unit/enemy/EnemyManager.cpp
 +++ b/src/circuit/unit/enemy/EnemyManager.cpp
 @@ -126,7 +126,7 @@ void CEnemyManager::UpdateEnemyDatas(CQuadField& quadField)
@@ -5382,6 +5455,18 @@ index 091a710f..0faecd45 100644
  	while ((enemyIterator < enemyUpdates.size()) && (n != 0)) {
  		CEnemyUnit* enemy = enemyUpdates[enemyIterator];
  		if (enemy->IsDying()) {
+@@ -450,8 +450,9 @@ void CEnemyManager::ReadConfig()
+ 	const Json::Value& quotas = root["quota"];
+ 	const Json::Value& qthrMod = quotas["thr_mod"];
+ 
+-	initThrMod.inMobile = qthrMod.get("mobile", 1.f).asFloat();
+-	initThrMod.inStatic = qthrMod.get("static", 0.f).asFloat();
++	// Anarva: every threat counts at its value (no config multipliers; statics were counted x0 and attacks ignored turrets)
++	initThrMod.inMobile = 1.f;
++	initThrMod.inStatic = 1.f;
+ 
+ 	const Json::Value& aathr = quotas["aa_threat"];
+ 	const float size0 = aathr[0].get((unsigned)0, 8.f).asFloat();
 diff --git a/src/circuit/unit/enemy/EnemyManager.h b/src/circuit/unit/enemy/EnemyManager.h
 index 372f9c9f..8c9bf7ea 100644
 --- a/src/circuit/unit/enemy/EnemyManager.h
@@ -5446,10 +5531,10 @@ index 037c7d1a..7113094b 100644
  		return .0f;
 diff --git a/src/circuit/util/AnarvaDecide.h b/src/circuit/util/AnarvaDecide.h
 new file mode 100644
-index 00000000..f86a776f
+index 00000000..203886eb
 --- /dev/null
 +++ b/src/circuit/util/AnarvaDecide.h
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,121 @@
 +/*
 + * AnarvaDecide.h
 + *
@@ -5530,6 +5615,23 @@ index 00000000..f86a776f
 +	return tKill > tHome;
 +}
 +
++
++// Reach of the cheapest armed structure this builder can make (what one turret holds), 0 if none
++inline float CheapestTurretReach(CCircuitAI* circuit, const CCircuitDef* builder)
++{
++	float reach = 0.f, cost = std::numeric_limits<float>::max();
++	if (builder == nullptr) {
++		return 0.f;
++	}
++	for (CCircuitDef::Id oId : builder->GetBuildOptions()) {
++		CCircuitDef* o = circuit->GetCircuitDef(oId);
++		if ((o != nullptr) && !o->IsMobile() && (o->GetPower() > 0.f) && (o->GetMaxRange() > 0.f) && (o->GetCostM() < cost)) {
++			cost = o->GetCostM();
++			reach = o->GetMaxRange();
++		}
++	}
++	return reach;
++}
 +
 +// Where a shooter stands: inside its reach by the distance the target can cover during one reload, so the target
 +// can't step out of range between shots (a static target: the full reach).
