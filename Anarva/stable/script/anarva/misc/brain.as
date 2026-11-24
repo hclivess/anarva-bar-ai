@@ -69,8 +69,8 @@ const bool F_ENGAGE = true;     // core switch: gathering squads fight enemies i
 const bool F_TURN = true;       // travel times include turning (turn rate, arcs) and acceleration, not distance/top speed
 const bool F_SCOUTMAP = false;  // scouts go where vision is worth most: our assets an unseen enemy could have reached since we last looked (C++ switch)
 const bool F_MOHO = true;       // T2 lab builds T2 constructors while one more saves more on the extractor-upgrade queue than it costs
-const bool F_COMMFWD = false;   // (with F_COMMRISK) commander claims the free extractor spot with the best gain - risk, anywhere: the human front-builder pattern
-const bool F_COMMRISK = false;  // commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle
+const bool F_COMMFWD = true;    // (with F_COMMRISK) commander claims the free extractor spot with the best gain - risk, anywhere: the human front-builder pattern
+const bool F_COMMRISK = true;   // commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle
 const bool F_COMMSPOT = false;  // commander retreats to the safe spot where its death explosion would destroy least (not into the eco)
 const bool F_JIT = false;       // build-power scale from the ratio at each enemy arrival time (just in time), not from everything at once
 const bool F_POWERALL = true;   // our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool
