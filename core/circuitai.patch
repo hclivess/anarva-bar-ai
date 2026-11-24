@@ -2032,7 +2032,7 @@ index f752cb27..fb1e85b2 100644
  	float GetCommDefRad(float baseDist) const { return defence->GetCommRad(baseDist); }
  	unsigned int GetGuardTaskNum() const { return defence->GetGuardTaskNum(); }
 diff --git a/src/circuit/resource/MetalManager.cpp b/src/circuit/resource/MetalManager.cpp
-index 97de6587..5d2717b8 100644
+index 97de6587..db37092a 100644
 --- a/src/circuit/resource/MetalManager.cpp
 +++ b/src/circuit/resource/MetalManager.cpp
 @@ -6,6 +6,7 @@
@@ -2052,6 +2052,25 @@ index 97de6587..5d2717b8 100644
  		//  8x8  ~  80 spots +-25
  		// 24x24 ~ 240 spots +-25
  		unsigned mCount = (240.f - 80.f) / (SQUARE(24.f) - SQUARE(8.f)) * (mapSize - SQUARE(8.f)) + 80.f + offset;
+@@ -211,7 +212,17 @@ void CMetalManager::ClusterizeMetal(CCircuitDef* commDef)
+ {
+ 	metalData->SetClusterizing(true);
+ 
+-	const float maxDistance = circuit->GetEconomyManager()->GetClusterRange();
++	// Anarva: a cluster is the spots one turret holds: within the reach diameter of the cheapest armed structure the
++	// commander can build (no config cluster_range 950)
++	float turretReach = 0.f, turretCost = std::numeric_limits<float>::max();
++	for (CCircuitDef::Id oId : commDef->GetBuildOptions()) {
++		CCircuitDef* o = circuit->GetCircuitDef(oId);
++		if ((o != nullptr) && !o->IsMobile() && (o->GetPower() > 0.f) && (o->GetMaxRange() > 0.f) && (o->GetCostM() < turretCost)) {
++			turretCost = o->GetCostM();
++			turretReach = o->GetMaxRange();
++		}
++	}
++	const float maxDistance = std::max(float(SQUARE_SIZE), 2.f * turretReach);
+ 	const CMetalData::Metals& spots = metalData->GetSpots();
+ 	int nrows = spots.size();
+ 
 diff --git a/src/circuit/script/BuilderScript.cpp b/src/circuit/script/BuilderScript.cpp
 index 0be6a835..50601754 100644
 --- a/src/circuit/script/BuilderScript.cpp
