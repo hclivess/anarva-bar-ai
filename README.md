@@ -89,21 +89,21 @@ You need Beyond All Reason installed and started at least once (so it has downlo
    - Linux: run `./install.sh` in a terminal.
 
    It finds your BAR data folder. If it finds several, or none, it asks you for one, and you can also
-   pass the path as an argument. It copies `Anarva/stable` there and adds BARb's `SkirmishAI.dll` /
-   `libSkirmishAI.so` from your newest engine. Anarvā runs on that library and doesn't ship its own,
-   so it always matches your game. Every step is printed.
+   pass the path as an argument. It copies `Anarva/stable` there, including Anarvā's own core library (`SkirmishAI.dll` /
+   `libSkirmishAI.so`: BARb's CircuitAI plus the bridge the scripts need, built for engine 2026.09.03).
+   Every step is printed.
 4. The lobby lists only its built-in AIs by default. To show Anarvā, create an empty `devmode.txt` in
    the data folder (the installer offers to do it), restart the lobby, then open
    **Settings → Developer** and untick **simple AI list**. Anarvā appears as **"Anarva stable"**.
 
-Run the installer again after BAR updates its engine. Remove the AI with `install.cmd -Uninstall` or
+Remove the AI with `install.cmd -Uninstall` or
 `./install.sh --uninstall`. Add `-DryRun` / `--dry-run` to see what it would do without changing
 anything.
 
 ### From source (developers)
 
-`tools/install.ps1 -BarData <data folder>` copies the working tree's `Anarva/stable` and the newest
-engine's DLL. Use `-Name AnarvaDev` for a side-by-side test copy. To build the release archives
+`tools/install.ps1 -BarData <data folder>` copies the working tree's `Anarva/stable`; add `-Dll <path>` for a core
+built by `tools/build_dll.sh` or the `core.yml` workflow (the scripts need it). Use `-Name AnarvaDev` for a side-by-side test copy. To build the release archives
 yourself, run `python build.py`. It self-tests the configs, `#include`s and profiles, then writes
 `dist/` (`python build.py --selftest` runs only the checks).
 

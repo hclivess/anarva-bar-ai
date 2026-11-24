@@ -44,9 +44,13 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile("$PWD\installer\windows\install.ps1", [ref]$null, [ref]$errors) | Out-Null
           if ($errors) { $errors | ForEach-Object { Write-Error $_.ToString() }; exit 1 }
 
+  core:
+    name: core library
+    uses: ./.github/workflows/core.yml
+
   release:
     name: package and attach
-    needs: selftest
+    needs: [selftest, core]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +74,23 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Fetch the core libraries built by the core job
+        uses: actions/download-artifact@v4
+        with:
+          pattern: core-amd64-*
+          path: core-dl
+
+      - name: Place the core libraries for packaging
+        run: |
+          set -euo pipefail
+          mkdir -p core-bin/windows core-bin/linux
+          cp core-dl/core-amd64-windows/SkirmishAI.dll core-bin/windows/
+          cp core-dl/core-amd64-linux/libSkirmishAI.so core-bin/linux/
+          ls -la core-bin/*
+
       - name: Build archives
+        env:
+          ANARVA_REQUIRE_CORE: "1"
         run: python -I build.py
 
       - name: Smoke-test the Linux installer against a fake BAR data folder
@@ -83,7 +103,7 @@ jobs:
           echo new > "$DATA/engine/recoil_2026.10.1/AI/Skirmish/BARb/stable/libSkirmishAI.so"
           INSTALLER="$(echo /tmp/smoke/anarva-*-linux-x64/install.sh)"
           "$INSTALLER" "$DATA" < /dev/null
-          test "$(cat "$DATA/AI/Skirmish/Anarva/stable/libSkirmishAI.so")" = new
+          cmp "$DATA/AI/Skirmish/Anarva/stable/libSkirmishAI.so" core-bin/linux/libSkirmishAI.so
           test -f "$DATA/AI/Skirmish/Anarva/stable/AIInfo.lua"
           "$INSTALLER" --uninstall "$DATA" < /dev/null
           test ! -e "$DATA/AI/Skirmish/Anarva"
@@ -93,7 +113,9 @@ jobs:
           V="${{ steps.meta.outputs.version }}"
           cat > "$RUNNER_TEMP/notes.md" <<NOTES
           - Download \`anarva-$V-windows-x64.zip\` or \`anarva-$V-linux-x64.tar.gz\`, extract it and run \`install.cmd\` (Windows) or \`./install.sh\` (Linux). Needs Beyond All Reason installed and started at least once.
-          - The installer copies BARb's SkirmishAI library from your newest engine, so Anarva always matches your game; run it again after an engine update.
+          - **Pre-alpha, for testing.** Anarva beats one BARb hard in 1v1 tests; it does not yet beat two. Please report games (map, opponents, replay) as GitHub issues.
+          - Ships its own core library (BARb's CircuitAI 1.6.29 plus the bridge Anarva's scripts use), built for engine 2026.09.03. Only the player hosting the AI slot needs it.
+          - Everything in this build, with measured results: FEATURES.md.
           - To see Anarva in the lobby: create \`devmode.txt\` in the BAR data folder (the installer offers to), restart the lobby, Settings > Developer > untick "simple AI list".
           - Each archive has a \`.sha256\` beside it. No macOS build: BAR itself has none.
           NOTES
@@ -110,7 +132,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
-          gh release create "$TAG" --title "Anarva $TAG" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag --repo "$GITHUB_REPOSITORY" || true
+          PRE=""; case "$TAG" in v0.*) PRE="--prerelease";; esac  # 0.x: pre-alpha/alpha, marked as pre-release
+          gh release create "$TAG" --title "Anarva $TAG (pre-alpha)" $PRE --notes-file "$RUNNER_TEMP/notes.md" --verify-tag --repo "$GITHUB_REPOSITORY" || true
           gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
 
       - name: Verify the release has every asset

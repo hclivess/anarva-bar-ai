@@ -6,8 +6,10 @@ Validate Anarva and package it with its per-OS installer as
 each with one top-level folder anarva-<version>-<os>-x64/ holding Anarva/stable/, the installer, README.md and
 LICENSE, and a .sha256 beside every archive.
 
-The native library (SkirmishAI.dll / libSkirmishAI.so) is NOT shipped: the installer copies BARb's from the
-user's newest engine, so it always matches the engine the game runs.
+The native library is Anarva's own core (BARb's CircuitAI + core/circuitai.patch, built by
+.github/workflows/core.yml). Put it in core-bin/windows/SkirmishAI.dll and core-bin/linux/libSkirmishAI.so
+and it is shipped as Anarva/stable/<lib>; set ANARVA_REQUIRE_CORE=1 to refuse packaging without it (releases).
+Without it the installer falls back to BARb's library from the user's engine (scripts using the bridge fail).
 
 Usage (from anywhere, Python 3.12, stdlib only):
     python build.py                      self-test, then package both archives
@@ -41,6 +43,8 @@ TARGETS = (
     ("windows", ".zip", ("installer/windows/install.cmd", "installer/windows/install.ps1"), ()),
     ("linux", ".tar.gz", ("installer/linux/install.sh",), ("install.sh",)),
 )
+CORE_LIBS = {"windows": "SkirmishAI.dll", "linux": "libSkirmishAI.so"}
+CORE_BIN = os.path.join(ROOT, "core-bin")
 
 
 def read_version() -> str:
@@ -244,9 +248,17 @@ def ai_files():
     return result
 
 
-def archive_entries(installers):
+def archive_entries(installers, os_tag=None):
     """(source path, archive-relative path) for one target"""
     entries = [(src, f"Anarva/stable/{inner}") for src, inner in ai_files()]
+    if os_tag:
+        lib = os.path.join(CORE_BIN, os_tag, CORE_LIBS[os_tag])
+        if os.path.isfile(lib):
+            entries.append((lib, f"Anarva/stable/{CORE_LIBS[os_tag]}"))
+        elif os.environ.get("ANARVA_REQUIRE_CORE") == "1":
+            raise SystemExit(f"missing core library {rel(lib)} (ANARVA_REQUIRE_CORE=1)")
+        else:
+            print(f"warning: no {rel(lib)}: {os_tag} archive falls back to BARb's library at install time")
     for name in installers:
         src = os.path.join(ROOT, name)
         if not os.path.isfile(src):
@@ -313,7 +325,7 @@ def package(version: str) -> list:
     for os_tag, ext, installers, executables in TARGETS:
         top = f"{APP_NAME}-{version}-{os_tag}-x64"
         archive = os.path.join(DIST_DIR, top + ext)
-        entries = archive_entries(installers)
+        entries = archive_entries(installers, os_tag)
         if ext == ".zip":
             write_zip(archive, top, entries)
         else:

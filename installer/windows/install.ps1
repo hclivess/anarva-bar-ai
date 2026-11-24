@@ -138,24 +138,32 @@ function Install-Anarva([string]$data) {
     if (-not (Test-Path -LiteralPath (Join-Path $src "AIInfo.lua") -PathType Leaf)) {
         throw "This installer must sit next to the '$AiName' folder from the release archive (missing $src\AIInfo.lua). Extract the whole archive first."
     }
-    $engine = Find-Engine $data
-    $lib = Join-Path $engine.FullName "AI\Skirmish\BARb\stable\$LibName"
+    # Releases bundle Anarva's own core (BARb's CircuitAI + the bridge Anarva's scripts need). Without it,
+    # fall back to BARb's library from the newest engine (older Anarva scripts only).
+    $bundled = Join-Path $src $LibName
+    $hasBundled = Test-Path -LiteralPath $bundled -PathType Leaf
+    $engine = $null
+    if ($hasBundled) { $lib = $bundled } else {
+        $engine = Find-Engine $data
+        $lib = Join-Path $engine.FullName "AI\Skirmish\BARb\stable\$LibName"
+    }
     $aiRoot = Join-Path $data "AI\Skirmish\$AiName"
     $dst = Join-Path $aiRoot "stable"
     $tmp = Join-Path $aiRoot "stable.installing"
     $files = @(Get-ChildItem -LiteralPath $src -Recurse -File)
 
     Write-Host "BAR data folder: $data"
-    Write-Host "Newest engine with BARb: $($engine.Name)"
+    if ($hasBundled) { Write-Host "Using Anarva's bundled core: $LibName" } else { Write-Host "Newest engine with BARb: $($engine.Name)" }
     if (Test-Path -LiteralPath $tmp) { Write-Step "remove leftover $tmp"; if (-not $DryRun) { Remove-Item -LiteralPath $tmp -Recurse -Force } }
     Write-Step "copy $($files.Count) files from $src to $tmp"
-    Write-Step "copy $lib to $tmp\$LibName"
+    if (-not $hasBundled) { Write-Step "copy $lib to $tmp\$LibName" }
     if (-not $DryRun) {
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         Copy-Item -Path (Join-Path $src "*") -Destination $tmp -Recurse -Force
-        Copy-Item -LiteralPath $lib -Destination (Join-Path $tmp $LibName) -Force
+        $expect = $files.Count
+        if (-not $hasBundled) { Copy-Item -LiteralPath $lib -Destination (Join-Path $tmp $LibName) -Force; $expect += 1 }
         $copied = @(Get-ChildItem -LiteralPath $tmp -Recurse -File).Count
-        if ($copied -ne $files.Count + 1) { throw "Copy incomplete: expected $($files.Count + 1) files in $tmp, found $copied." }
+        if ($copied -ne $expect) { throw "Copy incomplete: expected $expect files in $tmp, found $copied." }
     }
     if (Test-Path -LiteralPath $dst) {
         Write-Step "remove the previous install $dst"
@@ -167,8 +175,8 @@ function Install-Anarva([string]$data) {
     if ($DryRun) {
         Write-Host "Dry run finished: nothing was changed."
     } else {
-        Write-Host "Installed $AiName into $dst ($($files.Count) files + $LibName from $($engine.Name))."
-        Write-Host "Run this installer again after BAR updates its engine."
+        if ($hasBundled) { Write-Host "Installed $AiName into $dst ($($files.Count) files, bundled core)." }
+        else { Write-Host "Installed $AiName into $dst ($($files.Count) files + $LibName from $($engine.Name))."; Write-Host "Run this installer again after BAR updates its engine." }
     }
     Show-LobbyHelp $data
 }

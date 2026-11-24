@@ -1,7 +1,8 @@
 # Anarvā — a Skirmish AI for Beyond All Reason
 
-Anarvā is built on BARb's C++ core (CircuitAI). It reuses BARb's own `SkirmishAI.dll` and adds its own
-AngelScript brain and configs on top.
+Anarvā is built on BARb's C++ core (CircuitAI). It ships its own build of that core (BARb's source plus a
+small patch that lets the scripts see the battlefield and adds a few switchable behaviours) and adds its own
+AngelScript brain and configs on top. Full feature list with measured results: [FEATURES.md](../FEATURES.md).
 
 ## What it does differently from BARb
 

@@ -138,23 +138,26 @@ install_ai() {
     local data="$1"
     local src="$HERE/$AI_NAME/stable"
     [ -f "$src/AIInfo.lua" ] || die "this installer must sit next to the '$AI_NAME' folder from the release archive (missing $src/AIInfo.lua). Extract the whole archive first."
-    local engine; engine="$(find_engine "$data")"
-    local lib="$data/engine/$engine/AI/Skirmish/BARb/stable/$LIB_NAME"
+    # Releases bundle Anarva's own core (BARb's CircuitAI + the bridge Anarva's scripts need). Without it,
+    # fall back to BARb's library from the newest engine (older Anarva scripts only).
+    local bundled=0 engine="" lib="$src/$LIB_NAME"
+    if [ -f "$lib" ]; then bundled=1; else engine="$(find_engine "$data")"; lib="$data/engine/$engine/AI/Skirmish/BARb/stable/$LIB_NAME"; fi
     local ai_root="$data/AI/Skirmish/$AI_NAME"
     local dst="$ai_root/stable" tmp="$ai_root/stable.installing"
     local count; count="$(find "$src" -type f | wc -l | tr -d ' ')"
 
     echo "BAR data folder: $data"
-    echo "Newest engine with BARb: $engine"
+    if [ "$bundled" = 1 ]; then echo "Using Anarva's bundled core: $LIB_NAME"; else echo "Newest engine with BARb: $engine"; fi
     if [ -e "$tmp" ]; then step "remove leftover $tmp"; [ "$DRY_RUN" = 1 ] || rm -rf -- "$tmp"; fi
     step "copy $count files from $src to $tmp"
-    step "copy $lib to $tmp/$LIB_NAME"
+    [ "$bundled" = 1 ] || step "copy $lib to $tmp/$LIB_NAME"
     if [ "$DRY_RUN" = 0 ]; then
         mkdir -p "$tmp"
         cp -R "$src/." "$tmp/"
-        cp "$lib" "$tmp/$LIB_NAME"
+        local expect="$count"
+        if [ "$bundled" = 0 ]; then cp "$lib" "$tmp/$LIB_NAME"; expect=$((count + 1)); fi
         local copied; copied="$(find "$tmp" -type f | wc -l | tr -d ' ')"
-        [ "$copied" -eq $((count + 1)) ] || die "copy incomplete: expected $((count + 1)) files in $tmp, found $copied"
+        [ "$copied" -eq "$expect" ] || die "copy incomplete: expected $expect files in $tmp, found $copied"
     fi
     if [ -e "$dst" ]; then step "remove the previous install $dst"; [ "$DRY_RUN" = 1 ] || rm -rf -- "$dst"; fi
     step "rename $tmp to $dst"
@@ -163,8 +166,8 @@ install_ai() {
     if [ "$DRY_RUN" = 1 ]; then
         echo "Dry run finished: nothing was changed."
     else
-        echo "Installed $AI_NAME into $dst ($count files + $LIB_NAME from $engine)."
-        echo "Run this installer again after BAR updates its engine."
+        if [ "$bundled" = 1 ]; then echo "Installed $AI_NAME into $dst ($count files, bundled core)."
+        else echo "Installed $AI_NAME into $dst ($count files + $LIB_NAME from $engine)."; echo "Run this installer again after BAR updates its engine."; fi
     fi
     lobby_help "$data"
 }
