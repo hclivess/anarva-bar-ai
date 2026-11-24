@@ -389,7 +389,7 @@ index 559a0abf..6a622fe5 100644
  	CCircuitDef* terraDef = nullptr;
  	std::unordered_map<IBuilderTask::BT, std::unordered_map<CCircuitDef*, SBuildChain*>> buildChains;  // owner
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..182640c5 100644
+index 6e5da8b6..410b7a23 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,8 @@
@@ -696,6 +696,66 @@ index 6e5da8b6..182640c5 100644
  		{
  			++it;
  		} else {
+@@ -1892,57 +1945,9 @@ void CEconomyManager::DelFactoryInfo(CCircuitUnit* unit)
+ 
+ bool CEconomyManager::CheckAirpadRequired(const AIFloat3& position, CCircuitUnit* unit, IBuilderTask*& outTask)
+ {
++	// Anarva: no airpads (BAR aircraft don't run out of ammo; repair happens at caretakers); no ((n+1)*3)^2 rule
++	(void)position; (void)unit;
+ 	outTask = nullptr;
+-
+-	CBuilderManager* builderMgr = circuit->GetBuilderManager();
+-	CMilitaryManager* militaryMgr = circuit->GetMilitaryManager();
+-	const unsigned airpadFactor = SQUARE((airpadCount + builderMgr->GetTasks(IBuilderTask::BuildType::FACTORY).size() + 1) * 3);
+-	if (militaryMgr->GetRoleUnits(ROLE_TYPE(AIR)).size() <= airpadFactor) {
+-		return false;
+-	}
+-
+-	const int frame = circuit->GetLastFrame();
+-	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
+-	AIFloat3 buildPos = position;
+-	CCircuitDef* airpadDef = nullptr;
+-	if (unit == nullptr) {
+-		airpadDef = airpadDefs.GetBestDef([frame, terrainMgr, &buildPos](CCircuitDef* cdef, const SAirpadExt& data) {
+-			return cdef->IsAvailable(frame) && terrainMgr->CanBeBuiltAt(cdef, buildPos);
+-		});
+-	} else {
+-		const std::vector<CCircuitDef*>& padDefOptions = airpadDefs.GetBuildDefs(unit->GetCircuitDef());
+-		for (CCircuitDef* apDef : padDefOptions) {
+-			if (apDef->IsAvailable(frame) && terrainMgr->CanBeBuiltAt(apDef, buildPos)) {
+-				airpadDef = apDef;
+-				break;
+-			}
+-		}
+-	}
+-	if (airpadDef == nullptr) {
+-		return false;
+-	}
+-
+-	CFactoryManager* factoryMgr = circuit->GetFactoryManager();
+-	CCircuitDef* bdef;
+-	if (unit == nullptr) {
+-		bdef = airpadDef;
+-		buildPos = factoryMgr->GetClosestHaven(circuit->GetSetupManager()->GetBasePos());
+-	} else {
+-		bdef = unit->GetCircuitDef();
+-		buildPos = factoryMgr->GetClosestHaven(unit);
+-	}
+-	if (!geom::is_valid(buildPos)) {
+-		buildPos = circuit->GetSetupManager()->GetBasePos();
+-	}
+-	buildPos = terrainMgr->GetBuildPosition(bdef, buildPos);
+-
+-	if (terrainMgr->CanBeBuiltAtSafe(airpadDef, buildPos) &&
+-		((unit == nullptr) || terrainMgr->CanReachAtSafe(unit, buildPos, unit->GetCircuitDef()->GetBuildDistance())))
+-	{
+-		outTask = builderMgr->Enqueue(TaskB::Factory(IBuilderTask::Priority::NORMAL, airpadDef, buildPos, nullptr));
+-		return true;
+-	}
+-
+ 	return false;
+ }
+ 
 diff --git a/src/circuit/module/EconomyManager.h b/src/circuit/module/EconomyManager.h
 index 733f7a43..355ad0c1 100644
 --- a/src/circuit/module/EconomyManager.h
@@ -709,7 +769,7 @@ index 733f7a43..355ad0c1 100644
  	float GetClusterRange() const { return clusterRange; }
  	float GetPylonRange() const { return pylonRange; }
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
-index 54fef916..45f203d5 100644
+index 54fef916..e596d461 100644
 --- a/src/circuit/module/FactoryManager.cpp
 +++ b/src/circuit/module/FactoryManager.cpp
 @@ -6,6 +6,8 @@
@@ -721,7 +781,21 @@ index 54fef916..45f203d5 100644
  #include "module/EconomyManager.h"
  #include "module/BuilderManager.h"
  #include "module/MilitaryManager.h"
-@@ -421,88 +423,9 @@ void CFactoryManager::ReadConfig()
+@@ -327,10 +329,9 @@ void CFactoryManager::ReadConfig()
+ 	}
+ 
+ 	const Json::Value& product = econom["production"];
+-	newFacModM = product.get((unsigned)0, 0.8f).asFloat();
+-	newFacModE = product.get((unsigned)1, 0.8f).asFloat();
+-	facModM = product.get((unsigned)2, 0.8f).asFloat();
+-	facModE = product.get((unsigned)3, 0.8f).asFloat();
++	// Anarva: income is spent fully (no 0.8 production modifiers)
++	newFacModM = newFacModE = facModM = facModE = 1.f;
++	(void)product;
+ 
+ 	numBatch = root["quota"].get("num_batch", 5).asInt();
+ 
+@@ -421,88 +422,9 @@ void CFactoryManager::ReadConfig()
  		}
  		cdef->SetOn(behaviour.get("on", true).asBool());
  
@@ -813,7 +887,7 @@ index 54fef916..45f203d5 100644
  		cdef->SetIgnore(behaviour.get("ignore", cdef->IsIgnore()).asBool());
  
  		const Json::Value& mpOffset = behaviour["midposoffset"];
-@@ -513,10 +436,6 @@ void CFactoryManager::ReadConfig()
+@@ -513,10 +435,6 @@ void CFactoryManager::ReadConfig()
  			cdef->SetMidPosOffset(x, y, z);
  		}
  
@@ -824,7 +898,7 @@ index 54fef916..45f203d5 100644
  	}
  	circuit->GetAllyTeam()->NonDefaultThreats(std::move(modRoles), circuit);
  
-@@ -1043,9 +962,11 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+@@ -1043,9 +961,11 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const float metalIncome = std::min(economyMgr->GetAvgMetalIncome(), economyMgr->GetAvgEnergyIncome());
@@ -838,7 +912,7 @@ index 54fef916..45f203d5 100644
  	{
  		return nullptr;
  	}
-@@ -1063,8 +984,8 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+@@ -1063,8 +983,8 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  			return nullptr;
  		}
  #ifdef FACTORY_CHOICE
@@ -849,7 +923,7 @@ index 54fef916..45f203d5 100644
  #endif
  		return Enqueue(TaskS::Recruit(CRecruitTask::RecruitType::BUILDPOWER, CRecruitTask::Priority::NORMAL, buildDef, pos, 64.f));
  	}
-@@ -1478,7 +1399,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1478,7 +1398,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const bool isStalling = economyMgr->IsMetalEmpty() &&
@@ -858,7 +932,7 @@ index 54fef916..45f203d5 100644
  							(metalPull * economyMgr->GetPullMtoS() > circuit->GetBuilderManager()->GetMetalPull());
  	const bool isNotReady = !economyMgr->IsExcessed() || isStalling;
  	if (isNotReady) {
-@@ -1625,7 +1546,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1625,7 +1545,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  
  	const int iS = terrainMgr->GetSectorIndex(pos);
  	auto isEnemyInArea = [&](CCircuitDef* bd) {
@@ -867,7 +941,7 @@ index 54fef916..45f203d5 100644
  			return true;
  		}
  		SArea* area;
-@@ -1634,7 +1555,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1634,7 +1554,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  		return isValid && ((area == nullptr) || terrainMgr->IsEnemyInArea(area));
  	};
  	auto isAvailableDef = [&](CCircuitDef* bd) {
@@ -876,7 +950,7 @@ index 54fef916..45f203d5 100644
  			&& bd->IsAvailable(frame)
  			&& (isActive || bd->IsAttrRare())
  			&& terrainMgr->CanBeBuiltAt(bd, pos, range)
-@@ -1651,13 +1572,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1651,13 +1571,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  #endif
  	CCircuitDef* buildDef = nullptr;
  	bool isResponse = false;
@@ -891,7 +965,7 @@ index 54fef916..45f203d5 100644
  
  	struct SCandidate {
  		CCircuitDef* cdef;
-@@ -1667,9 +1582,6 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1667,9 +1581,6 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  	std::vector<SCandidate> candidates;
  	candidates.reserve(facDef.buildDefs.size());
  
@@ -901,7 +975,7 @@ index 54fef916..45f203d5 100644
  	for (unsigned i = 0; i < facDef.buildDefs.size(); ++i) {
  		CCircuitDef* bd = facDef.buildDefs[i];
  		if (!isAvailableDef(bd)) {
-@@ -1691,42 +1603,23 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1691,42 +1602,23 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  			continue;
  		}
  
@@ -954,7 +1028,7 @@ index 54fef916..45f203d5 100644
  			}
  		}
  	}
-@@ -1799,19 +1692,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
+@@ -1799,19 +1691,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
  	}
  
  	CCircuitDef* buildDef = nullptr;
@@ -2507,6 +2581,35 @@ index 2f556d6d..a5a92827 100644
  			if (minSqDist > sqOEDist) {
  				minSqDist = sqOEDist;
  				bestTarget = enemy;
+diff --git a/src/circuit/task/fighter/BombTask.cpp b/src/circuit/task/fighter/BombTask.cpp
+index 30011983..972d3c49 100644
+--- a/src/circuit/task/fighter/BombTask.cpp
++++ b/src/circuit/task/fighter/BombTask.cpp
+@@ -232,20 +232,19 @@ void CBombTask::FindTarget()
+ 	const bool isAntiStatic = cdef->IsAttrAntiStat();
+ 	const bool notAW = !cdef->HasSurfToWater();
+ 	const AIFloat3& pos = leader->GetPos(circuit->GetLastFrame());
+-	const float scale = (cdef->GetMinRange() > 300.0f) ? 4.0f : 1.0f;
+-	const float maxPower = attackPower * scale * powerMod;
++	const float maxPower = attackPower * powerMod;  // Anarva: parity, no x4
+ //	const float maxAltitude = cdef->GetAltitude();
+-	const float speed = cdef->GetSpeed() / 1.75f;
++	const float speed = std::numeric_limits<float>::max();  // Anarva: no 1/1.75 target-speed filter
+ 	const int canTargetCat = cdef->GetTargetCategory();
+ 	const int noChaseCat = cdef->GetNoChaseCategory();
+ //	const float range = std::max(unit->GetUnit()->GetMaxRange() + threatMap->GetSquareSize(),
+ //								 cdef->GetLosRadius()) * 2;
+-	const float sqRange = (GetTarget() != nullptr) ? pos.SqDistance2D(GetTarget()->GetPos()) + 1.f : SQUARE(2000.0f);
++	const float sqRange = (GetTarget() != nullptr) ? pos.SqDistance2D(GetTarget()->GetPos()) + 1.f : std::numeric_limits<float>::max();  // Anarva: the whole map when we have no target
+ 	float minHealth = std::numeric_limits<float>::max();
+ 
+ 	COOAICallback* callback = circuit->GetCallback();
+ 	const float trueAoe = cdef->GetAoe() + SQUARE_SIZE;
+-	const float allyAoe = std::min(trueAoe, DEFAULT_SLACK * 2.f);
++	const float allyAoe = trueAoe;  // Anarva: friends inside the blast radius itself
+ 	std::function<bool (const AIFloat3& pos)> noAllies = [](const AIFloat3& pos) {
+ 		return true;
+ 	};
 diff --git a/src/circuit/task/fighter/DefendTask.cpp b/src/circuit/task/fighter/DefendTask.cpp
 index af382ba3..c751fc32 100644
 --- a/src/circuit/task/fighter/DefendTask.cpp
