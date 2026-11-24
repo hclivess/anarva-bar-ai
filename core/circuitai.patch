@@ -177,7 +177,7 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
-index e4c1d126..df977471 100644
+index e4c1d126..63ff598a 100644
 --- a/src/circuit/module/BuilderManager.cpp
 +++ b/src/circuit/module/BuilderManager.cpp
 @@ -6,6 +6,7 @@
@@ -407,6 +407,15 @@ index e4c1d126..df977471 100644
  		}
  	}
  
+@@ -1294,7 +1246,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+ //	}
+ 
+ 	const bool isStalling = economyMgr->IsMetalEmpty() &&
+-							(economyMgr->GetAvgMetalIncome() * 1.2f < economyMgr->GetMetalPull()) &&
++							(economyMgr->GetAvgMetalIncome() < economyMgr->GetMetalPull()) &&
+ 							(metalPull > economyMgr->GetPullMtoS() * circuit->GetFactoryManager()->GetMetalPull());
+ 	const bool isNotReady = !economyMgr->IsExcessed() || isStalling/* || economyMgr->IsEnergyStalling()*/;
+ 
 @@ -1352,7 +1304,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			float distCost;
@@ -495,7 +504,7 @@ index 559a0abf..90335c82 100644
  	CCircuitDef* terraDef = nullptr;
  	std::unordered_map<IBuilderTask::BT, std::unordered_map<CCircuitDef*, SBuildChain*>> buildChains;  // owner
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..79b64bd0 100644
+index 6e5da8b6..a9728ad0 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,8 @@
@@ -785,7 +794,34 @@ index 6e5da8b6..79b64bd0 100644
  	} else {
  		const float buildTime = reprDef->GetBuildTime() / facDef->GetWorkerTime();
  		miRequire = reprDef->GetCostM() / buildTime * factoryMgr->GetNewFacModM();
-@@ -1664,7 +1716,7 @@ IBuilderTask* CEconomyManager::UpdateStorageTasks()
+@@ -1549,13 +1601,15 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+ 	} else {
+ 		const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
+ 		const AIFloat3& enemyPos = circuit->GetEnemyManager()->GetEnemyPos();
+-		float offset = 200.0f;
++		// Anarva: offsets are one factory width (its footprint), not 200 elmos
++		const float facWidth = std::max(facDef->GetDef()->GetXSize(), facDef->GetDef()->GetZSize()) * SQUARE_SIZE;
++		float offset = facWidth;
+ 		if (isStart) {
+ 			buildPos = basePos;
+ 		} else if (facDef->IsRoleSupport()) {
+ 			if (facDef->GetMobileId() < 0) {  // air factory
+ 				buildPos = basePos;
+-				offset = -200.0f;
++				offset = -facWidth;
+ 			} else {
+ 				int facing;
+ 				buildPos = terrainMgr->GetBusPos(facDef, basePos, facing);
+@@ -1591,7 +1645,7 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+ 
+ 			const float sqStartDist = enemyPos.SqDistance2D(basePos);
+ 			const float sqBuildDist = enemyPos.SqDistance2D(buildPos);
+-			offset = (sqStartDist > sqBuildDist) ? -200.0f : 200.0f;  // std::max(facUDef->GetXSize(), facUDef->GetZSize()) * SQUARE_SIZE;
++			offset = (sqStartDist > sqBuildDist) ? -facWidth : facWidth;
+ 		}
+ 
+ 		if (factoryTask->GetFacing() != UNIT_NO_FACING) {
+@@ -1664,7 +1718,7 @@ IBuilderTask* CEconomyManager::UpdateStorageTasks()
  		storeDef = storeEDefs.GetFirstDef();
  
  		if (!storeDef->IsAvailable(circuit->GetLastFrame())
@@ -794,7 +830,7 @@ index 6e5da8b6..79b64bd0 100644
  			|| IsEnergyEmpty())
  		{
  			storeDef = nullptr;
-@@ -1854,7 +1906,7 @@ void CEconomyManager::UpdateMorph()
+@@ -1854,7 +1908,7 @@ void CEconomyManager::UpdateMorph()
  
  	const float energyIncome = GetAvgEnergyIncome();
  	const float metalIncome = std::min(GetAvgMetalIncome(), energyIncome);
@@ -803,7 +839,7 @@ index 6e5da8b6..79b64bd0 100644
  		return;
  	}
  
-@@ -1862,7 +1914,8 @@ void CEconomyManager::UpdateMorph()
+@@ -1862,7 +1916,8 @@ void CEconomyManager::UpdateMorph()
  	while (it != morphees.end()) {
  		CCircuitUnit* unit = *it;
  		if ((unit->GetTask()->GetType() == IUnitTask::Type::PLAYER) ||
@@ -813,7 +849,7 @@ index 6e5da8b6..79b64bd0 100644
  		{
  			++it;
  		} else {
-@@ -1892,57 +1945,9 @@ void CEconomyManager::DelFactoryInfo(CCircuitUnit* unit)
+@@ -1892,57 +1947,9 @@ void CEconomyManager::DelFactoryInfo(CCircuitUnit* unit)
  
  bool CEconomyManager::CheckAirpadRequired(const AIFloat3& position, CCircuitUnit* unit, IBuilderTask*& outTask)
  {
@@ -873,7 +909,33 @@ index 6e5da8b6..79b64bd0 100644
  	return false;
  }
  
-@@ -2029,6 +2034,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -2000,19 +2007,21 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+ 		return true;
+ 	}
+ 
++	// Anarva: the caretaker stands behind the factory by the factory's half-length plus its own radius (no 64 elmos)
++	const float nanoGap = std::max(facDef->GetDef()->GetXSize(), facDef->GetDef()->GetZSize()) * SQUARE_SIZE / 2.f + assistDef->GetRadius();
+ 	switch (factory->GetUnit()->GetBuildingFacing()) {
+ 		default:
+ 		case UNIT_FACING_SOUTH:
+-			buildPos.z -= 64.0f;  // def->GetZSize() * SQUARE_SIZE * 2;
++			buildPos.z -= nanoGap;
+ 			break;
+ 		case UNIT_FACING_EAST:
+-			buildPos.x -= 64.0f;  // def->GetXSize() * SQUARE_SIZE * 2;
++			buildPos.x -= nanoGap;
+ 			break;
+ 		case UNIT_FACING_NORTH:
+-			buildPos.z += 64.0f;  // def->GetZSize() * SQUARE_SIZE * 2;
++			buildPos.z += nanoGap;
+ 			break;
+ 		case UNIT_FACING_WEST:
+-			buildPos.x += 64.0f;  // def->GetXSize() * SQUARE_SIZE * 2;
++			buildPos.x += nanoGap;
+ 			break;
+ 	}
+ 	CTerrainManager::CorrectPosition(buildPos);
+@@ -2029,6 +2038,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  	return false;
  }
  
@@ -924,7 +986,7 @@ index 733f7a43..a11811e2 100644
  	bool IsAllyOpenMexSpot(int spotId) const;
  	bool IsOpenMexSpot(int spotId) const;
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
-index 54fef916..e596d461 100644
+index 54fef916..e6558cc9 100644
 --- a/src/circuit/module/FactoryManager.cpp
 +++ b/src/circuit/module/FactoryManager.cpp
 @@ -6,6 +6,8 @@
@@ -936,6 +998,15 @@ index 54fef916..e596d461 100644
  #include "module/EconomyManager.h"
  #include "module/BuilderManager.h"
  #include "module/MilitaryManager.h"
+@@ -186,7 +188,7 @@ void CFactoryManager::InitHandlers()
+ 		)
+ 
+ 		// check factory nano belongs to
+-		const float radius = unit->GetCircuitDef()->GetBuildDistance() * 0.9f;
++		const float radius = unit->GetCircuitDef()->GetBuildDistance();  // Anarva: its reach (no 0.9)
+ 		const float sqRadius = SQUARE(radius);
+ 		SAssistToFactory& af = assists[unit];
+ 		for (SFactory& fac : factories) {
 @@ -327,10 +329,9 @@ void CFactoryManager::ReadConfig()
  	}
  
@@ -1067,7 +1138,7 @@ index 54fef916..e596d461 100644
  	{
  		return nullptr;
  	}
-@@ -1063,8 +983,8 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+@@ -1063,10 +983,10 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  			return nullptr;
  		}
  #ifdef FACTORY_CHOICE
@@ -1076,8 +1147,20 @@ index 54fef916..e596d461 100644
 +		circuit->LOG("choice = %s | %f < %f or (%i and unspent %i)", buildDef->GetDef()->GetName(),
 +				circuit->GetBuilderManager()->GetBuildPower(), metalIncome * bpRatio, isActive, unspent);
  #endif
- 		return Enqueue(TaskS::Recruit(CRecruitTask::RecruitType::BUILDPOWER, CRecruitTask::Priority::NORMAL, buildDef, pos, 64.f));
+-		return Enqueue(TaskS::Recruit(CRecruitTask::RecruitType::BUILDPOWER, CRecruitTask::Priority::NORMAL, buildDef, pos, 64.f));
++		return Enqueue(TaskS::Recruit(CRecruitTask::RecruitType::BUILDPOWER, CRecruitTask::Priority::NORMAL, buildDef, pos, buildDef->GetRadius()));
  	}
+ 	return nullptr;
+ }
+@@ -1229,7 +1149,7 @@ void CFactoryManager::EnableFactory(CCircuitUnit* unit)
+ 	std::map<CCircuitDef*, SAssistant> nanos;
+ 	const AIFloat3& pos = unit->GetPos(circuit->GetLastFrame());
+ 	COOAICallback* clb = circuit->GetCallback();
+-	auto& units = clb->GetFriendlyUnitsIn(pos, GetAssistRange() * 0.9f);
++	auto& units = clb->GetFriendlyUnitsIn(pos, GetAssistRange());
+ 	int teamId = circuit->GetTeamId();
+ 	for (Unit* nano : units) {
+ 		int unitId = nano->GetUnitId();
 @@ -1478,7 +1398,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
@@ -1087,6 +1170,15 @@ index 54fef916..e596d461 100644
  							(metalPull * economyMgr->GetPullMtoS() > circuit->GetBuilderManager()->GetMetalPull());
  	const bool isNotReady = !economyMgr->IsExcessed() || isStalling;
  	if (isNotReady) {
+@@ -1508,7 +1428,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
+ 	float curCost = std::numeric_limits<float>::max();
+ 	circuit->UpdateFriendlyUnits();
+ 	// NOTE: OOAICallback::GetFriendlyUnitsIn depends on unit's radius
+-	auto& units = circuit->GetCallback()->GetFriendlyUnitsIn(pos, radius * 0.9f);
++	auto& units = circuit->GetCallback()->GetFriendlyUnitsIn(pos, radius);
+ 	for (Unit* u : units) {
+ 		auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
+ 		if ((cand == nullptr) || (cand == unit)
 @@ -1625,7 +1545,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  
  	const int iS = terrainMgr->GetSectorIndex(pos);
@@ -2268,7 +2360,7 @@ index fcc4c984..5e46a6b9 100644
  
  	float prevCost = query->GetCostAt(endPos, range);
 diff --git a/src/circuit/task/builder/BuilderTask.cpp b/src/circuit/task/builder/BuilderTask.cpp
-index 172d4c26..0f9b0a6f 100644
+index 172d4c26..1e3fa3b2 100644
 --- a/src/circuit/task/builder/BuilderTask.cpp
 +++ b/src/circuit/task/builder/BuilderTask.cpp
 @@ -6,6 +6,8 @@
@@ -2329,6 +2421,15 @@ index 172d4c26..0f9b0a6f 100644
  	{
  		manager->AbortTask(this);
  		return false;
+@@ -577,7 +578,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
+ 	CPathFinder* pathfinder = circuit->GetPathfinder();
+ 	std::shared_ptr<IPathQuery> query = pathfinder->CreatePathSingleQuery(
+ 			unit, circuit->GetThreatMap(),
+-			startPos, endPos, range, nullptr, cdef->GetPower() * 0.1f);
++			startPos, endPos, range, nullptr, cdef->GetPower());  // Anarva: path through threat it can beat (parity), no 0.1
+ 	pathQueries[unit] = query;
+ 
+ 	pathfinder->RunQuery(circuit->GetScheduler().get(), query, [this](const IPathQuery* query) {
 @@ -828,7 +829,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
  						}
  					} break;
@@ -3507,7 +3608,7 @@ index 5f061310..46525b2d 100644
  }
  
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a922..0579f246 100644
+index a0f5a922..0754015e 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -3540,6 +3641,15 @@ index a0f5a922..0579f246 100644
  	isAbleToCloak     = def->IsAbleToCloak();
  	isAbleToRepair    = def->IsAbleToRepair();
  	isAbleToReclaim   = def->IsAbleToReclaim();
+@@ -256,7 +263,7 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 	it = customParams.find("is_drone");
+ 	if ((it != customParams.end()) && (utils::string_to_int(it->second) == 1)) {
+ 		category |= circuit->GetBadCategory();
+-		costM *= 0.1f;  // avoid threat metal
++		// Anarva: a drone is worth what replacing it costs (its own metal); no 0.1 discount
+ 	}
+ 
+ //	if (customParams.find("boost_speed_mult") != customParams.end()) {
 @@ -361,15 +368,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  
  		// FIXME: Paralyzer with extra_damage should have more scale than without.
@@ -3593,6 +3703,15 @@ index a0f5a922..0579f246 100644
  		canSurfTargetAir |= isAirWeapon;
  
  		const bool isLandWeapon = ((wt != "TorpedoLauncher") || wd->IsSubMissile());
+@@ -453,7 +461,7 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 				float localDmg = .0f;
+ 				for (int type : armorTypes) {
+ 					// if the weapon is paralyzer, limit the damage contribution to 100, eg: armthor missle doesnt actually do 80000 damage
+-					localDmg += wd->IsParalyzer() ? std::min(100.0f, damages[type]) : damages[type];
++					localDmg += damages[type];  // Anarva: no 100 cap on paralyzer damage
+ 				}
+ 				localDmg /= armorTypes.size();
+ 				localDmg *= std::pow(2.0f, (wd->IsDynDamageInverted() ? 1 : -1) * wd->GetDynDamageExp());
 @@ -479,6 +487,25 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  		waterDps += dps;
  
@@ -3619,6 +3738,15 @@ index a0f5a922..0579f246 100644
  		if ((weaponCat & circuit->GetAirCategory()) && isAirWeapon) {
  			float& mr = maxRange[static_cast<RangeT>(RangeType::AIR)];
  			mr = std::max(mr, range);
+@@ -488,7 +515,7 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 		}
+ 		if ((weaponCat & circuit->GetLandCategory()) && isLandWeapon) {
+ 			float& mr = maxRange[static_cast<RangeT>(RangeType::LAND)];
+-			mr = std::max(mr, (isAbleToFly && (wt == "Cannon")) ? range * 1.25f : range);  // 1.25 - gunship height hax
++			mr = std::max(mr, range);  // Anarva: the weapon's range; height effects come from GetRangeAt
+ 			if (mr > maxRange[static_cast<RangeT>(maxRangeType)]) {
+ 				maxRangeType = RangeType::LAND;
+ 			}
 @@ -568,6 +595,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  	}
  
