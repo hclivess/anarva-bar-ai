@@ -1056,7 +1056,7 @@ string Status()
 /* ======================================================================== */
 namespace Intel {
 
-float CELL = 512.f;  // set in Init: a camera's sight diameter (what the grid is for)
+float CELL = 1.f;  // set in Init: a camera's sight diameter (what the grid is for)
 int gw = 1, gh = 1;
 array<float> heat;
 array<int> lastEyesFrame;   // per cell: when we last ordered vision there
@@ -1078,7 +1078,10 @@ void Init()
 	{
 		const string side0 = ai.GetSideName();
 		CCircuitDef@ cam = (side0 == "cortex") ? Def("coreyes") : ((side0 == "legion") ? Def("legeyes") : Def("armeyes"));
+		CCircuitDef@ com = (side0 == "cortex") ? Def("corcom") : ((side0 == "legion") ? Def("legcom") : Def("armcom"));
 		if (cam !is null && cam.losRadius > 0.f) CELL = 2.f * cam.losRadius;
+		else if (com !is null && com.losRadius > 0.f) CELL = 2.f * com.losRadius;  // no camera: our own sight
+		else CELL = AiTerrainDiagonal();  // nothing sees: the map is one cell
 	}
 	gw = AiMax(1, int(AiTerrainWidth() / CELL) + 1);
 	gh = AiMax(1, int(AiTerrainHeight() / CELL) + 1);
@@ -1225,8 +1228,7 @@ void Update()
 	if (!HasBase())
 		return;
 
-	if (ai.frame % (5 * SECOND) < SECOND)
-		OrderVision();
+	OrderVision();
 
 	// scouting of jammed or dark areas is decided by vision value (Scout)
 }
@@ -2764,7 +2766,6 @@ void Update()  // every 30 frames
 	aiSwitchHeightSquads = true;
 	aiSwitchScoutMap = true;
 	aiSwitchEngageSeen = true;
-	aiSwitchDecide = true;
 	aiSwitchFocusFire = true;
 	aiSwitchStrafe = true;
 	Intel::Update();
@@ -2776,32 +2777,20 @@ void Update()  // every 30 frames
 	aiMilitaryMgr.quota.raid.min = aiEnemyMgr.GetEnemyThreat(RT::RAIDER) / AiMax(1e-3f, Assess::trade);
 	aiMilitaryMgr.quota.raid.avg = AiMax(aiMilitaryMgr.quota.raid.avg, aiMilitaryMgr.quota.raid.min);
 	Army::CheckSquads();
-	if (ai.frame % (2 * SECOND) < SECOND)
-		Recycler::Update();
-	if (ai.frame % (10 * SECOND) < SECOND)
-		Strategic::Update(Intel::jamAlert);
-	if (ai.frame % (3 * SECOND) < SECOND)
-		Hold::Update();
-	if (ai.frame % (3 * SECOND) < SECOND)
-		Scout::Update();
-	if (ai.frame % (2 * SECOND) < SECOND)
-		EcoPos::Update();
-	if (ai.frame % (10 * SECOND) < SECOND)
-		RezLab::Update();
-	if (ai.frame % (5 * SECOND) < SECOND)
-		MexPorc::Update();
-	if (ai.frame % (5 * SECOND) < SECOND)
-		Storage::Update();
-	if (ai.frame % (2 * SECOND) < SECOND)
-		CommGuardUpdate();
-	if (ai.frame % (2 * SECOND) < SECOND)
-		BuilderSafeUpdate();
-	if (ai.frame % (5 * SECOND) < SECOND)
-		ReclaimUpdate();
-	if (ai.frame % (5 * SECOND) < SECOND)
-		Recycler::EcoReclaimUpdate();
-	if (ai.frame % (5 * SECOND) < SECOND)
-		Recycler::NanoUpdate();
+	// every module re-decides on the engine's own slow-update tick (no per-module polling periods)
+	Recycler::Update();
+	Strategic::Update(Intel::jamAlert);
+	Hold::Update();
+	Scout::Update();
+	EcoPos::Update();
+	RezLab::Update();
+	MexPorc::Update();
+	Storage::Update();
+	CommGuardUpdate();
+	BuilderSafeUpdate();
+	ReclaimUpdate();
+	Recycler::EcoReclaimUpdate();
+	Recycler::NanoUpdate();
 
 	if (ai.frame % MINUTE < SECOND) {
 		if (commander !is null) {
