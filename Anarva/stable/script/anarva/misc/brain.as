@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_DEFRISK = false;   // a turret is built only where it is more likely to survive than not (cover vs the danger that can reach it)
 const bool F_BUILDERSAFE = false; // constructors leave a job when (1-P) x job - P x own cost is worth less than assisting a factory
 const bool F_HOLDALL = false;   // the just-in-time defence covers every constructor and structure, not only extractors
 const bool F_STORAGE = false;   // reclaims only start when the metal fits; metal storage built when held-back reclaims are worth more than it costs
@@ -115,6 +116,23 @@ CCircuitUnit@ FactoryWithFewestNanos(const CCircuitDef@ nanoDef)
 	int best = 0;
 	for (uint j = 1; j < facs.length(); ++j) if (n[j] < n[best]) best = int(j);
 	return facs[best];
+}
+
+
+// A turret alone at the front dies without trading (owner: "absolutely not covered, gets destroyed"). Build it only
+// where it is more likely to survive than not: (1-P) x cost > P x cost, P from the same fight-and-escape estimate,
+// at the turret's health, against everything that can reach it while it is being built.
+bool TurretSurvives(const CCircuitDef@ tur, const AIFloat3& in pos)
+{
+	if (!F_DEFRISK) return true;
+	CCircuitUnit@ ref = commander;
+	if (ref is null) { const array<CCircuitUnit@>@ all = AiGetTeamUnits(); if (all.length() > 0) @ref = all[0]; }
+	if (ref is null) return true;
+	const float bpPer = aiBuilderMgr.GetBuildPower() / AiMax(1.f, float(aiBuilderMgr.GetWorkerCount()));
+	const float tBuild = tur.buildTime / AiMax(1.f, bpPer);
+	const float P = JobPDeath(ref, tur, pos, tBuild);
+	if ((1.f - P) <= P) AiLog("[ANV] DefRisk: not building " + tur.GetName() + " at (" + int(pos.x) + "," + int(pos.z) + "): P(lost) " + F1(P));
+	return (1.f - P) > P;
 }
 
 CCircuitDef@ Def(const string& in name)
@@ -1621,6 +1639,7 @@ bool TerrainFortify()
 	@terrainDef = tur;
 	const AIFloat3 high(m.hx[myStart], 0.f, m.hz[myStart]);
 	const AIFloat3 choke(m.cx[myStart], 0.f, m.cz[myStart]);
+	if (!TurretSurvives(tur, high)) { forts -= n; return true; }
 	for (int k = 0; k < n; ++k)
 		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, high, SQUARE_SIZE * (12 + 4 * k), true, 3 * MINUTE));
 	if (wallDef !is null && wallDef.IsAvailable(ai.frame) && forts % 2 == 1) {
@@ -1684,6 +1703,7 @@ void Fortify()
 	dir = dir / len;
 	// turret a bit on our side of the hotspot
 	const AIFloat3 tpos = basePos + dir * AiMax(500.f, len - 250.f);
+	if (!TurretSurvives(tur, tpos)) return;
 	lastFortify = ai.frame;
 	++forts;
 	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, tpos, SQUARE_SIZE * 8, true, 3 * MINUTE));
