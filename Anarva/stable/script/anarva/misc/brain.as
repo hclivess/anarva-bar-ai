@@ -56,6 +56,7 @@ const bool F_NANOS = true;      // reclaim caretakers whose metal is worth more 
 const bool F_ECORECLAIM = true;  // reclaim the energy plant whose metal now is worth more than its energy over the horizon (no fixed gates)
 const bool F_STRAFE = true;     // core switch: units sidestep dodgeable shots (flight time x our speed > blast radius)
 const bool F_FOCUS = true;      // core switch: each unit focuses the visible enemy in range with the highest threat per remaining health
+const bool F_REZLAB = true;     // no factory can make rez bots (e.g. a vehicle opening): build a bot lab when the wreck metal beats lab + one rez bot
 const bool F_ECOPOS = true;     // Vritrasura108 #41: economically behind -> economy; in surplus -> accumulate army (no new constructors)
 const bool F_MEXPORC = true;    // Vritrasura108 #43: a turret on an outer extractor when the metal lost around it beats the turret and it would survive
 const bool F_DECIDE = true;     // core switch: every dice roll in the core replaced by a computed choice (unit/role pick, constructor, retreat, superweapon, chance, map points)
@@ -498,6 +499,39 @@ string Status() { return "storage orders=" + ordered; }
  * Enemy income is estimated from the extractors of theirs we have seen, at what our own extractors yield. Behind:
  * income goes to constructors and economy. Ahead: no new constructors; income becomes army (option value).
  */
+
+/*
+ * Rez lab (owner: rez bots ignored the whole game after a vehicle opening). Rez bots come from bot labs (and
+ * shipyards); a vehicle opening has none, so no factory of ours could ever make one. When none of our factories can,
+ * a bot lab is worth building once the wreck metal on the map beats the lab plus one rez bot: the lab pays through
+ * the rez bots it enables (same test as the rez fleet, one level up). One order outstanding at a time.
+ */
+namespace RezLab {
+int ordered = 0, orderFrame = -10 * MINUTE;
+void Update()
+{
+	if (!F_REZLAB || !HasBase()) return;
+	const array<CCircuitUnit@>@ facs = Intel::allFactories;
+	for (uint i = 0; i < facs.length(); ++i) {
+		const array<string>@ opts = Facts::BuildOptions(facs[i].circuitDef.GetName());
+		for (uint k = 0; k < opts.length(); ++k)
+			if (Production::rezDefs.findByRef(ai.GetCircuitDef(opts[k])) >= 0) return;  // we can already make rez bots
+	}
+	CCircuitDef@ lab = Strategic::Side("armlab", "corlab", "leglab");
+	CCircuitDef@ rez = Strategic::Side("armrectr", "cornecro", "legrezbot");
+	if (lab is null || rez is null || !lab.IsAvailable(ai.frame) || ai.frame - orderFrame < 5 * MINUTE) return;  // the order queued below lives 5 min: one at a time
+	array<AIFloat3> wp; array<float> wm; array<bool> wr;
+	const uint w = AiGetWrecks(wp, wm, wr);
+	float pool = 0.f;
+	for (uint i = 0; i < w; ++i) pool += wm[i];
+	if (pool <= Economist::MetalValue(lab) + Economist::MetalValue(rez)) return;
+	orderFrame = ai.frame;
+	++ordered;
+	aiBuilderMgr.Enqueue(TaskB::Factory(Task::Priority::HIGH, lab, basePos, lab, SQUARE_SIZE * 32, false, true, 5 * MINUTE));
+	AiLog("[ANV] RezLab: ordering " + lab.GetName() + " (wreck metal " + int(pool) + " > lab + rez bot)");
+}
+}  // namespace RezLab
+
 namespace EcoPos {
 float ours = 0.f, theirs = 0.f;
 bool behind = true;
@@ -3866,6 +3900,8 @@ void Update()  // every 30 frames
 		Scout::Update();
 	if (F_ECOPOS && ai.frame % (2 * SECOND) < SECOND)
 		EcoPos::Update();
+	if (F_REZLAB && ai.frame % (10 * SECOND) < SECOND)
+		RezLab::Update();
 	if (F_MEXPORC && ai.frame % (5 * SECOND) < SECOND)
 		MexPorc::Update();
 	if (F_STORAGE && ai.frame % (5 * SECOND) < SECOND)
