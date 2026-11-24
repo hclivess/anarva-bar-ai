@@ -1113,7 +1113,7 @@ index a36c4e1b..cc6b7ef6 100644
  	void ApplySafePos(const CQueryPathMulti* query);
  	void Fallback(CCircuitUnit* unit, bool proceed);
 diff --git a/src/circuit/task/fighter/AttackTask.cpp b/src/circuit/task/fighter/AttackTask.cpp
-index 2f556d6d..0ec7aa31 100644
+index 2f556d6d..e6b36c27 100644
 --- a/src/circuit/task/fighter/AttackTask.cpp
 +++ b/src/circuit/task/fighter/AttackTask.cpp
 @@ -6,6 +6,8 @@
@@ -1137,6 +1137,35 @@ index 2f556d6d..0ec7aa31 100644
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
+@@ -261,17 +264,27 @@ void CAttackTask::FindTarget()
+ 	const std::vector<CEnemyManager::SEnemyGroup>& groups = circuit->GetEnemyManager()->GetEnemyGroups();
+ 	for (unsigned i = 0; i < groups.size(); ++i) {
+ 		const CEnemyManager::SEnemyGroup& group = groups[i];
++		if (anarva::switches.decide) {
++			// Anarva: a group is a target when we can beat it there: our attack power plus our own influence already at
++			// its position against its influence (no 1/8 skip, no distance scaling, no INFL_SAFE margin)
++			if ((maxPower + std::max(0.f, inflMap->GetAllyInflAt(group.pos)) <= group.influence)
++				|| !terrainMgr->CanMobileReachAt(area, group.pos, highestRange))
++			{
++				continue;
++			}
++		} else {
+ 		const bool isOverpowered = maxPower * 0.125f > group.influence;
+ 		if (hasGoodTarget && isOverpowered) {
+ 			continue;
+ 		}
+ 		const float distBE = group.pos.distance2D(basePos);  // Base to Enemy distance
+-		const float scale = std::min(distBE / sqOBDist, 1.f);
++		const float scale = std::min(distBE / std::sqrt(std::max(1.f, sqOBDist)), 1.f);  // Anarva: was distance / squared distance
+ 		if (((maxPower <= group.influence * scale) && (inflMap->GetInfluenceAt(group.pos) < INFL_SAFE))
+ 			|| !terrainMgr->CanMobileReachAt(area, group.pos, highestRange))
+ 		{
+ 			continue;
+ 		}
++		}
+ 
+ 		for (const ICoreUnit::Id eId : group.units) {
+ 			CEnemyInfo* enemy = circuit->GetEnemyInfo(eId);
 diff --git a/src/circuit/task/fighter/DefendTask.cpp b/src/circuit/task/fighter/DefendTask.cpp
 index af382ba3..b88571ea 100644
 --- a/src/circuit/task/fighter/DefendTask.cpp
