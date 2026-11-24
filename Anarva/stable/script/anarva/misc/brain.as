@@ -725,7 +725,6 @@ array<CCircuitUnit@> pending;
 array<int> pendingFrame;
 array<int> origMax;  // per def id; -1 = not retired
 int reclaimedCount = 0;
-int stallTicks = 0;
 
 
 void Init()
@@ -1119,7 +1118,8 @@ float RefInfluence(const array<string>& in names)
 // A seen enemy jammer stands for hidden strength: its metal share of the enemy army we can see (live, no squad sizes)
 void UpdatePhantomThreat()
 {
-	const float visible = aiEnemyMgr.mobileThreat;
+	// nothing visible yet: assume they kept pace with us (the Director's blind prior)
+	const float visible = (aiEnemyMgr.mobileThreat > 0.f) ? aiEnemyMgr.mobileThreat : Brain::Director::OurPower();
 	for (uint i = 0; i < jammerDefs.length(); ++i) {
 		CCircuitDef@ d = jammerDefs[i];
 		if (d.defDmg > 0.f)
@@ -1391,16 +1391,6 @@ void Order(int kind, CCircuitDef@ d, const AIFloat3& in pos, Task::Priority pri,
 }
 
 // Toward the map centre: tactical launchers have 2250-3650 range and must sit forward.
-AIFloat3 ForwardPos(float dist)
-{
-	AIFloat3 c = AiTerrainCenter();
-	AIFloat3 dir = c - basePos;
-	dir.y = 0.f;
-	const float len = dir.Length2D();
-	if (len < 1.f)
-		return basePos;
-	return basePos + dir * (AiMin(dist, len * 0.5f) / len);
-}
 
 // Where a launcher of this reach covers the enemy's structures (their centre, or the mirror of our base when none are
 // known) while staying on our half of the way
