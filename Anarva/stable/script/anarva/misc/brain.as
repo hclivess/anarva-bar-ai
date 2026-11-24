@@ -51,6 +51,7 @@ const bool F_ARTYHIGH = true;   // core switch: artillery fires from the spot it
 const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their range from the height of their spot (C++)
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
+const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
 const bool F_COMMRISK = false;  // commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle
 const bool F_COMMSPOT = false;  // commander retreats to the safe spot where its death explosion would destroy least (not into the eco)
 const bool F_JIT = false;       // build-power scale from the ratio at each enemy arrival time (just in time), not from everything at once
@@ -2869,6 +2870,20 @@ float lastRefugeLoss = 0.f;
  *   gain = metal value of the job
  * It takes the job if gain > risk; otherwise it takes the safest job that still produces something.
  */
+
+// What we believe the enemy has but can't see (the Director's estimate minus what is in sight), placed at
+// their centre and moving at their seen mean speed (ours, if none seen). Unscouted is not empty: a blind
+// commander walking into the far half of the map meets exactly this.
+float CommFog(const AIFloat3& in p, float tHome, float seenThreat, float seenSpeed, uint seenN)
+{
+	if (!F_COMMFOG) return 0.f;
+	const float hidden = AiMax(0.f, Brain::Economist::EnemyThreat() - seenThreat);
+	if (hidden <= 0.f) return 0.f;
+	Director::MeasuredPower();
+	const float sp = seenN > 0 ? seenSpeed / float(seenN) : AiMax(1.f, Director::allSpeed);
+	const float dist = aiEnemyMgr.GetEnemyPos().distance2D(p);
+	return dist / AiMax(1.f, sp) <= tHome ? hidden : 0.f;
+}
 float commDanger = 0.f, commCover = 0.f, commDps = 0.f;
 void CommForces(const AIFloat3& in p, float tHome)
 {
@@ -2881,6 +2896,16 @@ void CommForces(const AIFloat3& in p, float tHome)
 		const float reach = AiMax(0.f, ep[i].distance2D(p) - d.GetMaxRange());
 		if (!d.IsMobile()) { if (reach <= 0.f) { commDanger += d.threat; commDps += d.surfThrDmg; } continue; }
 		if (reach / AiMax(1.f, d.speed) <= tHome) { commDanger += d.threat * eh[i]; commDps += d.surfThrDmg * eh[i]; }
+	}
+	{
+		float seenT = 0.f, seenS = 0.f, perThreatDps = 0.f; uint seenN = 0;
+		for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile() && ed[i].threat > 0.f) { seenT += ed[i].threat; seenS += ed[i].speed; ++seenN; perThreatDps += ed[i].surfThrDmg; }
+		const float fog = CommFog(p, tHome, seenT, seenS, seenN);
+		if (fog > 0.f) {
+			commDanger += fog;
+			// its damage at the seen damage-per-threat, or ours if nothing is seen
+			commDps += fog * (seenT > 0.f ? perThreatDps / seenT : commander.circuitDef.surfThrDmg / AiMax(1.f, commander.circuitDef.threat));
+		}
 	}
 	commCover = commander.circuitDef.power;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
@@ -2976,6 +3001,11 @@ float CommExposure(const AIFloat3& in p, float tHome)
 		const float reach = AiMax(0.f, ep[i].distance2D(p) - d.GetMaxRange());
 		if (!d.IsMobile()) { if (reach <= 0.f) danger += d.threat; continue; }
 		if (reach / AiMax(1.f, d.speed) <= tHome) danger += d.threat * eh[i];
+	}
+	if (F_COMMFOG) {
+		float seenT = 0.f, seenS = 0.f; uint seenN = 0;
+		for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile() && ed[i].threat > 0.f) { seenT += ed[i].threat; seenS += ed[i].speed; ++seenN; }
+		danger += CommFog(p, tHome, seenT, seenS, seenN);
 	}
 	float cover = commander.circuitDef.power;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
