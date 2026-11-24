@@ -134,7 +134,7 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
-index e4c1d126..b053a252 100644
+index e4c1d126..26c8b8ee 100644
 --- a/src/circuit/module/BuilderManager.cpp
 +++ b/src/circuit/module/BuilderManager.cpp
 @@ -6,6 +6,7 @@
@@ -145,7 +145,15 @@ index e4c1d126..b053a252 100644
  #include "module/EconomyManager.h"
  #include "module/MilitaryManager.h"
  #include "module/FactoryManager.h"
-@@ -265,7 +266,7 @@ void CBuilderManager::InitHandlers()
+@@ -64,7 +65,6 @@ CBuilderManager::CBuilderManager(CCircuitAI* circuit)
+ 		, guardCount(0)
+ 		, buildTasksCount(0)
+ 		, buildPower(.0f)
+-		, dangerHysteresis(MAX_TRAVEL_SEC * FRAMES_PER_SEC)
+ {
+ 	circuit->GetScheduler()->RunOnInit(CScheduler::GameJob(&CBuilderManager::Init, this));
+ 
+@@ -265,7 +265,7 @@ void CBuilderManager::InitHandlers()
  	const Json::Value& retreat = root["retreat"]["builder"];
  	const float minRet = retreat.get((unsigned)0, 0.8f).asFloat();
  	const float maxRet = retreat.get((unsigned)1, 0.8f).asFloat();
@@ -154,7 +162,49 @@ index e4c1d126..b053a252 100644
  	const float retMod = retreat.get((unsigned)2, 1.0f).asFloat();
  	const float goalBuildMod = root["economy"].get("build_mod", 320.f).asFloat();
  
-@@ -1020,7 +1021,6 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -941,7 +941,7 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
+ 	const AIFloat3& pos = unit->GetPos(frame);
+ 
+ 	const CCircuitDef* cdef = unit->GetCircuitDef();
+-	constexpr float POWER_MOD = 1.5f;
++	constexpr float POWER_MOD = 1.f;  // Anarva: parity (square law), no 1.5 margin
+ 	if ((cdef->GetPower() > THREAT_MIN)
+ 		&& (circuit->GetMilitaryManager()->FindBCombatTarget(unit, pos, POWER_MOD, true) != nullptr))
+ 	{
+@@ -966,30 +966,8 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
+ 
+ 	std::shared_ptr<CQueryCostMap> pQuery = std::static_pointer_cast<CQueryCostMap>(query);
+ 
+-	if (cdef->IsRoleComm() && (circuit->GetFactoryManager()->GetFactoryCount() > 0)) {  // hide commander?
+-		CEnemyManager* enemyMgr = circuit->GetEnemyManager();
+-		const CSetupManager::SCommInfo::SHide* hide = circuit->GetSetupManager()->GetHide(cdef);
+-		if (hide != nullptr) {
+-			if ((frame < hide->frame) || (GetWorkerCount() <= 2)) {
+-				return (hide->sqPeaceTaskRad < 0.f)
+-						? MakeBuilderTask(unit, pQuery.get())
+-						: MakeCommTask(unit, pQuery.get(), hide->sqPeaceTaskRad);
+-			}
+-			if (circuit->GetInflMap()->GetEnemyInflAt(pos) >= hide->threat) {
+-				dangerTime[unit] = frame;
+-			}
+-//			if ((enemyMgr->GetMobileThreat() / circuit->GetAllyTeam()->GetAliveSize() >= hide->threat)
+-			if ((dangerTime[unit] + dangerHysteresis >= frame)
+-				|| ((hide->isAir) && (enemyMgr->GetEnemyCost(ROLE_TYPE(AIR)) > 1.f)))
+-			{
+-				return MakeCommTask(unit, pQuery.get(), hide->sqDangerTaskRad);
+-			}
+-			return (hide->sqPeaceTaskRad < 0.f)
+-					? MakeBuilderTask(unit, pQuery.get())
+-					: MakeCommTask(unit, pQuery.get(), hide->sqPeaceTaskRad);
+-		}
+-	}
+-
++	// Anarva: no config 'hide' clock/threat for the commander; its risk is decided in the script (share of build power
++	// vs P(death) x everything we own)
+ 	return unit->IsAttrBase()
+ 			? MakeEnergizerTask(unit, pQuery.get())
+ 			: MakeBuilderTask(unit, pQuery.get());
+@@ -1020,7 +998,6 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
@@ -162,7 +212,7 @@ index e4c1d126..b053a252 100644
  	float metric = std::numeric_limits<float>::max();
  
  	constexpr std::array<std::pair<IBuilderTask::BuildType, float>, (int)IBuilderTask::BuildType::_SIZE_> prioTasks = {
-@@ -1047,7 +1047,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1047,7 +1024,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	};
  
  	for (const std::pair<IBuilderTask::BuildType, float>& pair : prioTasks) {
@@ -171,7 +221,7 @@ index e4c1d126..b053a252 100644
  		for (const IBuilderTask* candidate : GetTasks(pair.first)) {
  			if (!candidate->CanAssignTo(unit)) {
  				continue;
-@@ -1090,32 +1090,23 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1090,32 +1067,23 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -216,7 +266,7 @@ index e4c1d126..b053a252 100644
  	}
  
  	if ((task == nullptr) &&
-@@ -1164,20 +1155,6 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1164,20 +1132,6 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
  	float metric = std::numeric_limits<float>::max();
  
@@ -237,7 +287,7 @@ index e4c1d126..b053a252 100644
  
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
-@@ -1234,27 +1211,20 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1234,27 +1188,20 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -277,7 +327,7 @@ index e4c1d126..b053a252 100644
  		}
  	}
  
-@@ -1352,7 +1322,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1352,7 +1299,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			float distCost;
  			const float rawSqDist = pos.SqDistance2D(buildPos);  // TODO: add target's radius to rawSqDist
@@ -285,7 +335,7 @@ index e4c1d126..b053a252 100644
  			if (rawSqDist < buildSqDistance) {
  				distCost = sqrtf(rawSqDist) / pathfinder->GetSquareSize() * COST_BASE * 0.5f;
  			} else {
-@@ -1364,28 +1333,20 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1364,28 +1310,20 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -326,6 +376,18 @@ index e4c1d126..b053a252 100644
  		}
  	}
  
+diff --git a/src/circuit/module/BuilderManager.h b/src/circuit/module/BuilderManager.h
+index 559a0abf..6a622fe5 100644
+--- a/src/circuit/module/BuilderManager.h
++++ b/src/circuit/module/BuilderManager.h
+@@ -353,7 +353,6 @@ private:
+ 	std::set<CCircuitUnit*> workers;
+ 	std::map<CCircuitUnit*, std::shared_ptr<IPathQuery>> costQueries;  // IPathQuery owner
+ 	std::map<CCircuitUnit*, int> dangerTime;  // unit: frame
+-	int dangerHysteresis;  // frames
+ 
+ 	CCircuitDef* terraDef = nullptr;
+ 	std::unordered_map<IBuilderTask::BT, std::unordered_map<CCircuitDef*, SBuildChain*>> buildChains;  // owner
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
 index 6e5da8b6..312eca68 100644
 --- a/src/circuit/module/EconomyManager.cpp
@@ -786,19 +848,20 @@ index 97de6587..5d2717b8 100644
  		// 24x24 ~ 240 spots +-25
  		unsigned mCount = (240.f - 80.f) / (SQUARE(24.f) - SQUARE(8.f)) * (mapSize - SQUARE(8.f)) + 80.f + offset;
 diff --git a/src/circuit/script/BuilderScript.cpp b/src/circuit/script/BuilderScript.cpp
-index 0be6a835..b91cfe6e 100644
+index 0be6a835..50601754 100644
 --- a/src/circuit/script/BuilderScript.cpp
 +++ b/src/circuit/script/BuilderScript.cpp
-@@ -68,6 +68,9 @@ CBuilderScript::CBuilderScript(CScriptManager* scr, CBuilderManager* mgr)
+@@ -68,7 +68,9 @@ CBuilderScript::CBuilderScript(CScriptManager* scr, CBuilderManager* mgr)
  	r = engine->RegisterObjectMethod("CBuilderManager", "IUnitTask@+ Enqueue(const SServBTask& in)", asMETHODPR(CBuilderManager, Enqueue, (const TaskB::SServBTask&), IUnitTask*), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CBuilderManager", "IUnitTask@+ EnqueueRetreat()", asMETHOD(CBuilderManager, EnqueueRetreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CBuilderManager", "uint GetWorkerCount() const", asMETHOD(CBuilderManager, GetWorkerCount), asCALL_THISCALL); ASSERT(r >= 0);
+-	r = engine->RegisterObjectProperty("CBuilderManager", "int dangerHysteresis", asOFFSET(CBuilderManager, dangerHysteresis)); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CBuilderManager", "float GetBuildPower() const", asMETHOD(CBuilderManager, GetBuildPower), asCALL_THISCALL); ASSERT(r >= 0);
 +	// Anarva: move a builder (e.g. the commander) to another task now
 +	r = engine->RegisterObjectMethod("CBuilderManager", "void AssignTask(CCircuitUnit@, IUnitTask@)", asMETHODPR(CBuilderManager, AssignTask, (CCircuitUnit*, IUnitTask*), void), asCALL_THISCALL); ASSERT(r >= 0);
- 	r = engine->RegisterObjectProperty("CBuilderManager", "int dangerHysteresis", asOFFSET(CBuilderManager, dangerHysteresis)); ASSERT(r >= 0);
  
  }
+ 
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
 index c3aaefe5..5b936a05 100644
 --- a/src/circuit/script/InitScript.cpp
@@ -1577,7 +1640,7 @@ index a36c4e1b..cc6b7ef6 100644
  	void ApplySafePos(const CQueryPathMulti* query);
  	void Fallback(CCircuitUnit* unit, bool proceed);
 diff --git a/src/circuit/task/fighter/AttackTask.cpp b/src/circuit/task/fighter/AttackTask.cpp
-index 2f556d6d..0062d10b 100644
+index 2f556d6d..4923ef17 100644
 --- a/src/circuit/task/fighter/AttackTask.cpp
 +++ b/src/circuit/task/fighter/AttackTask.cpp
 @@ -6,6 +6,8 @@
@@ -1601,7 +1664,32 @@ index 2f556d6d..0062d10b 100644
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
-@@ -241,36 +244,49 @@ void CAttackTask::FindTarget()
+@@ -49,17 +52,14 @@ bool CAttackTask::CanAssignTo(CCircuitUnit* unit) const
+ {
+ 	assert(leader != nullptr);
+ 
+-	float speedLeader = leader->GetCircuitDef()->GetSpeed();
+-	float speedUnit = unit->GetCircuitDef()->GetSpeed();
+-	if (speedLeader > speedUnit) {
+-		std::swap(speedLeader, speedUnit);
+-	}
+-	if (speedLeader * 1.5f < speedUnit) {
+-		return false;
+-	}
+-
++	// Anarva: a unit joins when it can reach the leader before the leader reaches its target (no 1.5x speed band, no
++	// 1000-elmo radius); a squad moves at its slowest member, which the attack value already pays for
+ 	const int frame = manager->GetCircuit()->GetLastFrame();
+-	if (leader->GetPos(frame).SqDistance2D(unit->GetPos(frame)) > SQUARE(1000.f)) {
++	const AIFloat3& lp = leader->GetPos(frame);
++	const float tJoin = lp.distance2D(unit->GetPos(frame)) / std::max(1.f, unit->GetCircuitDef()->GetSpeed());
++	const float tGo = (GetTarget() != nullptr) ? lp.distance2D(GetTarget()->GetPos()) / std::max(1.f, leader->GetCircuitDef()->GetSpeed())
++		: std::numeric_limits<float>::max();
++	if (tJoin > tGo) {
+ 		return false;
+ 	}
+ 	if ((leader->GetCircuitDef()->IsAbleToFly() && unit->GetCircuitDef()->IsAbleToFly())
+@@ -241,36 +241,49 @@ void CAttackTask::FindTarget()
  	CMap* map = circuit->GetMap();
  	CInfluenceMap* inflMap = circuit->GetInflMap();
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
@@ -1662,7 +1750,7 @@ index 2f556d6d..0062d10b 100644
  		}
  
  		for (const ICoreUnit::Id eId : group.units) {
-@@ -316,7 +332,9 @@ void CAttackTask::FindTarget()
+@@ -316,7 +329,9 @@ void CAttackTask::FindTarget()
  				}
  			}
  
@@ -1869,7 +1957,7 @@ index e1d90c4f..c8878697 100644
  class CEnemyInfo;
  
 diff --git a/src/circuit/task/fighter/RaidTask.cpp b/src/circuit/task/fighter/RaidTask.cpp
-index b62de532..87e43f48 100644
+index b62de532..d78b41bb 100644
 --- a/src/circuit/task/fighter/RaidTask.cpp
 +++ b/src/circuit/task/fighter/RaidTask.cpp
 @@ -6,6 +6,8 @@
@@ -1893,16 +1981,21 @@ index b62de532..87e43f48 100644
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
-@@ -257,7 +260,7 @@ bool CRaidTask::FindTarget()
- 	const bool hadTarget = GetTarget() != nullptr;
- 	const float maxSpeed = SQUARE(highestSpeed * 0.8f / FRAMES_PER_SEC);
- 	const float maxPower = attackPower * powerMod * (hadTarget ? 1.f / 0.75f : 1.f);
+@@ -254,10 +257,9 @@ bool CRaidTask::FindTarget()
+ 	SArea* area = leader->GetArea();
+ 	CCircuitDef* cdef = leader->GetCircuitDef();
+ 	const bool isAntiStatic = cdef->IsAttrAntiStat();
+-	const bool hadTarget = GetTarget() != nullptr;
+-	const float maxSpeed = SQUARE(highestSpeed * 0.8f / FRAMES_PER_SEC);
+-	const float maxPower = attackPower * powerMod * (hadTarget ? 1.f / 0.75f : 1.f);
 -	const float weaponRange = cdef->GetMaxRange() * 0.9f;
++	const float maxSpeed = SQUARE(highestSpeed / FRAMES_PER_SEC);  // Anarva: catchable iff slower than us (no 0.8)
++	const float maxPower = attackPower * powerMod;  // Anarva: no hysteresis bonus
 +	const float weaponRange = cdef->GetMaxRange();  // Anarva: the reach itself (no 0.9)
  	const int canTargetCat = cdef->GetTargetCategory();
  	const int noChaseCat = cdef->GetNoChaseCategory();
  	const float range = std::max(leader->GetUnit()->GetMaxRange(), cdef->GetLosRadius()) + 200.f;
-@@ -291,13 +294,9 @@ bool CRaidTask::FindTarget()
+@@ -291,13 +293,9 @@ bool CRaidTask::FindTarget()
  			continue;
  		}
  
@@ -1917,7 +2010,7 @@ index b62de532..87e43f48 100644
  		const float power = threatMap->GetThreatAt(ePos);
  		if (checkPower <= power) {
  			continue;
-@@ -346,6 +345,19 @@ bool CRaidTask::FindTarget()
+@@ -346,6 +344,19 @@ bool CRaidTask::FindTarget()
  		}
  
  		float sqDist = pos.SqDistance2D(ePos);
@@ -1938,12 +2031,15 @@ index b62de532..87e43f48 100644
  			if (enemy->IsInRadarOrLOS()) {
  				if (((targetCat & noChaseCat) == 0) && !enemy->IsBeingBuilt()) {
 diff --git a/src/circuit/task/fighter/ScoutTask.cpp b/src/circuit/task/fighter/ScoutTask.cpp
-index 9aee3cb8..ec27084f 100644
+index 9aee3cb8..75e155e9 100644
 --- a/src/circuit/task/fighter/ScoutTask.cpp
 +++ b/src/circuit/task/fighter/ScoutTask.cpp
-@@ -164,7 +164,7 @@ bool CScoutTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
+@@ -162,9 +162,9 @@ bool CScoutTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
+ 	SArea* area = unit->GetArea();
+ 	CCircuitDef* cdef = unit->GetCircuitDef();
  	const bool isAntiStatic = cdef->IsAttrAntiStat();
- 	const float speed = SQUARE(cdef->GetSpeed() * 0.8f / FRAMES_PER_SEC);
+-	const float speed = SQUARE(cdef->GetSpeed() * 0.8f / FRAMES_PER_SEC);
++	const float speed = SQUARE(cdef->GetSpeed() / FRAMES_PER_SEC);  // Anarva: catchable iff slower (no 0.8)
  	const float maxPower = threatMap->GetUnitPower(unit) * powerMod;
 -	const float weaponRange = cdef->GetMaxRange() * 0.9f;
 +	const float weaponRange = cdef->GetMaxRange();  // Anarva: the reach itself (no 0.9)
@@ -1951,7 +2047,7 @@ index 9aee3cb8..ec27084f 100644
  	const int noChaseCat = cdef->GetNoChaseCategory();
  	const float range = std::max(unit->GetUnit()->GetMaxRange() + threatMap->GetSquareSize() * 2,
 diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
-index 154ce4bf..ef703e97 100644
+index 154ce4bf..ba81f902 100644
 --- a/src/circuit/task/fighter/SquadTask.cpp
 +++ b/src/circuit/task/fighter/SquadTask.cpp
 @@ -6,6 +6,7 @@
@@ -1976,7 +2072,45 @@ index 154ce4bf..ef703e97 100644
  
  #include <cmath>
  
-@@ -387,10 +395,129 @@ void ISquadTask::Attack(const int frame)
+@@ -178,7 +186,7 @@ ISquadTask* ISquadTask::CheckMergeTask()
+ 	const AIFloat3& pos = leader->GetPos(frame);
+ 	SArea* area = leader->GetArea();
+ 	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
+-	const float sqMaxDistCost = SQUARE(MAX_TRAVEL_SEC * lowestSpeed);
++	const float sqMaxDistCost = std::numeric_limits<float>::max();  // Anarva: concentration beats splitting (square law); merge whatever can reach
+ 	float metric = std::numeric_limits<float>::max();
+ 
+ 	CPathFinder* pathfinder = circuit->GetPathfinder();
+@@ -270,9 +278,17 @@ bool ISquadTask::IsMustRegroup()
+ 	if (State::REGROUP != state) {
+ 		groupPos = bestPlace->GetLastPos();
+ 		groupFrame = frame;
+-	} else if (frame >= groupFrame + FRAMES_PER_SEC * 60) {
++	} else if ([&]() {
++		// Anarva: a regroup has failed once it lasts longer than the farthest unit needs to arrive at its own speed
++		float need = 0.f;
++		for (CCircuitUnit* u : validUnits) {
++			const float v = std::max(1.f, u->GetCircuitDef()->GetSpeed());
++			need = std::max(need, groupPos.distance2D(u->GetLastPos()) / v);
++		}
++		return frame >= groupFrame + int(need * FRAMES_PER_SEC) + 1;
++	}()) {
+ 		// eliminate buggy units
+-		const float sqMaxDist = SQUARE(std::max<float>(SQUARE_SIZE * 8 * validUnits.size(), highestRange));
++		const float sqMaxDist = SQUARE(std::max<float>(2.f * leader->GetCircuitDef()->GetRadius() * sqrtf(float(validUnits.size())), highestRange));
+ 		for (CCircuitUnit* unit : units) {
+ 			if (unit->GetCircuitDef()->IsPlane()) {
+ 				continue;
+@@ -305,7 +321,7 @@ bool ISquadTask::IsMustRegroup()
+ 	bool wasRegroup = (State::REGROUP == state);
+ 	state = State::ROAM;
+ 
+-	const float sqMaxDist = SQUARE(std::max<float>(SQUARE_SIZE * 8 * validUnits.size(), highestRange));
++	const float sqMaxDist = SQUARE(std::max<float>(2.f * leader->GetCircuitDef()->GetRadius() * sqrtf(float(validUnits.size())), highestRange));
+ 	for (CCircuitUnit* unit : validUnits) {
+ 		const float sqDist = groupPos.SqDistance2D(unit->GetLastPos());
+ 		if (sqDist > sqMaxDist) {
+@@ -387,10 +403,129 @@ void ISquadTask::Attack(const int frame)
  	Attack(frame, GetTarget()->GetUnit()->IsCloaked());
  }
  
@@ -2107,7 +2241,7 @@ index 154ce4bf..ef703e97 100644
  	attackFrame = isRepeatAttack ? frame : attackFrame;
  
  	auto it = rangeUnits.begin()->second.begin();
-@@ -421,17 +548,29 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+@@ -421,17 +556,29 @@ void ISquadTask::Attack(const int frame, const bool isGround)
  	int row = 0;
  	for (const auto& kv : rangeUnits) {
  		CCircuitDef* rowDef = (*kv.second.begin())->GetCircuitDef();
@@ -2143,7 +2277,7 @@ index 154ce4bf..ef703e97 100644
  		if (delta > maxDelta) {
  			delta = maxDelta;
  		}
-@@ -459,9 +598,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+@@ -459,9 +606,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
  				|| (unit->GetTargetTile() != targetTile))
  			{
  				const float angle = alpha + beta;
