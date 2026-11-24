@@ -84,7 +84,7 @@ index 0be6a835..ec2cfaf1 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..93635af7 100644
+index c3aaefe5..218d5f2a 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -289,7 +289,7 @@ index c3aaefe5..93635af7 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +930,24 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +930,25 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -300,6 +300,7 @@ index c3aaefe5..93635af7 100644
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyGroups(array<AIFloat3>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemyGroups), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetWrecks(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetWrecks), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHighGroundArty", &anarva::switches.highGroundArty); ASSERT(r >= 0);
++	r = engine->RegisterGlobalProperty("bool aiSwitchHeightSquads", &anarva::switches.heightSquads); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyIds(array<int>@+)", asFUNCTION(Bridge_GetEnemyIds), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetMetalSpots(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetMetalSpots), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiIsInLOS(const AIFloat3& in)", asFUNCTION(Bridge_IsInLOS), asCALL_CDECL); ASSERT(r >= 0);
@@ -566,6 +567,47 @@ index 981b94f9..16b5c6df 100644
  };
  
  } // namespace circuit
+diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
+index 154ce4bf..7720920d 100644
+--- a/src/circuit/task/fighter/SquadTask.cpp
++++ b/src/circuit/task/fighter/SquadTask.cpp
+@@ -16,6 +16,9 @@
+ #include "unit/action/TravelAction.h"
+ #include "CircuitAI.h"
+ #include "util/Utils.h"
++#include "util/AnarvaSwitches.h"
++#include "terrain/TerrainData.h"
++#include "terrain/TerrainManager.h"
+ 
+ #include <cmath>
+ 
+@@ -459,9 +462,25 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+ 				|| (unit->GetTargetTile() != targetTile))
+ 			{
+ 				const float angle = alpha + beta;
+-				const float r = (iterNum == 0) ? range0 : range;
++				float r = (iterNum == 0) ? range0 : range;
+ 				AIFloat3 newPos(tPos.x + r * cosf(angle), tPos.y, tPos.z + r * sinf(angle));
+ 				CTerrainManager::CorrectPosition(newPos);
++				if (anarva::switches.heightSquads) {
++					// The engine's reach from where the unit will stand: cannons reach further downhill,
++					// sphere weapons less across steep height. Two passes: the spot moves, its height changes.
++					CCircuitDef* udef = unit->GetCircuitDef();
++					const float flat = udef->GetRangeAt(0.f);
++					if (flat > 0.f) {
++						terrain::SAreaData* area = manager->GetCircuit()->GetTerrainManager()->GetAreaData();
++						const float r0 = r;
++						for (int pass = 0; pass < 2; ++pass) {
++							const float h = area->GetElevationAt(newPos.x, newPos.z);
++							r = r0 * udef->GetRangeAt(tPos.y - h) / flat;
++							newPos = AIFloat3(tPos.x + r * cosf(angle), tPos.y, tPos.z + r * sinf(angle));
++							CTerrainManager::CorrectPosition(newPos);
++						}
++					}
++				}
+ 				unit->Attack(newPos, GetTarget(), targetTile, isGround, isStatic, frame + FRAMES_PER_SEC * 60);
+ 			}
+ 
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
 index a0f5a922..b14f41b3 100644
 --- a/src/circuit/unit/CircuitDef.cpp
@@ -670,10 +712,10 @@ index 0247bcb8..80d6a508 100644
  	float maxShield;
 diff --git a/src/circuit/util/AnarvaSwitches.h b/src/circuit/util/AnarvaSwitches.h
 new file mode 100644
-index 00000000..1eb17663
+index 00000000..d90bdc52
 --- /dev/null
 +++ b/src/circuit/util/AnarvaSwitches.h
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,24 @@
 +/*
 + * AnarvaSwitches.h
 + *
@@ -690,6 +732,7 @@ index 00000000..1eb17663
 +
 +struct SSwitches {
 +	bool highGroundArty = false;  // artillery: height-aware range, firing spot reached soonest
++	bool heightSquads = false;    // squads: each unit's standoff scaled by its range at the height it stands on
 +};
 +inline SSwitches switches;
 +
