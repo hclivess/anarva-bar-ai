@@ -8,7 +8,7 @@ minus risk), never a hand-picked cutoff. Each behaviour sits behind a flag, ship
 on only after it wins a paired A/B test (2 concurrent rounds x 8 games vs 2 BARb hard, judged on outright
 losses, value share and damage ratio).
 
-## Feature flags (10 on, 29 off)
+## Feature flags (11 on, 28 off)
 
 | Flag | Default | What it does | Measured |
 |---|---|---|---|
@@ -17,6 +17,7 @@ losses, value share and damage ratio).
 | `F_HOLD` | **on** | just-in-time extractor defence: meet each incoming enemy group at the extractor it is heading for (C++ bridge) | F_HOLD+F_COMMGUARD on vs off, CI core, 2 concurrent rounds x 8 games, 1v2: both on by default: fewer outright losses, share unchanged |
 | `F_INTEL` | **on** | eyes, scouting, phantom threat | first build |
 | `F_OPENER` | **on** | constructor-rich T1 opener (false = BARb hard opener) | r8: 13-2-1 vs base |
+| `F_POWERALL` | **on** | our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool | F_POWERALL (Director measures our power from every armed surface unit, not the gather pool) on vs off, 2 concurrent rounds x 8, 1v2: on by default: better share and no outright losses in both rounds (pooled 0.41 vs 0.27, 0 vs 3 outright) |
 | `F_RECALL` | **on** | broken-squad recall | not measured yet |
 | `F_RECYCLE` | **on** | eco recycling + T1 salvage | first build |
 | `F_SCALE` | **on** | Director drives buildpowerRatio | r9: 9-4-3 vs base |
@@ -40,7 +41,6 @@ losses, value share and damage ratio).
 | `F_JIT` | off | build-power scale from the ratio at each enemy arrival time (just in time), not from everything at once | not measured yet |
 | `F_MAPECO` | off | constructor share from free extractor spots (map analysis) | not measured yet |
 | `F_NEWRECALL` | off | need-based recall (false = first-gen 40%-of-peak rule) | not measured yet |
-| `F_POWERALL` | off | our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool | not measured yet |
 | `F_PROD` | off | capability-based production chooser (incl. rez bots) | r7 even, r10 2-1-8 vs base: loses fights; off |
 | `F_QUOTA` | off | attack/raid quotas sized from needed power | 1v2, 8x45min: F_QUOTA alone: 0-8; share 0.04, survival 36.5 vs base 0.13/38.6: rejected; 1v2, 8x45min: F_DETAIL+F_WAVES+F_QUOTA (the bundle behind the only 1v2 win): 0-8, all outright losses, survival 30.2 vs base 38.6 min: rejected; the Throne win was an outlier |
 | `F_REDIRECT` | off | assist factories by army deficit | untested alone |

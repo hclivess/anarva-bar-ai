@@ -222,6 +222,41 @@
     }
    },
    "decision": "kept off: worse share and damage ratio in both rounds"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "F_POWERALL (Director measures our power from every armed surface unit, not the gather pool) on vs off, 2 concurrent rounds x 8, 1v2",
+   "results": {
+    "on": {
+     "share": [
+      0.44,
+      0.37
+     ],
+     "outright": [
+      0,
+      0
+     ],
+     "dmg_out_in": [
+      0.96,
+      1.03
+     ]
+    },
+    "off": {
+     "share": [
+      0.28,
+      0.25
+     ],
+     "outright": [
+      1,
+      2
+     ],
+     "dmg_out_in": [
+      0.92,
+      0.96
+     ]
+    }
+   },
+   "decision": "on by default: better share and no outright losses in both rounds (pooled 0.41 vs 0.27, 0 vs 3 outright)"
   }
  ],
  "install": {

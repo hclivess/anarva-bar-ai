@@ -55,6 +55,7 @@ def main():
     ap.add_argument("--par", type=int, default=4)
     ap.add_argument("--minutes", type=float, default=12.0)
     args = ap.parse_args()
+    args.out = os.path.abspath(args.out)  # the engine resolves --write-dir against its own cwd
     os.makedirs(args.out, exist_ok=True)
     with ThreadPoolExecutor(args.par) as ex:
         for out in ex.map(lambda d: play(args, d), args.demos):
