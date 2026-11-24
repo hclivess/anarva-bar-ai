@@ -12,7 +12,7 @@ index c054168d..071468d1 100644
  class CEnemyManager;
  class CMapManager;
 diff --git a/src/circuit/map/ThreatMap.cpp b/src/circuit/map/ThreatMap.cpp
-index 0319762c..845afac0 100644
+index 0319762c..f70212f0 100644
 --- a/src/circuit/map/ThreatMap.cpp
 +++ b/src/circuit/map/ThreatMap.cpp
 @@ -6,6 +6,7 @@
@@ -45,7 +45,41 @@ index 0319762c..845afac0 100644
  		threatArray = pThreatData.load()->roleThreatPtrs[role]->swimThreat.data();
  	} else {
  		threatArray = pThreatData.load()->roleThreatPtrs[role]->surfThreat.data();
-@@ -397,7 +403,7 @@ void CThreatMap::AddEnemyAir(const float threat, float* drawAirThreat,
+@@ -293,16 +299,14 @@ float CThreatMap::GetUnitPower(CCircuitUnit* unit) const
+ 
+ void CThreatMap::ApplyRange(CCircuitDef* cdef)
+ {
+-	constexpr float allowedRange = 2000.f;
+-	constexpr float allowedSpeed = 200.f;
++	// Anarva: every armed unit's threat counts (no 2000-range / 200-speed exclusion: long-range guns were invisible)
+ 
+ 	const float speed = cdef->GetSpeed();
+-	float slack = squareSize - 1 + cdef->GetAoe() / 2 + DEFAULT_SLACK * slackMod.allMod;
++	// Anarva: padding = map cell + half the splash + where a mobile unit can be by the next update (no config multipliers)
++	float slack = squareSize - 1 + cdef->GetAoe() / 2;
+ 	if (cdef->IsMobile()) {
+ 		// TODO: slack should also depend on own unit's path update rate
+ 		slack += THREAT_UPDATE_RATE * speed / FRAMES_PER_SEC;
+-	} else {
+-		slack += DEFAULT_SLACK * slackMod.staticMod;
+ 	}
+ 	float realRange;
+ 	int range;
+@@ -312,11 +316,11 @@ void CThreatMap::ApplyRange(CCircuitDef* cdef)
+ 	cdef->SetThreatRange(CCircuitDef::ThreatType::AIR, range);
+ 
+ 	realRange = cdef->GetMaxRange(CCircuitDef::RangeType::LAND);
+-	range = (cdef->HasSurfToLand() && (realRange <= allowedRange) && (speed <= allowedSpeed)) ? int(realRange + slack) / squareSize + 1 : 0;
++	range = (cdef->HasSurfToLand()) ? int(realRange + slack) / squareSize + 1 : 0;
+ 	cdef->SetThreatRange(CCircuitDef::ThreatType::SURF, range);
+ 
+ 	realRange = cdef->GetMaxRange(CCircuitDef::RangeType::WATER);
+-	range = (cdef->HasSurfToWater() && (realRange <= allowedRange) && (speed <= allowedSpeed)) ? int(realRange + slack) / squareSize + 1 : 0;
++	range = (cdef->HasSurfToWater()) ? int(realRange + slack) / squareSize + 1 : 0;
+ 	cdef->SetThreatRange(CCircuitDef::ThreatType::WATER, range);
+ }
+ 
+@@ -397,7 +401,7 @@ void CThreatMap::AddEnemyAir(const float threat, float* drawAirThreat,
  			}
  
  			const int index = z * width + x;
@@ -54,7 +88,7 @@ index 0319762c..845afac0 100644
  			// MicroPather cannot deal with negative costs
  			// (which may arise due to floating-point drift)
  			// nor with zero-cost nodes (see MP::SetMapData,
-@@ -489,7 +495,7 @@ void CThreatMap::AddEnemyAmphGradient(const float threatSurf, const float threat
+@@ -489,7 +493,7 @@ void CThreatMap::AddEnemyAmphGradient(const float threatSurf, const float threat
  			// Laser: no gradient
  			const int sum = dxSq + dzSq;
  			const int index = z * width + x;
@@ -63,7 +97,7 @@ index 0319762c..845afac0 100644
  
  			if (sector[index].isWater) {
  				if (sum <= rangeLandSq) {
-@@ -540,7 +546,7 @@ void CThreatMap::AddDecloaker(float* drawCloakThreat, const SEnemyData& e)
+@@ -540,7 +544,7 @@ void CThreatMap::AddDecloaker(float* drawCloakThreat, const SEnemyData& e)
  			}
  
  			const int index = z * width + x;
@@ -72,7 +106,7 @@ index 0319762c..845afac0 100644
  			drawCloakThreat[index] += heat;
  		}
  	}
-@@ -609,9 +615,21 @@ std::shared_ptr<IMainJob> CThreatMap::AirDrawer(CCircuitDef::RoleT role)
+@@ -609,12 +613,24 @@ std::shared_ptr<IMainJob> CThreatMap::AirDrawer(CCircuitDef::RoleT role)
  	std::fill(roleThreat.airThreat.begin(), roleThreat.airThreat.end(), THREAT_BASE);
  	float* drawAirThreat = roleThreat.airThreat.data();
  
@@ -94,8 +128,12 @@ index 0319762c..845afac0 100644
 +			AddEnemyAir(meanAir, drawAirThreat, *e);  // unknown enemy: expected threat
  		} else {
  			const float threat = e->GetAirDamage(role) * e->thrHealth;
- 			const int vsl = std::min(int(e->vel.Length2D() * slackMod.speedMod), slackMod.speedModMax);
-@@ -634,9 +652,24 @@ std::shared_ptr<IMainJob> CThreatMap::AmphDrawer(CCircuitDef::RoleT role)
+-			const int vsl = std::min(int(e->vel.Length2D() * slackMod.speedMod), slackMod.speedModMax);
++			const int vsl = int(e->vel.Length2D() * THREAT_UPDATE_RATE / squareSize);  // Anarva: cells it can cover by the next update (no cap)
+ 			AddEnemyAir(threat, drawAirThreat, *e, vsl);
+ 		}
+ 	}
+@@ -634,13 +650,28 @@ std::shared_ptr<IMainJob> CThreatMap::AmphDrawer(CCircuitDef::RoleT role)
  	float* drawAmphThreat = roleThreat.amphThreat.data();
  	float* drawSwimThreat = roleThreat.swimThreat.data();
  
@@ -121,6 +159,11 @@ index 0319762c..845afac0 100644
  		} else {
  			const float threatSurf = e->GetSurfDamage(role) * e->thrHealth;
  			const float threatWater = e->GetWaterDamage(role) * e->thrHealth;
+-			const int vsl = std::min(int(e->vel.Length2D() * slackMod.speedMod), slackMod.speedModMax);
++			const int vsl = int(e->vel.Length2D() * THREAT_UPDATE_RATE / squareSize);  // Anarva: cells it can cover by the next update (no cap)
+ 			e->cdef->IsAlwaysHit()
+ 					? AddEnemyAmphConst(threatSurf, threatWater, drawSurfThreat, drawAmphThreat, drawSwimThreat, *e, vsl)
+ 					: AddEnemyAmphGradient(threatSurf, threatWater, drawSurfThreat, drawAmphThreat, drawSwimThreat, *e, vsl);
 diff --git a/src/circuit/map/ThreatMap.h b/src/circuit/map/ThreatMap.h
 index ebe35302..aadcb18f 100644
 --- a/src/circuit/map/ThreatMap.h
