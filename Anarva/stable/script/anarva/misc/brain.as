@@ -2608,7 +2608,7 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 IUnitTask@ commGuardTask = null;
 int commGuards = 0;
 
-CCircuitUnit@ NearestFactory(const AIFloat3& p)
+CCircuitUnit@ NearestFactory(const AIFloat3& in p)
 {
 	CCircuitUnit@ best = null; float bd = 1e9f;
 	for (uint i = 0; i < Brain::Intel::allFactories.length(); ++i) {
@@ -2619,7 +2619,7 @@ CCircuitUnit@ NearestFactory(const AIFloat3& p)
 }
 
 // enemy threat able to reach p within the commander's trip home from p, minus what can cover it there
-float CommExposure(const AIFloat3& p, float tHome)
+float CommExposure(const AIFloat3& in p, float tHome)
 {
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);

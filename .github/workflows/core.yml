@@ -1,6 +1,6 @@
 name: Build core library
 
-# Anarva's native library: BARb's CircuitAI core (barbarian @ e3bebd3) + core/circuitai.patch,
+# Anarva's native library: BARb's CircuitAI core (barbarian @ f4a6ca3, the commit the engine pins) + core/circuitai.patch,
 # compiled inside the Recoil engine's own build containers (the same toolchain BAR's official
 # builds use), for the engine version Anarva targets. Output: SkirmishAI.dll and libSkirmishAI.so.
 
@@ -12,7 +12,7 @@ on:
 
 env:
   RECOIL_TAG: "2026.09.03"
-  CIRCUITAI_COMMIT: e3bebd3
+  CIRCUITAI_COMMIT: f4a6ca3  # the BARb commit engine 2026.09.03 pins (CircuitAI 1.6.29), same as the opponents
 
 jobs:
   build:

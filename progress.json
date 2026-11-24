@@ -1,5 +1,5 @@
 {
- "project": "Anarv\u00c4\u0081 \u00e2\u20ac\u201d Skirmish AI for Beyond All Reason (BARb/CircuitAI core + own AngelScript brain/configs)",
+ "project": "AnarvÄ â€” Skirmish AI for Beyond All Reason (BARb/CircuitAI core + own AngelScript brain/configs)",
  "goal": {
   "statement": "1 Anarva must be able to beat 6 BARb (hard) opponents on all types of maps",
   "map_types": [
@@ -35,6 +35,30 @@
    "desc": "1v6 on all map types",
    "status": "todo",
    "result": null
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "own C++ core A/B, 1v2 BARb hard, 6 maps, 30-min cap",
+   "results": {
+    "official DLL 1.6.29 + scripts": {
+     "share": 0.33,
+     "survival_min": 29.0
+    },
+    "self-built 1.6.30 unpatched": {
+     "share": 0.1,
+     "survival_min": 24.8
+    },
+    "self-built 1.6.30 + patch": {
+     "share": 0.13,
+     "survival_min": 24.0
+    },
+    "self-built 1.6.29 unpatched": {
+     "share": 0.22,
+     "survival_min": 27.8
+    }
+   },
+   "finding": "The earlier build used CircuitAI e3bebd3 (1.6.30), two commits past what engine 2026.09.03 ships (f4a6ca3, 1.6.29: move-order timeout 60->300 s). 1.6.30 did worse; the patch itself did not. Core now based on f4a6ca3 and built by CI in BAR's own container (gcc 13), so tests use the official toolchain.",
+   "next": "A/B official vs CI-built patched 1.6.29 (flags off); then F_HOLD, F_COMMGUARD, high-ground artillery one at a time."
   }
  ],
  "install": {

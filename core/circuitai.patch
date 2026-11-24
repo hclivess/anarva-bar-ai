@@ -1,5 +1,5 @@
 diff --git a/src/circuit/map/ThreatMap.cpp b/src/circuit/map/ThreatMap.cpp
-index 0319762..b7badca 100644
+index 0319762c..b7badca5 100644
 --- a/src/circuit/map/ThreatMap.cpp
 +++ b/src/circuit/map/ThreatMap.cpp
 @@ -244,12 +244,17 @@ float CThreatMap::GetBuilderThreatAt(const AIFloat3& position) const
@@ -25,7 +25,7 @@ index 0319762..b7badca 100644
  	} else {
  		threatArray = pThreatData.load()->roleThreatPtrs[role]->surfThreat.data();
 diff --git a/src/circuit/map/ThreatMap.h b/src/circuit/map/ThreatMap.h
-index ebe3530..aadcb18 100644
+index ebe35302..aadcb18f 100644
 --- a/src/circuit/map/ThreatMap.h
 +++ b/src/circuit/map/ThreatMap.h
 @@ -44,6 +44,7 @@ public:
@@ -37,7 +37,7 @@ index ebe3530..aadcb18 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
-index 719442f..0bdc8f9 100644
+index 719442f0..0bdc8f94 100644
 --- a/src/circuit/module/MilitaryManager.cpp
 +++ b/src/circuit/module/MilitaryManager.cpp
 @@ -661,6 +661,17 @@ IFighterTask* CMilitaryManager::Enqueue(const TaskF::SFightTask& ti)
@@ -59,7 +59,7 @@ index 719442f..0bdc8f9 100644
  {
  	CRetreatTask* task = new CRetreatTask(this);
 diff --git a/src/circuit/module/MilitaryManager.h b/src/circuit/module/MilitaryManager.h
-index f752cb2..9e54dea 100644
+index f752cb27..9e54dea1 100644
 --- a/src/circuit/module/MilitaryManager.h
 +++ b/src/circuit/module/MilitaryManager.h
 @@ -109,6 +109,7 @@ public:
@@ -71,7 +71,7 @@ index f752cb2..9e54dea 100644
  private:
  	virtual void DequeueTask(IUnitTask* task, bool done = false) override;
 diff --git a/src/circuit/script/BuilderScript.cpp b/src/circuit/script/BuilderScript.cpp
-index 0be6a83..ec2cfaf 100644
+index 0be6a835..ec2cfaf1 100644
 --- a/src/circuit/script/BuilderScript.cpp
 +++ b/src/circuit/script/BuilderScript.cpp
 @@ -68,6 +68,8 @@ CBuilderScript::CBuilderScript(CScriptManager* scr, CBuilderManager* mgr)
@@ -84,7 +84,7 @@ index 0be6a83..ec2cfaf 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe..b8007a8 100644
+index c3aaefe5..b8007a86 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,11 @@
@@ -273,7 +273,7 @@ index c3aaefe..b8007a8 100644
  
  bool CInitScript::Init()
 diff --git a/src/circuit/script/MilitaryScript.cpp b/src/circuit/script/MilitaryScript.cpp
-index 8963398..0157635 100644
+index 89633988..01576350 100644
 --- a/src/circuit/script/MilitaryScript.cpp
 +++ b/src/circuit/script/MilitaryScript.cpp
 @@ -35,6 +35,10 @@ CMilitaryScript::CMilitaryScript(CScriptManager* scr, CMilitaryManager* mgr)
@@ -288,7 +288,7 @@ index 8963398..0157635 100644
  	r = engine->RegisterObjectMethod("CMilitaryManager", "uint GetGuardTaskNum() const", asMETHOD(CMilitaryManager, GetGuardTaskNum), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CMilitaryManager", "const float armyCost", asOFFSET(CMilitaryManager, armyCost)); ASSERT(r >= 0);
 diff --git a/src/circuit/spring/SpringMap.h b/src/circuit/spring/SpringMap.h
-index b468c2e..2a99e19 100644
+index b468c2e1..2a99e191 100644
 --- a/src/circuit/spring/SpringMap.h
 +++ b/src/circuit/spring/SpringMap.h
 @@ -29,6 +29,7 @@ public:
@@ -300,7 +300,7 @@ index b468c2e..2a99e19 100644
  	int GetHeight() const { return map->GetHeight(); }
  	const char* GetName() const { return map->GetName(); }
 diff --git a/src/circuit/task/fighter/ArtilleryTask.cpp b/src/circuit/task/fighter/ArtilleryTask.cpp
-index e45235d..120d8ee 100644
+index e45235d9..120d8ee9 100644
 --- a/src/circuit/task/fighter/ArtilleryTask.cpp
 +++ b/src/circuit/task/fighter/ArtilleryTask.cpp
 @@ -23,6 +23,10 @@
@@ -449,7 +449,7 @@ index e45235d..120d8ee 100644
  {
  	const std::shared_ptr<CPathInfo>& pPath = query->GetPathInfo();
 diff --git a/src/circuit/task/fighter/ArtilleryTask.h b/src/circuit/task/fighter/ArtilleryTask.h
-index a36c4e1..cc6b7ef 100644
+index a36c4e1b..cc6b7ef6 100644
 --- a/src/circuit/task/fighter/ArtilleryTask.h
 +++ b/src/circuit/task/fighter/ArtilleryTask.h
 @@ -30,6 +30,9 @@ private:
@@ -463,7 +463,7 @@ index a36c4e1..cc6b7ef 100644
  	void ApplySafePos(const CQueryPathMulti* query);
  	void Fallback(CCircuitUnit* unit, bool proceed);
 diff --git a/src/circuit/task/fighter/DefendTask.cpp b/src/circuit/task/fighter/DefendTask.cpp
-index af382ba..1b73467 100644
+index af382ba3..1b734677 100644
 --- a/src/circuit/task/fighter/DefendTask.cpp
 +++ b/src/circuit/task/fighter/DefendTask.cpp
 @@ -104,7 +104,7 @@ void CDefendTask::Update()
@@ -507,7 +507,7 @@ index af382ba..1b73467 100644
  
  	CPathFinder* pathfinder = circuit->GetPathfinder();
 diff --git a/src/circuit/task/fighter/DefendTask.h b/src/circuit/task/fighter/DefendTask.h
-index 981b94f..16b5c6d 100644
+index 981b94f9..16b5c6df 100644
 --- a/src/circuit/task/fighter/DefendTask.h
 +++ b/src/circuit/task/fighter/DefendTask.h
 @@ -27,6 +27,8 @@ public:
@@ -528,7 +528,7 @@ index 981b94f..16b5c6d 100644
  
  } // namespace circuit
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a92..b14f41b 100644
+index a0f5a922..b14f41b3 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -604,7 +604,7 @@ index a0f5a92..b14f41b 100644
 +
 +} // namespace circuit
 diff --git a/src/circuit/unit/CircuitDef.h b/src/circuit/unit/CircuitDef.h
-index 0247bcb..80d6a50 100644
+index 0247bcb8..80d6a508 100644
 --- a/src/circuit/unit/CircuitDef.h
 +++ b/src/circuit/unit/CircuitDef.h
 @@ -249,6 +249,10 @@ public:
