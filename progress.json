@@ -257,6 +257,33 @@
     }
    },
    "decision": "on by default: better share and no outright losses in both rounds (pooled 0.41 vs 0.27, 0 vs 3 outright)"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "Release gate: current defaults (F_POWERALL on) 1v1 vs one BARb hard, 8 games, 30 min cap",
+   "results": {
+    "wins": 4,
+    "losses": 4,
+    "by_map": {
+     "open": [
+      0,
+      3
+     ],
+     "choke": [
+      2,
+      1
+     ],
+     "mixed": [
+      2,
+      0
+     ]
+    },
+    "outright": {
+     "win": 1,
+     "loss": 1
+    }
+   },
+   "decision": "no pre-alpha release yet: parity, not a win. Open maps 0-3; the one outright loss was a blind commander walking 2361 from base (fix F_COMMFOG in testing)"
   }
  ],
  "install": {
