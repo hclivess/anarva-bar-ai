@@ -22,6 +22,11 @@ IMPROVEMENT ONLY THEN YOU CAN TEST."
   Production, targeting and counters use that knowledge. Owner, 2026-11-24: "What is a good unit against Behemoth
   in competitive play? Why haven't you analyzed the replays and taken notes? Why haven't you done it for every unit
   in the game and instead you just copied BARb on everything [and] ran 15000 tests. Pointless."
+- **Replays give the reason, the AI gets the decision.** In replays find the ACTUAL REASON why top players do
+  things the way they do (owner, 2026-11-24): what situation, what it buys, what it costs. Transpose that reason into
+  decision logic computed from the live game. Never copy the observed number, layout, timing or order itself.
+  Base layout, unit choice, timings, commander use: all of it.
+
 - **Tests are not progress.** Thousands of A/B games on marginal flags produced nothing a single watched game
   didn't show. Study (replays, unit facts) and reasoned implementation come first.
 
