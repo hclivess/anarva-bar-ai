@@ -25,7 +25,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 def play(args, demo):
     out = os.path.join(args.out, os.path.splitext(os.path.basename(demo))[0])
     if os.path.exists(os.path.join(out, "done")):
-        return out
+        log = os.path.join(out, "stdout.txt")
+        if os.path.exists(log) and "[REPLAY] STAT" in open(log, errors="ignore").read():
+            return out
+        shutil.rmtree(out, ignore_errors=True)  # finished without data: play it again
     engine = engine_for(demo)
     if engine is None:
         print("no engine for", demo)
