@@ -377,6 +377,29 @@
     }
    },
    "decision": "undecided: income +30% from minute 21, fewer outright losses, but share disagrees between rounds; two more rounds"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "F_MOHO round 3 (tie-breaker; round 4 lost to a memory-pressure stop)",
+   "results": {
+    "on": {
+     "share": [
+      0.25
+     ],
+     "outright": [
+      3
+     ]
+    },
+    "off": {
+     "share": [
+      0.1
+     ],
+     "outright": [
+      4
+     ]
+    }
+   },
+   "decision": "on by default: won 2 of 3 rounds, pooled share 0.26 vs 0.18, outright 6 vs 9, metal income +30% from minute 21"
   }
  ],
  "install": {

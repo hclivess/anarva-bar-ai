@@ -8,7 +8,7 @@ minus risk), never a hand-picked cutoff. Each behaviour sits behind a flag, ship
 on only after it wins a paired A/B test (2 concurrent rounds x 8 games vs 2 BARb hard, judged on outright
 losses, value share and damage ratio).
 
-## Feature flags (11 on, 31 off)
+## Feature flags (12 on, 31 off)
 
 | Flag | Default | What it does | Measured |
 |---|---|---|---|
@@ -16,6 +16,7 @@ losses, value share and damage ratio).
 | `F_COMMGUARD` | **on** | commander goes home when a known force it can't survive could reach it first (C++ bridge) | F_HOLD+F_COMMGUARD on vs off, CI core, 2 concurrent rounds x 8 games, 1v2: both on by default: fewer outright losses, share unchanged |
 | `F_HOLD` | **on** | just-in-time extractor defence: meet each incoming enemy group at the extractor it is heading for (C++ bridge) | F_HOLD+F_COMMGUARD on vs off, CI core, 2 concurrent rounds x 8 games, 1v2: both on by default: fewer outright losses, share unchanged |
 | `F_INTEL` | **on** | eyes, scouting, phantom threat | first build |
+| `F_MOHO` | **on** | T2 lab builds T2 constructors while one more saves more on the extractor-upgrade queue than it costs | F_MOHO (T2 constructors sized by the extractor-upgrade queue, priced at the shadow price of metal) on vs off, 2 rounds x 8, 1v2: undecided: income +30% from minute 21, fewer outright losses, but share disagrees between rounds; two more rounds; F_MOHO round 3 (tie-breaker; round 4 lost to a memory-pressure stop): on by default: won 2 of 3 rounds, pooled share 0.26 vs 0.18, outright 6 vs 9, metal income +30% from minute 21 |
 | `F_OPENER` | **on** | constructor-rich T1 opener (false = BARb hard opener) | r8: 13-2-1 vs base |
 | `F_POWERALL` | **on** | our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool | F_POWERALL (Director measures our power from every armed surface unit, not the gather pool) on vs off, 2 concurrent rounds x 8, 1v2: on by default: better share and no outright losses in both rounds (pooled 0.41 vs 0.27, 0 vs 3 outright); Release gate: current defaults (F_POWERALL on) 1v1 vs one BARb hard, 8 games, 30 min cap: no pre-alpha release yet: parity, not a win. Open maps 0-3; the one outright loss was a blind commander walking 2361 from base (fix F_COMMFOG in testing) |
 | `F_RECALL` | **on** | broken-squad recall | not measured yet |
@@ -42,13 +43,13 @@ losses, value share and damage ratio).
 | `F_HEIGHTSQUAD` | off | core switch: squad units stand at their range from the height of their spot (C++) | F_HEIGHTSQUAD (squad standoff scaled by engine range at the target spot height) on vs off, 2 concurrent rounds x 8, 1v2: kept off: worse share and damage ratio in both rounds |
 | `F_JIT` | off | build-power scale from the ratio at each enemy arrival time (just in time), not from everything at once | not measured yet |
 | `F_MAPECO` | off | constructor share from free extractor spots (map analysis) | not measured yet |
-| `F_MOHO` | off | T2 lab builds T2 constructors while one more saves more on the extractor-upgrade queue than it costs | not measured yet |
 | `F_NEWRECALL` | off | need-based recall (false = first-gen 40%-of-peak rule) | not measured yet |
 | `F_PROD` | off | capability-based production chooser (incl. rez bots) | r7 even, r10 2-1-8 vs base: loses fights; off |
 | `F_QUOTA` | off | attack/raid quotas sized from needed power | 1v2, 8x45min: F_QUOTA alone: 0-8; share 0.04, survival 36.5 vs base 0.13/38.6: rejected; 1v2, 8x45min: F_DETAIL+F_WAVES+F_QUOTA (the bundle behind the only 1v2 win): 0-8, all outright losses, survival 30.2 vs base 38.6 min: rejected; the Throne win was an outlier |
 | `F_REDIRECT` | off | assist factories by army deficit | untested alone |
 | `F_REZ` | off | rez-bot fleet sized to the wreck metal on the map | 1v2: rez fleet sized to wreck metal (F_REZ): 0-6 both; value share 0.24 vs 0.11 base, kills up sharply; promising, needs more games; 1v2: anarva_e live energy + F_CONVERT + F_REZ (rez pool had the killedTotal bug): 0-6 both; value share 0.25 vs 0.31 base, 2 outright losses: not shipped; rez to be retested alone after the fix; 1v2, 8 games each, 45-min games: F_REZ (bug fixed) vs base: 0-8 both; value share 0.04 vs 0.13, survival 38.8 vs 38.6 min: rejected |
 | `F_SCOUT` | off | scout quota >=3 and timed scout recruits (keep sight) | harmful as always-on |
+| `F_SCOUTMAP` | off | scouts go where vision is worth most: our assets an unseen enemy could have reached since we last looked (C++ switch) | not measured yet |
 | `F_STAKE` | off | trade estimate weighted by the army at stake (no all-in on a few kills) | 1v2: F_STAKE (trade weighted by army at stake): value share 0.15 vs 0.24: off |
 | `F_TECH` | off | payback-based tech gate | untested alone; 1v1 vs BARb: best + F_ECOGATE + F_TECH: 9W 5L 2D (1.80) vs control 2.25: neutral on wins; much larger economies on big maps, weak on small Avalanche; 1v2, 8x45min: F_TECH alone: 0-8; share 0.05, survival 34.0 vs base 0.13/38.6: rejected |
 | `F_WASTE` | off | overflow: nanos + converters | r12: 6-7-3 vs BARb (control 9-4-3): rejected; 1v1 vs BARb: best + F_WASTE: 6W 7L 3D (0.86) vs control 2.25 -> rejected |
@@ -125,6 +126,7 @@ What the AngelScript layer can ask the core. Anarvā-specific additions are in `
 | global | `uint AiGetWrecks(array<AIFloat3>@+, array<float>@+, array<bool>@+)` |
 | global | `bool aiSwitchHighGroundArty` |
 | global | `bool aiSwitchHeightSquads` |
+| global | `bool aiSwitchScoutMap` |
 | global | `uint AiGetEnemyIds(array<int>@+)` |
 | global | `uint AiGetMetalSpots(array<AIFloat3>@+, array<float>@+, array<bool>@+)` |
 | global | `bool AiIsInLOS(const AIFloat3& in)` |
