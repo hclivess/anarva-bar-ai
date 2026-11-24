@@ -1,8 +1,16 @@
 diff --git a/src/circuit/map/ThreatMap.cpp b/src/circuit/map/ThreatMap.cpp
-index 0319762c..b7badca5 100644
+index 0319762c..6be651b6 100644
 --- a/src/circuit/map/ThreatMap.cpp
 +++ b/src/circuit/map/ThreatMap.cpp
-@@ -244,12 +244,17 @@ float CThreatMap::GetBuilderThreatAt(const AIFloat3& position) const
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "map/ThreatMap.h"
++#include "util/AnarvaSwitches.h"
+ #include "map/MapManager.h"
+ #include "module/MilitaryManager.h"  // GetRangeUnitCountCompensatorScale
+ #include "scheduler/Scheduler.h"
+@@ -244,12 +245,17 @@ float CThreatMap::GetBuilderThreatAt(const AIFloat3& position) const
  void CThreatMap::SetThreatType(CCircuitUnit* unit)
  {
  	assert(unit != nullptr);
@@ -24,6 +32,33 @@ index 0319762c..b7badca5 100644
  		threatArray = pThreatData.load()->roleThreatPtrs[role]->swimThreat.data();
  	} else {
  		threatArray = pThreatData.load()->roleThreatPtrs[role]->surfThreat.data();
+@@ -397,7 +403,7 @@ void CThreatMap::AddEnemyAir(const float threat, float* drawAirThreat,
+ 			}
+ 
+ 			const int index = z * width + x;
+-			const float heat = threat * (1.0f - 0.5f * sqrtf(sum) / range);
++			const float heat = threat * (anarva::switches.decide ? 1.0f : (1.0f - 0.5f * sqrtf(sum) / range));  // Anarva: a weapon in range does full damage at any distance
+ 			// MicroPather cannot deal with negative costs
+ 			// (which may arise due to floating-point drift)
+ 			// nor with zero-cost nodes (see MP::SetMapData,
+@@ -489,7 +495,7 @@ void CThreatMap::AddEnemyAmphGradient(const float threatSurf, const float threat
+ 			// Laser: no gradient
+ 			const int sum = dxSq + dzSq;
+ 			const int index = z * width + x;
+-			const float half = 0.5f * sqrtf(sum);
++			const float half = anarva::switches.decide ? 0.f : 0.5f * sqrtf(sum);  // Anarva: full damage anywhere in range
+ 
+ 			if (sector[index].isWater) {
+ 				if (sum <= rangeLandSq) {
+@@ -540,7 +546,7 @@ void CThreatMap::AddDecloaker(float* drawCloakThreat, const SEnemyData& e)
+ 			}
+ 
+ 			const int index = z * width + x;
+-			const float heat = threatCloak * (1.0f - 0.75f * sqrtf(sum) / rangeCloak);
++			const float heat = threatCloak * (anarva::switches.decide ? 1.0f : (1.0f - 0.75f * sqrtf(sum) / rangeCloak));
+ 			drawCloakThreat[index] += heat;
+ 		}
+ 	}
 diff --git a/src/circuit/map/ThreatMap.h b/src/circuit/map/ThreatMap.h
 index ebe35302..aadcb18f 100644
 --- a/src/circuit/map/ThreatMap.h
