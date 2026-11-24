@@ -92,6 +92,7 @@ def main():
     ap.add_argument("--minutes", type=float, default=20.0, help="wall-clock limit")
     ap.add_argument("--game-minutes", type=float, default=30.0, help="game-time cap (harness widget)")
     args = ap.parse_args()
+    args.out = os.path.abspath(args.out)  # the engine runs inside out/, so a relative script path breaks
 
     os.makedirs(args.out, exist_ok=True)
     harness = os.path.join(os.path.dirname(os.path.abspath(__file__)), "harness")
