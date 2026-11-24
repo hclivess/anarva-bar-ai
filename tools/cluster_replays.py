@@ -121,7 +121,12 @@ def main():
     for p in glob.glob(os.path.join(a.root, "*", "stdout.txt")):
         demo = os.path.basename(os.path.dirname(p))
         meta = index.get(demo, {})
+        if index and not meta:
+            continue  # not in the library (e.g. an older playback)
+        top = set(meta.get("top_players", [])) if meta else None
         for pg in player_games(p):
+            if top is not None and "top_players" in meta and pg["name"] not in top:
+                continue  # only the best players overall are analysed
             pg["replay"] = demo
             pg["id"] = meta.get("id")
             pg["format"] = meta.get("format", "?")
