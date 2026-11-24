@@ -1093,7 +1093,7 @@ void Update()
 		return;
 
 	// --- energy ---
-	if (bigMake > 0.f && bigMake >= 0.6f * income && !aiEconomyMgr.isEnergyStalling && fill > 0.5f) {
+	if (!F_ECORECLAIM && bigMake > 0.f && bigMake >= 0.6f * income && !aiEconomyMgr.isEnergyStalling && fill > 0.5f) {  // fixed gates: replaced by EcoReclaimUpdate when F_ECORECLAIM
 		CCircuitUnit@ cand = PickCandidate(lowEnergy);
 		if (cand is null && (HasAfus() || bigMake >= 3000.f))
 			@cand = PickCandidate(midEnergy);
@@ -1112,7 +1112,7 @@ void Update()
 	}
 
 	// --- plain fusions once 2+ advanced fusions carry the grid ---
-	if (F_FUSREC && AfusCount() >= 2 && AfusMake() >= 0.7f * income && fill > 0.6f && !aiEconomyMgr.isEnergyStalling) {
+	if (!F_ECORECLAIM && F_FUSREC && AfusCount() >= 2 && AfusMake() >= 0.7f * income && fill > 0.6f && !aiEconomyMgr.isEnergyStalling) {
 		CCircuitUnit@ cand = PickCandidate(Fusions());
 		if (cand !is null) {
 			const float surplus = income - EnergyMake(cand.circuitDef) - e.pull;
