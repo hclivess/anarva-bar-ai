@@ -100,6 +100,8 @@ string F1(float v) { return formatFloat(v, "", 0, 1); }
 
 AIFloat3 basePos = AIFloat3(-1.f, 0.f, -1.f);
 bool HasBase() { return basePos.x >= 0.f; }
+const int NEVER = -1;  // "no order yet" marker for frame stamps
+
 
 // How long an order may wait before it is forgotten: the time to finish it - the walk from base plus its build time at
 // our mean constructor's build power (frames). Replaces fixed 2/3/5-minute lifetimes.
@@ -274,7 +276,7 @@ namespace Storage {
 
 CCircuitDef@ storeDef = null;
 float blockedMax = 0.f;
-int ordered = 0, orderFrame = -10 * MINUTE, countAtOrder = -1;
+int ordered = 0, orderFrame = NEVER, countAtOrder = -1;
 
 float Incoming()
 {
@@ -294,7 +296,7 @@ void Update()
 	blockedMax = 0.f;
 	if (storeDef is null || !storeDef.IsAvailable(ai.frame) || want <= 0.f || !HasBase()) return;
 	// one order at a time: outstanding until one more storage exists or the task would have timed out
-	if (countAtOrder >= 0 && storeDef.count <= countAtOrder && ai.frame - orderFrame < OrderLife(storeDef, basePos)) return;
+	if (countAtOrder >= 0 && storeDef.count <= countAtOrder && orderFrame != NEVER && ai.frame - orderFrame < OrderLife(storeDef, basePos)) return;
 	const float saved = AiMin(want, storeDef.storageM);
 	if (saved <= Economist::MetalValue(storeDef)) return;
 	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::STORE, Task::Priority::NORMAL, storeDef, basePos, 0.f, true, OrderLife(storeDef, basePos)));
@@ -322,7 +324,7 @@ string Status() { return "storage orders=" + ordered; }
  * the rez bots it enables (same test as the rez fleet, one level up). One order outstanding at a time.
  */
 namespace RezLab {
-int ordered = 0, orderFrame = -10 * MINUTE;
+int ordered = 0, orderFrame = NEVER;
 void Update()
 {
 	if (!HasBase()) return;
@@ -334,7 +336,7 @@ void Update()
 	}
 	CCircuitDef@ lab = Strategic::Side("armlab", "corlab", "leglab");
 	CCircuitDef@ rez = Strategic::Side("armrectr", "cornecro", "legrezbot");
-	if (lab is null || rez is null || !lab.IsAvailable(ai.frame) || ai.frame - orderFrame < OrderLife(lab, basePos)) return;  // one order at a time, for its lifetime
+	if (lab is null || rez is null || !lab.IsAvailable(ai.frame) || (orderFrame != NEVER && ai.frame - orderFrame < OrderLife(lab, basePos))) return;  // one order at a time, for its lifetime
 	array<AIFloat3> wp; array<float> wm; array<bool> wr;
 	const uint w = AiGetWrecks(wp, wm, wr);
 	float pool = 0.f;
@@ -1060,7 +1062,6 @@ array<CCircuitUnit@> allFactories;
 
 float jammerCost = 0.f;
 bool jamAlert = false;
-int lastScoutFrame = -10 * MINUTE;
 int eyesOrdered = 0;
 
 void Init()
@@ -1079,7 +1080,7 @@ void Init()
 	lastEyesFrame.resize(gw * gh);
 	for (uint i = 0; i < heat.length(); ++i) {
 		heat[i] = 0.f;
-		lastEyesFrame[i] = -10 * MINUTE;
+		lastEyesFrame[i] = NEVER;
 	}
 
 	jammerDefs = Defs({"armjamt", "corjamt", "armveil", "corshroud", "armjam", "coreter", "armsjam", "corsjam",
@@ -1236,7 +1237,7 @@ void OrderVision()
 	float bestHeat = cost;
 	for (uint c = 0; c < heat.length(); ++c) {
 		// a cell whose camera order is still within its lifetime is already being served
-		if (heat[c] > bestHeat && !AiIsInLOS(CellCenter(int(c))) && ai.frame - lastEyesFrame[c] >= OrderLife(eyesDef, CellCenter(int(c)))) {
+		if (heat[c] > bestHeat && !AiIsInLOS(CellCenter(int(c))) && (lastEyesFrame[c] == NEVER || ai.frame - lastEyesFrame[c] >= OrderLife(eyesDef, CellCenter(int(c))))) {
 			bestHeat = heat[c];
 			best = int(c);
 		}
@@ -1280,8 +1281,9 @@ namespace Strategic {
 CCircuitDef@ junoDef, amdDef, tacDef, siloDef, shieldDef;
 array<CCircuitDef@> junoDefs, amdDefs, tacDefs, siloDefs, shieldDefs;
 array<CCircuitUnit@> junos, amds, tacs, silos, shields, infra;
-array<int> lastOrder(5, -10 * MINUTE);
-array<int> lastLife(5, 0);  // each kind's last order lifetime (OrderLife)  // juno, amd, tac, silo, shield
+enum OrderKind { ORDER_JUNO, ORDER_AMD, ORDER_TAC, ORDER_SILO, ORDER_SHIELD, ORDER_KINDS }
+array<int> lastOrder(uint(ORDER_KINDS), NEVER);
+array<int> lastLife(uint(ORDER_KINDS), 0);  // each kind's last order lifetime (OrderLife)  // juno, amd, tac, silo, shield
 int orders = 0;
 
 float ShieldRadius() { return shieldDef is null ? 0.f : Facts::ShieldRadius(shieldDef.GetName()); }  // unit facts
@@ -1366,7 +1368,7 @@ void OnDestroyed(CCircuitUnit@ u)
 // No cooldown clock: a kind is ready when no order of it is still outstanding (one more exists, or the build task
 // we queued has expired at its own lifetime, ORDER_LIFE, set where it is enqueued).
 
-array<int> countAtOrder(8, -1);
+array<int> countAtOrder(uint(ORDER_KINDS), -1);
 bool Ready(int kind, CCircuitDef@ d)
 {
 	if (d is null || !d.IsAvailable(ai.frame)) return false;
@@ -1443,15 +1445,15 @@ void Update(bool jamAlert)
 	// to react (the missile lands in seconds). See NukeRisk().
 	const uint wantAmd = (amds.length() == 0 && NukeRisk() >= 1.f) ? 1
 		: ((enemyNuke && InfraValue() > 2.f * Brain::Economist::MetalValue(amdDef) * float(amds.length() + 1)) ? amds.length() + 1 : amds.length());
-	if (amds.length() < wantAmd && Ready(1, amdDef)) {
-		Order(1, amdDef, basePos, enemyNuke ? Task::Priority::NOW : Task::Priority::HIGH, 0.f);  // no scatter: the block map spaces by blast radius
+	if (amds.length() < wantAmd && Ready(ORDER_AMD, amdDef)) {
+		Order(ORDER_AMD, amdDef, basePos, enemyNuke ? Task::Priority::NOW : Task::Priority::HIGH, 0.f);  // no scatter: the block map spaces by blast radius
 		return;
 	}
 	// Juno: EMP missile that wipes radar, jammers and mines in its blast. Worth it when the enemy jammers it can wipe
 	// are worth more than it (no game clock).
-	if (jamAlert && junos.length() < 1 && Ready(0, junoDef)
+	if (jamAlert && junos.length() < 1 && Ready(ORDER_JUNO, junoDef)
 		&& aiEnemyMgr.GetEnemyCost(RT::JAMMER) > Brain::Economist::MetalValue(junoDef)) {
-		Order(0, junoDef, basePos, Task::Priority::HIGH, 0.f);  // no scatter: the block map spaces by blast radius
+		Order(ORDER_JUNO, junoDef, basePos, Task::Priority::HIGH, 0.f);  // no scatter: the block map spaces by blast radius
 		return;
 	}
 	// Everything below is an investment that doesn't fight today: only when our army covers what we need.
@@ -1459,24 +1461,24 @@ void Update(bool jamAlert)
 		return;
 	// Shields over the most valuable uncovered infrastructure: one more while what it would cover is worth more than
 	// the shield (no clock, no energy level, no count formula, no fixed value floor).
-	if (Ready(4, shieldDef)) {
+	if (Ready(ORDER_SHIELD, shieldDef)) {
 		AIFloat3 pos;
 		float value;
 		if (BestShieldSpot(pos, value) && value > Brain::Economist::MetalValue(shieldDef)) {
-			Order(4, shieldDef, pos, Task::Priority::NORMAL, 0.f);  // no scatter: the block map spaces by blast radius
+			Order(ORDER_SHIELD, shieldDef, pos, Task::Priority::NORMAL, 0.f);  // no scatter: the block map spaces by blast radius
 			return;
 		}
 	}
 	// Tactical / EMP launcher, forward of base: one more while the enemy's static metal exceeds what our launchers cost.
 	const float enemyStatic = aiEnemyMgr.GetEnemyCost(RT::STATIC);
-	if (tacDef !is null && Ready(2, tacDef) && enemyStatic > Brain::Economist::MetalValue(tacDef) * float(tacs.length() + 1)) {
-		Order(2, tacDef, ReachPos(tacDef), Task::Priority::NORMAL, 0.f);  // no scatter: the block map spaces by blast radius
+	if (tacDef !is null && Ready(ORDER_TAC, tacDef) && enemyStatic > Brain::Economist::MetalValue(tacDef) * float(tacs.length() + 1)) {
+		Order(ORDER_TAC, tacDef, ReachPos(tacDef), Task::Priority::NORMAL, 0.f);  // no scatter: the block map spaces by blast radius
 		return;
 	}
 	// Nuke: only under our own anti-nuke umbrella, while the enemy's static metal exceeds the silo.
-	if (amds.length() >= 1 && silos.length() < 1 && siloDef !is null && Ready(3, siloDef)
+	if (amds.length() >= 1 && silos.length() < 1 && siloDef !is null && Ready(ORDER_SILO, siloDef)
 		&& enemyStatic > Brain::Economist::MetalValue(siloDef)) {
-		Order(3, siloDef, basePos, Task::Priority::NORMAL, 0.f);  // no scatter: the block map spaces by blast radius
+		Order(ORDER_SILO, siloDef, basePos, Task::Priority::NORMAL, 0.f);  // no scatter: the block map spaces by blast radius
 		return;
 	}
 }
@@ -1494,7 +1496,7 @@ float terrainHit = 0.f, hitAtLastOrder = -1.f;
 CCircuitDef@ terrainDef = null;
 float armyMetal = 0.f;               // our armed mobile units (not builders), metal
 CCircuitDef@ mlvDef, mineDef;        // minelayer vehicle and its light land mine
-int minelayers = 0, mlvOrderedAt = -10000;
+int minelayers = 0, mlvOrderedAt = NEVER;
 void OnTerrainLoss(const AIFloat3& in pos, float costM)
 {
 	MapFacts::SMap@ m = Brain::Production::mapInfo;
@@ -1665,7 +1667,7 @@ array<CCircuitDef@> rezDefs;       // resurrect/reclaim bots (facts: canresurrec
 array<CCircuitUnit@> rezBots;
 int rezOrders = 0;
 array<int> built(1, 0);  // per def id: how many we've ordered (diminishing returns)
-int choices = 0, builders = 0, lastDump = 0;
+int choices = 0, builders = 0;
 string last = "";
 
 void Init()
@@ -1805,7 +1807,7 @@ CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 IUnitTask@ MineLayerTask(CCircuitUnit@ fac)
 {
 	if (Strategic::myStart < 0 || Strategic::minelayers > 0 || Strategic::mlvDef is null
-		|| ai.frame - Strategic::mlvOrderedAt < OrderLife(Strategic::mlvDef, fac.GetPos(ai.frame)) || !Strategic::mlvDef.IsAvailable(ai.frame)
+		|| (Strategic::mlvOrderedAt != NEVER && ai.frame - Strategic::mlvOrderedAt < OrderLife(Strategic::mlvDef, fac.GetPos(ai.frame))) || !Strategic::mlvDef.IsAvailable(ai.frame)
 		|| Facts::BuildOptions(fac.circuitDef.GetName()).find(Strategic::mlvDef.GetName()) < 0)
 		return null;
 	Strategic::mlvOrderedAt = ai.frame;
@@ -1943,13 +1945,6 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		}
 	}	if (cands.length() == 0)
 		return null;
-	if (ai.frame - lastDump > 3 * MINUTE) {  // audit trail: what the chooser weighed
-		lastDump = ai.frame;
-		string s = "[ANV] Production @" + fdef.GetName() + " army(D=" + int(armyD) + " H=" + int(armyH) + " rng=" + int(armyRange) + " los=" + int(armyLos) + "):";
-		for (uint i = 0; i < cands.length(); ++i)
-			s += " " + cands[i].GetName() + "=" + formatFloat(scores[i], "", 0, 3);
-		AiLog(s);
-	}
 	// Largest deficit, not dice: each candidate's target share of what we build is its share of the scores; pick the
 	// one furthest below its target in metal built so far.
 	float sumS = 0.f, sumB = 0.f;
