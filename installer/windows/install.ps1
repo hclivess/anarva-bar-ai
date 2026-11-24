@@ -171,6 +171,15 @@ function Install-Anarva([string]$data) {
     }
     Write-Step "rename $tmp to $dst"
     if (-not $DryRun) { Rename-Item -LiteralPath $tmp -NewName "stable" }
+    # Anarva's display widgets (its player names, shown only on this machine) go into the user widget folder
+    $wsrc = Join-Path $PSScriptRoot "widgets"
+    if (Test-Path -LiteralPath $wsrc) {
+        $wdst = Join-Path $data "LuaUI\Widgets"
+        foreach ($w in @(Get-ChildItem -LiteralPath $wsrc -Filter "anarva_*.lua" -File)) {
+            Write-Step "copy widget $($w.Name) to $wdst"
+            if (-not $DryRun) { New-Item -ItemType Directory -Force -Path $wdst | Out-Null; Copy-Item -LiteralPath $w.FullName -Destination $wdst -Force }
+        }
+    }
     Write-Host ""
     if ($DryRun) {
         Write-Host "Dry run finished: nothing was changed."
@@ -191,6 +200,10 @@ function Uninstall-Anarva([string]$data) {
     if (-not $DryRun) {
         Remove-Item -LiteralPath $aiRoot -Recurse -Force
         Write-Host "Uninstalled $AiName."
+    }
+    foreach ($w in @(Get-ChildItem -LiteralPath (Join-Path $data "LuaUI\Widgets") -Filter "anarva_*.lua" -File -ErrorAction SilentlyContinue)) {
+        Write-Step "remove widget $($w.FullName)"
+        if (-not $DryRun) { Remove-Item -LiteralPath $w.FullName -Force }
     }
     $devmode = Join-Path $data "devmode.txt"
     if (Test-Path -LiteralPath $devmode) {

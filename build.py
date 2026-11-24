@@ -259,6 +259,11 @@ def archive_entries(installers, os_tag=None):
             raise SystemExit(f"missing core library {rel(lib)} (ANARVA_REQUIRE_CORE=1)")
         else:
             print(f"warning: no {rel(lib)}: {os_tag} archive falls back to BARb's library at install time")
+    wdir = os.path.join(ROOT, "Anarva", "widgets")
+    if os.path.isdir(wdir):
+        for fn in sorted(os.listdir(wdir)):
+            if fn.endswith(".lua"):
+                entries.append((os.path.join(wdir, fn), f"widgets/{fn}"))
     for name in installers:
         src = os.path.join(ROOT, name)
         if not os.path.isfile(src):

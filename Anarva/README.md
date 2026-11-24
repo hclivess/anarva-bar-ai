@@ -55,3 +55,11 @@ library from the BARb folder above next to `AIInfo.lua`. Developers working from
 - Keep exactly one version folder (`stable`). The lobby sends only the AI's name, not its version.
 - Server rules (the autohost refusing unknown AI names, or the game being unranked) haven't been
   tested yet. Try a private custom battle first.
+
+## Player names
+
+BAR gives every AI a random name (the game's synced `ai_namer` gadget); an AI can't change it. The installers add
+a small interface widget, **Anarva player names** (`LuaUI/Widgets/anarva_names.lua`), that shows Anarva's own names
+for Anarva-controlled teams on your screen: Vritrasura, biong, fethar, PanHrnecPapinak, Liduric (in team order).
+It only changes what your screen shows, so it can't desync a game; other players see BAR's names. If it doesn't
+appear, allow custom widgets in BAR's settings and enable it in the widget list (F11).

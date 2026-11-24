@@ -162,6 +162,14 @@ install_ai() {
     if [ -e "$dst" ]; then step "remove the previous install $dst"; [ "$DRY_RUN" = 1 ] || rm -rf -- "$dst"; fi
     step "rename $tmp to $dst"
     [ "$DRY_RUN" = 1 ] || mv -- "$tmp" "$dst"
+    # Anarva's display widgets (its player names, shown only on this machine) go into the user widget folder
+    if [ -d "$HERE/widgets" ]; then
+        for w in "$HERE"/widgets/anarva_*.lua; do
+            [ -f "$w" ] || continue
+            step "copy widget $(basename "$w") to $data/LuaUI/Widgets"
+            [ "$DRY_RUN" = 1 ] || { mkdir -p "$data/LuaUI/Widgets"; cp "$w" "$data/LuaUI/Widgets/"; }
+        done
+    fi
     echo
     if [ "$DRY_RUN" = 1 ]; then
         echo "Dry run finished: nothing was changed."
@@ -177,6 +185,10 @@ uninstall_ai() {
     if [ ! -e "$ai_root" ]; then echo "$AI_NAME is not installed in $data (no $ai_root). Nothing to do."; return; fi
     step "remove $ai_root"
     if [ "$DRY_RUN" = 0 ]; then rm -rf -- "$ai_root"; echo "Uninstalled $AI_NAME."; fi
+    for w in "$data"/LuaUI/Widgets/anarva_*.lua; do
+        [ -f "$w" ] || continue
+        step "remove widget $w"; [ "$DRY_RUN" = 1 ] || rm -f -- "$w"
+    done
     if [ -e "$data/devmode.txt" ]; then
         echo "$data/devmode.txt was left in place; delete it yourself if no other AI or tool needs developer mode."
     fi
