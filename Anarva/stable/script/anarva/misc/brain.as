@@ -1932,6 +1932,30 @@ void Fortify()
 		return;
 	if (F_TERRAIN && TerrainFortify())
 		return;
+	if (F_DECIDE) {
+		// Audit S1: no fallback constants. The cell where we lost the most metal gets a turret when that loss beats the
+		// turret and it would survive; it stands on our side of the cell by its own range, so it covers the cell. One
+		// order at a time, for the order's lifetime (3 min, below).
+		if (ai.frame - lastFortify < 3 * MINUTE) return;
+		CCircuitDef@ tur = BestTurret();
+		if (tur is null || !tur.IsAvailable(ai.frame) || !HasBase()) return;
+		int best = -1;
+		float bestHeat = Economist::MetalValue(tur);
+		for (uint c = 0; c < Brain::Intel::heat.length(); ++c)
+			if (Brain::Intel::heat[c] > bestHeat) { bestHeat = Brain::Intel::heat[c]; best = int(c); }
+		if (best < 0) return;
+		const AIFloat3 hot = Brain::Intel::CellCenter(best);
+		AIFloat3 dir = hot - basePos;
+		dir.y = 0.f;
+		const float len = AiMax(1.f, dir.Length2D());
+		const AIFloat3 tpos = basePos + dir / len * AiMax(0.f, len - tur.GetMaxRange());
+		if (!TurretSurvives(tur, tpos)) return;
+		lastFortify = ai.frame;
+		++forts;
+		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, tpos, SQUARE_SIZE * 8, true, 3 * MINUTE));
+		AiLog("[ANV] Fortify: " + tur.GetName() + " covering the cell where we lost " + int(bestHeat) + " metal");
+		return;
+	}
 	const int p = Brain::Director::posture;
 	if ((p != Brain::Director::HOLD && p != Brain::Director::TURTLE) || ai.frame < 5 * MINUTE
 		|| ai.frame - lastFortify < 30 * SECOND)
