@@ -2760,7 +2760,7 @@ index 89633988..092100a6 100644
  	r = engine->RegisterObjectMethod("CMilitaryManager", "uint GetGuardTaskNum() const", asMETHOD(CMilitaryManager, GetGuardTaskNum), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CMilitaryManager", "const float armyCost", asOFFSET(CMilitaryManager, armyCost)); ASSERT(r >= 0);
 diff --git a/src/circuit/setup/DefenceData.cpp b/src/circuit/setup/DefenceData.cpp
-index 5d4e3b26..2b7e6910 100644
+index 5d4e3b26..2de0d9d7 100644
 --- a/src/circuit/setup/DefenceData.cpp
 +++ b/src/circuit/setup/DefenceData.cpp
 @@ -15,6 +15,7 @@
@@ -2771,7 +2771,40 @@ index 5d4e3b26..2b7e6910 100644
  #include "json/json.h"
  
  #include "spring/SpringMap.h"
-@@ -72,7 +73,8 @@ void CDefenceData::Init(CCircuitAI* circuit)
+@@ -41,21 +42,17 @@ void CDefenceData::ReadConfig(CCircuitAI* circuit)
+ {
+ 	const Json::Value& root = circuit->GetSetupManager()->GetConfig();
+ 	const Json::Value& defence = root["defence"];
+-	const Json::Value& baseRad = defence["base_rad"];
+-	baseRadMin = baseRad.get((unsigned)0, 1000.f).asFloat();
+-	baseRadMax = baseRad.get((unsigned)1, 3000.f).asFloat();
+-	baseRange = utils::clamp(CTerrainManager::GetTerrainDiagonal() * 0.3f, baseRadMin, baseRadMax);
+-	const Json::Value& commRad = defence["comm_rad"];
+-	commRadBegin = commRad.get((unsigned)0, 1000.f).asFloat();
+-	const float commRadEnd = commRad.get((unsigned)1, 300.f).asFloat();
+-	commRadFraction = (commRadEnd - commRadBegin) / baseRange;
+-
+-	const Json::Value& escort = defence["escort"];
+-	guardTaskNum = escort.get(unsigned(0), 2).asUInt();
+-	guardsNum = escort.get(unsigned(1), 1).asUInt();
+-	guardFrame = escort.get(unsigned(2), 600).asInt() * FRAMES_PER_SEC;
+-
+-	pointRange = root["porcupine"].get("point_range", 600.f).asFloat();
++	// Anarva: no config base/commander radii, escorts or point range. The base range is half-way to the enemy (live,
++	// MilitaryManager), builders are protected by the script's risk decisions (no escort quota), defence points are
++	// grouped by turret reach.
++	(void)defence;
++	baseRange = 0.f;
++	commRadBegin = 0.f;
++	commRadFraction = 0.f;
++	guardTaskNum = 0;
++	guardsNum = 0;
++	guardFrame = 0;
++	pointRange = 0.f;
+ }
+ 
+ void CDefenceData::Init(CCircuitAI* circuit)
+@@ -72,7 +69,8 @@ void CDefenceData::Init(CCircuitAI* circuit)
  	}
  
  	CMap* map = circuit->GetMap();
@@ -2782,7 +2815,7 @@ index 5d4e3b26..2b7e6910 100644
  	CEncloseCircle enclose;
  
 diff --git a/src/circuit/setup/SetupManager.cpp b/src/circuit/setup/SetupManager.cpp
-index d809caf8..2c99a4c2 100644
+index d809caf8..118beab1 100644
 --- a/src/circuit/setup/SetupManager.cpp
 +++ b/src/circuit/setup/SetupManager.cpp
 @@ -180,13 +180,11 @@ void CSetupManager::PickStartPos(StartPosType type)
@@ -2833,6 +2866,64 @@ index d809caf8..2c99a4c2 100644
  	circuit->GetLua()->CallRules(cmd.c_str(), cmd.size());
  
  	return true;
+@@ -334,11 +336,12 @@ void CSetupManager::ReadConfig()
+ 	const Json::Value& root = GetConfig();
+ 	const std::string& cfgName = GetConfigName();
+ 
+-	antiCapProb = root["quota"].get("anti_cap", 2.0f).asFloat();
+ 
+ 	const Json::Value& shield = root["retreat"]["shield"];
+-	emptyShield = shield.get((unsigned)0, 0.1f).asFloat();
+-	fullShield = shield.get((unsigned)1, 0.6f).asFloat();
++	// Anarva: a shield helps while it holds any charge; a retreater is repaired when it is full (no config 0.1 / 0.6)
++	(void)shield;
++	emptyShield = 0.f;
++	fullShield = 1.f;
+ 
+ 	const Json::Value& comm = root["commander"];
+ 	const Json::Value& items = comm["unit"];
+@@ -360,14 +363,11 @@ void CSetupManager::ReadConfig()
+ //		commChoices.push_back(cdef);
+ 
+ 		const Json::Value& comm = items[commName];
+-		const float imp = comm.get("importance", 0.f).asFloat();
+-//		magnitude += imp;
+-		weight.push_back(imp);
+ 
+ 		const Json::Value& mrph = comm["upgrade"];
+ 		SCommInfo& commInfo = commInfos[commName];
+ 		SCommInfo::SMorph& morph = commInfo.morph;
+-		morph.frame = mrph.get("time", -1).asInt() * FRAMES_PER_SEC;
++		morph.frame = -1;  // Anarva: no clock-triggered morph (config upgrade time)
+ 
+ 		const Json::Value& upgr = mrph["module"];
+ 		morph.modules.reserve(upgr.size());
+@@ -379,24 +379,13 @@ void CSetupManager::ReadConfig()
+ 			morph.modules.push_back(mdls);
+ 		}
+ 
+-		const Json::Value& hhdd = comm["hide"];
+-		SCommInfo::SHide& hide = commInfo.hide;
+-		hide.frame = hhdd.get("time", -1).asInt() * FRAMES_PER_SEC;
+-		hide.threat = hhdd.get("threat", 0.f).asFloat();
+-		hide.isAir = hhdd.get("air", false).asBool();
+-		const Json::Value& taskRad = hhdd["task_rad"];
+-		hide.sqPeaceTaskRad = std::min(taskRad.get((unsigned)0, 2000.f).asFloat(), CTerrainManager::GetTerrainDiagonal() * 0.5f);
+-		if (hide.sqPeaceTaskRad > 0.f) {
+-			hide.sqPeaceTaskRad = SQUARE(hide.sqPeaceTaskRad);
+-		}
+-		hide.sqDangerTaskRad = SQUARE(taskRad.get((unsigned)1, 1000.f).asFloat());
++		// Anarva: no config hide (time/threat/radii); commander risk is decided in the script
+ 
+ 		CCircuitDef* commDef = circuit->GetCircuitDef(commName.c_str());
+ 		const std::string& commSide = comm.get("side", "").asString();
+ 		sides[commDef->GetId()] = commSide;
+ 		if (circuit->GetSideName() == commSide) {
+ 			commChoice = commDef;
+-			assistFac = comm.get("assist_fac", 0).asInt();
+ 		}
+ 	}
+ 
 diff --git a/src/circuit/setup/SetupManager.h b/src/circuit/setup/SetupManager.h
 index 9e1293b2..e113e6a7 100644
 --- a/src/circuit/setup/SetupManager.h
@@ -5303,7 +5394,7 @@ index 0247bcb8..fa83a192 100644
  	float shieldRadius;
  	float maxShield;
 diff --git a/src/circuit/unit/CircuitUnit.cpp b/src/circuit/unit/CircuitUnit.cpp
-index 8416e294..4d5f98dd 100644
+index 8416e294..02ace4af 100644
 --- a/src/circuit/unit/CircuitUnit.cpp
 +++ b/src/circuit/unit/CircuitUnit.cpp
 @@ -131,7 +131,7 @@ void CCircuitUnit::PushTravelAct(ITravelAction* action)
@@ -5327,6 +5418,15 @@ index 8416e294..4d5f98dd 100644
  				CTerrainManager::CorrectPosition(leadPos);
  				CmdMoveTo(leadPos, UNIT_COMMAND_OPTION_ALT_KEY, timeout);
  				CmdManualFire(UNIT_COMMAND_OPTION_SHIFT_KEY, timeout);  // Krow
+@@ -214,7 +217,7 @@ bool CCircuitUnit::IsDGunReady(int frame, float energy)
+ 
+ bool CCircuitUnit::IsShieldCharged(float percent)
+ {
+-	return shield->GetShieldPower() > circuitDef->GetMaxShield() * percent;
++	return (percent <= 0.f) ? (shield->GetShieldPower() > 0.f) : (shield->GetShieldPower() >= circuitDef->GetMaxShield() * percent);  // Anarva: full = at max
+ }
+ 
+ bool CCircuitUnit::IsJumpReady()
 @@ -240,7 +243,7 @@ float CCircuitUnit::GetDamage()
  		return 0.f;
  	}
@@ -5694,7 +5794,7 @@ index 96098603..ed7c57e3 100644
  	minSqDist = squareSize * increment;  // / 2;
  	minSqDist *= minSqDist;
 diff --git a/src/circuit/unit/enemy/EnemyManager.cpp b/src/circuit/unit/enemy/EnemyManager.cpp
-index 091a710f..8270cde3 100644
+index 091a710f..18e9039d 100644
 --- a/src/circuit/unit/enemy/EnemyManager.cpp
 +++ b/src/circuit/unit/enemy/EnemyManager.cpp
 @@ -126,7 +126,7 @@ void CEnemyManager::UpdateEnemyDatas(CQuadField& quadField)
@@ -5706,18 +5806,30 @@ index 091a710f..8270cde3 100644
  	while ((enemyIterator < enemyUpdates.size()) && (n != 0)) {
  		CEnemyUnit* enemy = enemyUpdates[enemyIterator];
  		if (enemy->IsDying()) {
-@@ -450,8 +450,9 @@ void CEnemyManager::ReadConfig()
+@@ -450,17 +450,12 @@ void CEnemyManager::ReadConfig()
  	const Json::Value& quotas = root["quota"];
  	const Json::Value& qthrMod = quotas["thr_mod"];
  
 -	initThrMod.inMobile = qthrMod.get("mobile", 1.f).asFloat();
 -	initThrMod.inStatic = qthrMod.get("static", 0.f).asFloat();
+-
+-	const Json::Value& aathr = quotas["aa_threat"];
+-	const float size0 = aathr[0].get((unsigned)0, 8.f).asFloat();
+-	const float size1 = aathr[1].get((unsigned)0, 24.f).asFloat();
+-	const float thr0 = aathr[0].get((unsigned)1, 42.f).asFloat();
+-	const float thr1 = aathr[1].get((unsigned)1, 420.f).asFloat();
+-	// NOTE: instead of map-area consider min(width, height)
+-	const float mapSize = (circuit->GetMap()->GetWidth() / 64) * (circuit->GetMap()->GetHeight() / 64);
+-	maxAAThreat = (thr1 - thr0) / (SQUARE(size1) - SQUARE(size0)) * (mapSize - SQUARE(size0)) + thr0;
 +	// Anarva: every threat counts at its value (no config multipliers; statics were counted x0 and attacks ignored turrets)
 +	initThrMod.inMobile = 1.f;
 +	initThrMod.inStatic = 1.f;
++
++	maxAAThreat = 0.f;  // Anarva: unused; air validity compares enemy AA with the rest of its army (IsAirValid)
++	(void)qthrMod;
+ }
  
- 	const Json::Value& aathr = quotas["aa_threat"];
- 	const float size0 = aathr[0].get((unsigned)0, 8.f).asFloat();
+ /*
 diff --git a/src/circuit/unit/enemy/EnemyManager.h b/src/circuit/unit/enemy/EnemyManager.h
 index 372f9c9f..8c9bf7ea 100644
 --- a/src/circuit/unit/enemy/EnemyManager.h
