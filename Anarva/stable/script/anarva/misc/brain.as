@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_DECIDE = false;    // core switch: every dice roll in the core replaced by a computed choice (unit/role pick, constructor, retreat, superweapon, chance, map points)
 const bool F_RAIDRESP = false;  // answer raids already in progress: the 'arrive before the enemy' test can never pass once they are there
 const bool F_RECLAIM = false;   // constructors reclaim wreck fields when the metal, minus walk and risk, beats their current job
 const bool F_DEFRISK = false;   // a turret is built only where it is more likely to survive than not (cover vs the danger that can reach it)
@@ -3654,6 +3655,7 @@ void Update()  // every 30 frames
 	aiSwitchHeightSquads = F_HEIGHTSQUAD;
 	aiSwitchScoutMap = F_SCOUTMAP;
 	aiSwitchEngageSeen = F_ENGAGE;
+	aiSwitchDecide = F_DECIDE;
 	if (F_INTEL) Intel::Update();
 	Assess::Update();
 	if (F_WASTE) Waste::Update();

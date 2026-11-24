@@ -36,19 +36,191 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(const springai::AIFloat3& position) const;
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
-diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
-index 719442f0..c1b3c86a 100644
---- a/src/circuit/module/MilitaryManager.cpp
-+++ b/src/circuit/module/MilitaryManager.cpp
+diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
+index e4c1d126..53b80c7e 100644
+--- a/src/circuit/module/BuilderManager.cpp
++++ b/src/circuit/module/BuilderManager.cpp
 @@ -6,6 +6,7 @@
   */
  
+ #include "module/BuilderManager.h"
++#include "util/AnarvaSwitches.h"
+ #include "module/EconomyManager.h"
  #include "module/MilitaryManager.h"
+ #include "module/FactoryManager.h"
+@@ -265,7 +266,7 @@ void CBuilderManager::InitHandlers()
+ 	const Json::Value& retreat = root["retreat"]["builder"];
+ 	const float minRet = retreat.get((unsigned)0, 0.8f).asFloat();
+ 	const float maxRet = retreat.get((unsigned)1, 0.8f).asFloat();
+-	const float builderRet = (float)rand() / RAND_MAX * (maxRet - minRet) + minRet;
++	const float builderRet = 0.5f * (minRet + maxRet);  // Anarva: no dice; with switch decide the retreat is a live decision
+ 	const float retMod = retreat.get((unsigned)2, 1.0f).asFloat();
+ 	const float goalBuildMod = root["economy"].get("build_mod", 320.f).asFloat();
+ 
+diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
+index 6e5da8b6..5010b71a 100644
+--- a/src/circuit/module/EconomyManager.cpp
++++ b/src/circuit/module/EconomyManager.cpp
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "module/EconomyManager.h"
++#include "util/AnarvaSwitches.h"
+ #include "module/BuilderManager.h"
+ #include "module/FactoryManager.h"
+ #include "module/MilitaryManager.h"
+@@ -456,7 +457,7 @@ void CEconomyManager::ReadConfig(float& outMinEInc)
+ 		const int min = surfEngy[0].asInt();
+ 		const int max = surfEngy.get(1, min).asInt();
+ 		SEnergyCond cond;
+-		cond.limit = min + rand() % (max - min + 1);
++		cond.limit = max;  // Anarva: no dice; a cap only, until the energy-deficit rule replaces it (AUDIT.md)
+ 		cond.metalIncome = surfEngy.get(2, -1.f).asFloat();
+ 		cond.energyIncome = surfEngy.get(3, -1.f).asFloat();
+ 		cond.score = surfEngy.get(4, -1.f).asFloat();
+diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
+index 54fef916..3ddb44de 100644
+--- a/src/circuit/module/FactoryManager.cpp
++++ b/src/circuit/module/FactoryManager.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "module/FactoryManager.h"
++#include "util/AnarvaSwitches.h"
++#include "util/AnarvaDecide.h"
+ #include "module/EconomyManager.h"
+ #include "module/BuilderManager.h"
+ #include "module/MilitaryManager.h"
+@@ -449,7 +451,7 @@ void CFactoryManager::ReadConfig()
+ 		} else {
+ 			const float min = retreat.get((unsigned)0, cdef->GetRetreat()).asFloat();
+ 			const float max = retreat.get((unsigned)1, cdef->GetRetreat()).asFloat();
+-			cdef->SetRetreat((float)rand() / RAND_MAX * (max - min) + min);
++			cdef->SetRetreat(0.5f * (min + max));  // Anarva: no dice; with switch decide the retreat is a live decision
+ 		}
+ 
+ 		const Json::Value& selfDHP = behaviour["selfd_hp"];
+@@ -1043,9 +1045,12 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+ 
+ 	CEconomyManager* economyMgr = circuit->GetEconomyManager();
+ 	const float metalIncome = std::min(economyMgr->GetAvgMetalIncome(), economyMgr->GetAvgEnergyIncome());
+-	const int r = rand();
++	// Anarva (switch decide): no coin flip. An extra constructor only adds value while income goes unspent (metal pull
++	// below income); once we spend everything we are metal-limited and the same metal is worth more as army.
++	const int r = anarva::switches.decide ? 0 : rand();
++	const bool unspent = economyMgr->GetMetalPull() < economyMgr->GetAvgMetalIncome();
+ 	if ((circuit->GetBuilderManager()->GetBuildPower() >= metalIncome * bpRatio)
+-		|| (isActive && (r >= RAND_MAX / 2)))
++		|| (anarva::switches.decide ? (isActive && !unspent) : (isActive && (r >= RAND_MAX / 2))))
+ 	{
+ 		return nullptr;
+ 	}
+@@ -1715,7 +1720,13 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+ 		return {buildDef->GetId(), getPriority(isResponse)};
+ 	}
+ 
+-	if (magnitude == 0.f) {  // workaround for disabled units
++	if (anarva::switches.decide) {  // Anarva: the candidate furthest below its share, no dice
++		const int k = anarva::DeficitPick(candidates, [](const SCandidate& c) { return c.cdef; }, [](const SCandidate& c) { return c.weight; });
++		if (k >= 0) {
++			buildDef = candidates[k].cdef;
++			isResponse = candidates[k].isResponse;
++		}
++	} else if (magnitude == 0.f) {  // workaround for disabled units
+ 		if (!candidates.empty()) {
+ 			buildDef = candidates[rand() % candidates.size()].cdef;
+ 		}
+@@ -1799,7 +1810,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
+ 	}
+ 
+ 	CCircuitDef* buildDef = nullptr;
+-	if (magnitude == 0.f) {  // workaround for disabled units
++	if (anarva::switches.decide) {  // Anarva: the candidate furthest below its share, no dice
++		const int k = anarva::DeficitPick(candidates, [](const std::pair<CCircuitDef*, float>& c) { return c.first; }, [](const std::pair<CCircuitDef*, float>& c) { return c.second; });
++		if (k >= 0) {
++			buildDef = candidates[k].first;
++		}
++	} else if (magnitude == 0.f) {  // workaround for disabled units
+ 		// FIXME: for previous algo with probs[i]==0; never true with probs[i]>0
+ 		if (!candidates.empty()) {
+ 			buildDef = candidates[rand() % candidates.size()].first;
+diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
+index 719442f0..6ebb3012 100644
+--- a/src/circuit/module/MilitaryManager.cpp
++++ b/src/circuit/module/MilitaryManager.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "module/MilitaryManager.h"
++#include "util/AnarvaDecide.h"
 +#include "util/AnarvaSwitches.h"
  #include "module/BuilderManager.h"
  #include "module/EconomyManager.h"
  #include "module/FactoryManager.h"
-@@ -661,6 +662,17 @@ IFighterTask* CMilitaryManager::Enqueue(const TaskF::SFightTask& ti)
+@@ -247,7 +249,7 @@ void CMilitaryManager::InitHandlers()
+ 	const Json::Value& retreat = root["retreat"]["fighter"];
+ 	const float minRet = retreat.get((unsigned)0, 0.5f).asFloat();
+ 	const float maxRet = retreat.get((unsigned)1, 0.5f).asFloat();
+-	const float fighterRet = (float)rand() / RAND_MAX * (maxRet - minRet) + minRet;
++	const float fighterRet = 0.5f * (minRet + maxRet);  // Anarva: no dice; with switch decide the retreat is a live decision (ShouldRetreat)
+ 	const float retMod = retreat.get((unsigned)2, 1.0f).asFloat();
+ 	const float commMod = root["quota"]["thr_mod"].get("comm", 1.f).asFloat();
+ 	std::vector<CCircuitDef*> builders;
+@@ -378,7 +380,7 @@ void CMilitaryManager::ReadConfig()
+ 	const Json::Value& amMap = amount["map"];
+ 	const float minOffset = amOff.get((unsigned)0, -0.2f).asFloat();
+ 	const float maxOffset = amOff.get((unsigned)1, 0.2f).asFloat();
+-	const float offset = (float)rand() / RAND_MAX * (maxOffset - minOffset) + minOffset;
++	const float offset = 0.5f * (minOffset + maxOffset);  // Anarva: no dice (middle of the range)
+ 	const float minFactor = amFac.get((unsigned)0, 2.0f).asFloat();
+ 	const float maxFactor = amFac.get((unsigned)1, 1.0f).asFloat();
+ 	const float minMap = amMap.get((unsigned)0, 8.0f).asFloat();
+@@ -614,37 +616,37 @@ IFighterTask* CMilitaryManager::Enqueue(const TaskF::SFightTask& ti)
+ 		case IFighterTask::FightType::DEFEND: {
+ 			const AIFloat3& pos = circuit->GetSetupManager()->GetBasePos();
+ 			if (ti.check == IFighterTask::FightType::_SIZE_) {
+-				const float mod = (float)rand() / RAND_MAX * defenceMod.len + defenceMod.min;
++				const float mod = anarva::switches.decide ? defenceMod.min + 0.5f * defenceMod.len : (float)rand() / RAND_MAX * defenceMod.len + defenceMod.min;
+ 				task = new CDefendTask(this, pos, ti.promote, ti.promote, ti.power, 1.0f / mod);
+ 			} else {
+ 				task = new CDefendTask(this, pos, ti.check, ti.promote, ti.power, 1.0f);
+ 			}
+ 		} break;
+ 		case IFighterTask::FightType::SCOUT: {
+-			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+ 			task = new CScoutTask(this, 0.75f / mod);
+ 		} break;
+ 		case IFighterTask::FightType::RAID: {
+-			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+ 			task = new CRaidTask(this, raid.avg, 0.75f / mod);
+ 		} break;
+ 		case IFighterTask::FightType::ATTACK: {
+-			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+ 			task = new CAttackTask(this, minAttackers, 0.8f / mod);
+ 		} break;
+ 		case IFighterTask::FightType::BOMB: {
+-			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+ 			task = new CBombTask(this, 2.0f / mod);
+ 		} break;
+ 		case IFighterTask::FightType::ARTY: {
+ 			task = new CArtilleryTask(this);
+ 		} break;
+ 		case IFighterTask::FightType::AA: {
+-			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+ 			task = new CAntiAirTask(this, 1.0f / mod);
+ 		} break;
+ 		case IFighterTask::FightType::AH: {
+-			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+ 			task = new CAntiHeavyTask(this, 2.0f / mod);
+ 		} break;
+ 		case IFighterTask::FightType::SUPPORT: {
+@@ -661,6 +663,17 @@ IFighterTask* CMilitaryManager::Enqueue(const TaskF::SFightTask& ti)
  	return task;
  }
  
@@ -66,7 +238,7 @@ index 719442f0..c1b3c86a 100644
  CRetreatTask* CMilitaryManager::EnqueueRetreat()
  {
  	CRetreatTask* task = new CRetreatTask(this);
-@@ -984,8 +996,35 @@ void CMilitaryManager::ProcessHubDefence(CBDefenceTask* task)
+@@ -984,8 +997,35 @@ void CMilitaryManager::ProcessHubDefence(CBDefenceTask* task)
  	task->SetDefPointId(closestPoint->id);
  }
  
@@ -102,6 +274,18 @@ index 719442f0..c1b3c86a 100644
  	ClearScoutPosition(unit->GetTask());
  	CMetalManager* metalMgr = circuit->GetMetalManager();
  	const CMetalData::Clusters& clusters = metalMgr->GetClusters();
+@@ -1318,6 +1358,11 @@ void CMilitaryManager::DiceBigGun()
+ 	}
+ 
+ 	unsigned choice = 0;
++	if (anarva::switches.decide) {  // Anarva: largest deficit, no dice
++		const int k = anarva::DeficitPick(candidates, [](const std::pair<CCircuitDef*, float>& c) { return c.first; }, [](const std::pair<CCircuitDef*, float>& c) { return c.second; });
++		bigGunDef = candidates[std::max(0, k)].first;
++		return;
++	}
+ 	float dice = (float)rand() / RAND_MAX * magnitude;
+ 	for (unsigned i = 0; i < candidates.size(); ++i) {
+ 		dice -= candidates[i].second;
 diff --git a/src/circuit/module/MilitaryManager.h b/src/circuit/module/MilitaryManager.h
 index f752cb27..174b6e23 100644
 --- a/src/circuit/module/MilitaryManager.h
@@ -119,6 +303,27 @@ index f752cb27..174b6e23 100644
  	virtual CRetreatTask* EnqueueRetreat() override;
  private:
  	virtual void DequeueTask(IUnitTask* task, bool done = false) override;
+diff --git a/src/circuit/resource/MetalManager.cpp b/src/circuit/resource/MetalManager.cpp
+index 97de6587..5d2717b8 100644
+--- a/src/circuit/resource/MetalManager.cpp
++++ b/src/circuit/resource/MetalManager.cpp
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "resource/MetalManager.h"
++#include "util/AnarvaSwitches.h"
+ #include "map/ThreatMap.h"
+ #include "module/EconomyManager.h"
+ #include "setup/SetupManager.h"  // Only for json
+@@ -153,7 +154,7 @@ void CMetalManager::ParseMetalSpots()
+ 		const unsigned width = map->GetWidth();
+ 		const unsigned height = map->GetHeight();
+ 		const float mapSize = (width / 64) * (height / 64);
+-		const float offset = (float)rand() / RAND_MAX * 50.f - 25.f;
++		const float offset = 0.f;  // Anarva: no dice (middle of the +-25 range)
+ 		//  8x8  ~  80 spots +-25
+ 		// 24x24 ~ 240 spots +-25
+ 		unsigned mCount = (240.f - 80.f) / (SQUARE(24.f) - SQUARE(8.f)) * (mapSize - SQUARE(8.f)) + 80.f + offset;
 diff --git a/src/circuit/script/BuilderScript.cpp b/src/circuit/script/BuilderScript.cpp
 index 0be6a835..b91cfe6e 100644
 --- a/src/circuit/script/BuilderScript.cpp
@@ -134,7 +339,7 @@ index 0be6a835..b91cfe6e 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..f30128e8 100644
+index c3aaefe5..fa9c7474 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -356,7 +561,7 @@ index c3aaefe5..f30128e8 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +940,27 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +940,28 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -370,6 +575,7 @@ index c3aaefe5..f30128e8 100644
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHeightSquads", &anarva::switches.heightSquads); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchScoutMap", &anarva::switches.scoutMap); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchEngageSeen", &anarva::switches.engageSeen); ASSERT(r >= 0);
++	r = engine->RegisterGlobalProperty("bool aiSwitchDecide", &anarva::switches.decide); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyIds(array<int>@+)", asFUNCTION(Bridge_GetEnemyIds), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetMetalSpots(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetMetalSpots), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiIsInLOS(const AIFloat3& in)", asFUNCTION(Bridge_IsInLOS), asCALL_CDECL); ASSERT(r >= 0);
@@ -427,6 +633,58 @@ index 89633988..092100a6 100644
  	r = engine->RegisterObjectMethod("CMilitaryManager", "void DefaultMakeDefence(int, const AIFloat3& in)", asMETHOD(CMilitaryManager, DefaultMakeDefence), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CMilitaryManager", "uint GetGuardTaskNum() const", asMETHOD(CMilitaryManager, GetGuardTaskNum), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CMilitaryManager", "const float armyCost", asOFFSET(CMilitaryManager, armyCost)); ASSERT(r >= 0);
+diff --git a/src/circuit/setup/SetupManager.cpp b/src/circuit/setup/SetupManager.cpp
+index d809caf8..2c99a4c2 100644
+--- a/src/circuit/setup/SetupManager.cpp
++++ b/src/circuit/setup/SetupManager.cpp
+@@ -180,13 +180,11 @@ void CSetupManager::PickStartPos(StartPosType type)
+ 					SCluster c;
+ 					c.count = allyTeam->GetClusterTeam(kv.first).count;
+ 					const CMetalData::SCluster& cl = clusters[kv.first];
+-					const float income = cl.income + (float)rand() / RAND_MAX - 0.5f;
++					const float income = cl.income;  // Anarva: no jitter
+ 					c.distDivIncome = mapCenter.distance(cl.position) / income;
+ 					validClusters.push_back(std::make_pair(kv.first, c));
+ 				}
+-				std::random_device rd;
+-				std::mt19937 g(rd());
+-				std::shuffle(validClusters.begin(), validClusters.end(), g);
++				// Anarva: no shuffle; the sort below decides
+ 
+ 				auto cmp = [](const std::pair<int, SCluster>& a, const std::pair<int, SCluster>& b) {
+ 					if (a.second.count < b.second.count) {
+@@ -202,7 +200,9 @@ void CSetupManager::PickStartPos(StartPosType type)
+ 				allyTeam->OccupyCluster(clusterId, circuit->GetTeamId());
+ 
+ 				const CMetalData::MetalIndices& indices = validPoints[clusterId];
+-				const CMetalData::SMetal& spot = spots[indices[rand() % indices.size()]];
++				int bestIdx = indices[0];  // Anarva: the richest spot of the cluster, not a random one
++				for (int idx : indices) if (spots[idx].income > spots[bestIdx].income) bestIdx = idx;
++				const CMetalData::SMetal& spot = spots[bestIdx];
+ 				CCircuitDef* mexDef = circuit->GetEconomyManager()->GetSideInfo().mexDef;
+ 				const float range = std::max(mexDef->GetDef()->GetXSize(), mexDef->GetDef()->GetZSize())
+ 						* SQUARE_SIZE / 2 * 1.4f + commChoice->GetRadius();
+@@ -235,8 +235,10 @@ void CSetupManager::SetBasePos(const AIFloat3& pos)
+ //		refPos = circuit->GetMetalManager()->GetClusters()[index].position;
+ //	}
+ 	const AIFloat3 enemyDir = (mapCenter - refPos).Normalize2D();
+-	const AIFloat3 normal = AIFloat3(-enemyDir.z, 0, enemyDir.x) * ((rand() < RAND_MAX / 2) ? -1.f : 1.f);
+ 	const AIFloat3 backPos = refPos - enemyDir * 400.f;
++	// Anarva: energy (chain explosions) on the flank farther from the map centre, not a coin flip
++	const AIFloat3 n0 = AIFloat3(-enemyDir.z, 0, enemyDir.x);
++	const AIFloat3 normal = ((backPos - n0 * 200.f).distance2D(mapCenter) >= (backPos + n0 * 200.f).distance2D(mapCenter)) ? n0 : AIFloat3(-n0.x, 0.f, -n0.z);
+ 	metalBase = backPos + normal * 200.f;
+ 	energyBase = backPos - normal * 200.f;
+ 	energyBase2 = backPos - enemyDir * 400.f;
+@@ -297,7 +299,7 @@ bool CSetupManager::PickCommander()
+ 	}
+ 
+ 	std::string cmd("ai_commander:");
+-	cmd += ((commChoice == nullptr) ? comms[rand() % comms.size()] : commChoice)->GetDef()->GetName();
++	cmd += ((commChoice == nullptr) ? comms[0] : commChoice)->GetDef()->GetName();  // Anarva: no dice
+ 	circuit->GetLua()->CallRules(cmd.c_str(), cmd.size());
+ 
+ 	return true;
 diff --git a/src/circuit/spring/SpringMap.h b/src/circuit/spring/SpringMap.h
 index b468c2e1..2a99e191 100644
 --- a/src/circuit/spring/SpringMap.h
@@ -439,6 +697,182 @@ index b468c2e1..2a99e191 100644
  	int GetWidth() const { return map->GetWidth(); }
  	int GetHeight() const { return map->GetHeight(); }
  	const char* GetName() const { return map->GetName(); }
+diff --git a/src/circuit/task/IdleTask.cpp b/src/circuit/task/IdleTask.cpp
+index f210b3a1..7486ca8c 100644
+--- a/src/circuit/task/IdleTask.cpp
++++ b/src/circuit/task/IdleTask.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "task/IdleTask.h"
++#include "util/AnarvaSwitches.h"
++#include "util/AnarvaDecide.h"
+ #include "task/RetreatTask.h"
+ #include "module/TaskModule.h"
+ #include "unit/CircuitUnit.h"
+@@ -93,7 +95,7 @@ void CIdleTask::OnUnitIdle(CCircuitUnit* unit)
+ void CIdleTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+ {
+ 	const float healthPerc = unit->GetHealthPercent();
+-	if (healthPerc < unit->GetCircuitDef()->GetRetreat()) {
++	if (anarva::switches.decide ? anarva::ShouldRetreat(manager->GetCircuit(), unit) : (healthPerc < unit->GetCircuitDef()->GetRetreat())) {
+ 		CRetreatTask* task = manager->EnqueueRetreat();
+ 		if (task != nullptr) {
+ 			task->AssignTo(unit);
+diff --git a/src/circuit/task/RetreatTask.cpp b/src/circuit/task/RetreatTask.cpp
+index fcc4c984..846af2c5 100644
+--- a/src/circuit/task/RetreatTask.cpp
++++ b/src/circuit/task/RetreatTask.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "task/RetreatTask.h"
++#include "util/AnarvaSwitches.h"
++#include "util/AnarvaDecide.h"
+ #include "map/ThreatMap.h"
+ #include "map/InfluenceMap.h"
+ #include "module/BuilderManager.h"
+@@ -180,7 +182,7 @@ void CRetreatTask::Update()
+ 		} else if (unit->IsForceUpdate(frame) || isExecute) {
+ 			Start(unit);
+ 		} else if ((circuit->GetBindedRole(cdef->GetMainRole()) == ROLE_TYPE(BUILDER))
+-			&& (!cdef->IsRoleComm() || (healthPerc >= cdef->GetRetreat()))
++			&& (!cdef->IsRoleComm() || (anarva::switches.decide ? !anarva::ShouldRetreat(circuit, unit) : (healthPerc >= cdef->GetRetreat())))
+ 			&& (circuit->GetInflMap()->GetEnemyInflAt(unit->GetPos(frame)) < INFL_EPS))
+ 		{
+ 			Recovered(unit);
+diff --git a/src/circuit/task/builder/BuilderTask.cpp b/src/circuit/task/builder/BuilderTask.cpp
+index 172d4c26..35cacb2b 100644
+--- a/src/circuit/task/builder/BuilderTask.cpp
++++ b/src/circuit/task/builder/BuilderTask.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "task/builder/BuilderTask.h"
++#include "util/AnarvaSwitches.h"
++#include "util/AnarvaDecide.h"
+ #include "task/builder/BuildChain.h"
+ #include "task/builder/DefenceTask.h"  // Only for static_cast<CBDefenceTask*>
+ #include "task/RetreatTask.h"
+@@ -328,7 +330,7 @@ void IBuilderTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+ 	const int frame = circuit->GetLastFrame();
+ 	CCircuitDef* cdef = unit->GetCircuitDef();
+ 	const float healthPerc = unit->GetHealthPercent();
+-	if ((healthPerc > cdef->GetRetreat()) && !unit->IsDisarmed(frame)) {
++	if ((anarva::switches.decide ? !anarva::ShouldRetreat(manager->GetCircuit(), unit) : (healthPerc > cdef->GetRetreat())) && !unit->IsDisarmed(frame)) {
+ 		if (healthPerc < cdef->GetSelfDHP()) {
+ 			unit->CmdSelfD(true);
+ 		}
+@@ -828,7 +830,14 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
+ 						}
+ 					} break;
+ 					case SBuildInfo::Condition::CHANCE: {
+-						isValid = rand() < bi.value * RAND_MAX;
++						if (anarva::switches.decide) {  // Anarva: realise the probability deterministically (accumulate, fire at 1)
++							static float acc = 0.f;
++							acc += bi.value;
++							isValid = (acc >= 1.f);
++							if (isValid) acc -= 1.f;
++						} else {
++							isValid = rand() < bi.value * RAND_MAX;
++						}
+ 					} break;
+ 					case SBuildInfo::Condition::ALWAYS:
+ 					default: break;
+diff --git a/src/circuit/task/builder/RepairTask.cpp b/src/circuit/task/builder/RepairTask.cpp
+index 77c22dd9..0b98cf05 100644
+--- a/src/circuit/task/builder/RepairTask.cpp
++++ b/src/circuit/task/builder/RepairTask.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "task/builder/RepairTask.h"
++#include "util/AnarvaSwitches.h"
++#include "util/AnarvaDecide.h"
+ #include "task/RetreatTask.h"
+ #include "module/BuilderManager.h"
+ #include "module/EconomyManager.h"
+@@ -66,7 +68,7 @@ void CBRepairTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+ 	const int frame = circuit->GetLastFrame();
+ 	CCircuitDef* cdef = unit->GetCircuitDef();
+ 	const float healthPerc = unit->GetHealthPercent();
+-	if ((healthPerc > cdef->GetRetreat()) && !unit->IsDisarmed(frame)) {
++	if ((anarva::switches.decide ? !anarva::ShouldRetreat(manager->GetCircuit(), unit) : (healthPerc > cdef->GetRetreat())) && !unit->IsDisarmed(frame)) {
+ 		if (healthPerc < cdef->GetSelfDHP()) {
+ 			unit->CmdSelfD(true);
+ 		}
+diff --git a/src/circuit/task/builder/WaitTask.cpp b/src/circuit/task/builder/WaitTask.cpp
+index 7934b918..46b256dc 100644
+--- a/src/circuit/task/builder/WaitTask.cpp
++++ b/src/circuit/task/builder/WaitTask.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "task/builder/WaitTask.h"
++#include "util/AnarvaSwitches.h"
++#include "util/AnarvaDecide.h"
+ #include "task/RetreatTask.h"
+ #include "module/BuilderManager.h"
+ #include "CircuitAI.h"
+@@ -30,7 +32,7 @@ void CBWaitTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+ 	const int frame = circuit->GetLastFrame();
+ 	CCircuitDef* cdef = unit->GetCircuitDef();
+ 	const float healthPerc = unit->GetHealthPercent();
+-	if ((healthPerc > cdef->GetRetreat()) && !unit->IsDisarmed(frame)) {
++	if ((anarva::switches.decide ? !anarva::ShouldRetreat(manager->GetCircuit(), unit) : (healthPerc > cdef->GetRetreat())) && !unit->IsDisarmed(frame)) {
+ 		if (healthPerc < cdef->GetSelfDHP()) {
+ 			unit->CmdSelfD(true);
+ 		}
+diff --git a/src/circuit/task/fighter/AntiAirTask.cpp b/src/circuit/task/fighter/AntiAirTask.cpp
+index 93297d2c..bc947297 100644
+--- a/src/circuit/task/fighter/AntiAirTask.cpp
++++ b/src/circuit/task/fighter/AntiAirTask.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "task/fighter/AntiAirTask.h"
++#include "unit/enemy/EnemyManager.h"
++#include "util/AnarvaSwitches.h"
+ #include "map/ThreatMap.h"
+ #include "module/MilitaryManager.h"
+ #include "setup/SetupManager.h"
+@@ -33,8 +35,9 @@ CAntiAirTask::CAntiAirTask(ITaskModule* mgr, float powerMod)
+ 		: ISquadTask(mgr, FightType::AA, powerMod)
+ {
+ 	CCircuitAI* circuit = manager->GetCircuit();
+-	float x = rand() % circuit->GetTerrainManager()->GetTerrainWidth();
+-	float z = rand() % circuit->GetTerrainManager()->GetTerrainHeight();
++	// Anarva (switch decide): start toward the enemy's centre, not a random map point
++	float x = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().x : rand() % circuit->GetTerrainManager()->GetTerrainWidth();
++	float z = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().z : rand() % circuit->GetTerrainManager()->GetTerrainHeight();
+ 	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
+ }
+ 
+diff --git a/src/circuit/task/fighter/AntiHeavyTask.cpp b/src/circuit/task/fighter/AntiHeavyTask.cpp
+index 698c60aa..35efde14 100644
+--- a/src/circuit/task/fighter/AntiHeavyTask.cpp
++++ b/src/circuit/task/fighter/AntiHeavyTask.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "task/fighter/AntiHeavyTask.h"
++#include "unit/enemy/EnemyManager.h"
++#include "util/AnarvaSwitches.h"
+ #include "map/ThreatMap.h"
+ #include "module/MilitaryManager.h"
+ #include "setup/SetupManager.h"
+@@ -34,8 +36,9 @@ CAntiHeavyTask::CAntiHeavyTask(ITaskModule* mgr, float powerMod)
+ 		: ISquadTask(mgr, FightType::AH, powerMod)
+ {
+ 	CCircuitAI* circuit = manager->GetCircuit();
+-	float x = rand() % circuit->GetTerrainManager()->GetTerrainWidth();
+-	float z = rand() % circuit->GetTerrainManager()->GetTerrainHeight();
++	// Anarva (switch decide): start toward the enemy's centre, not a random map point
++	float x = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().x : rand() % circuit->GetTerrainManager()->GetTerrainWidth();
++	float z = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().z : rand() % circuit->GetTerrainManager()->GetTerrainHeight();
+ 	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
+ }
+ 
 diff --git a/src/circuit/task/fighter/ArtilleryTask.cpp b/src/circuit/task/fighter/ArtilleryTask.cpp
 index e45235d9..15304d54 100644
 --- a/src/circuit/task/fighter/ArtilleryTask.cpp
@@ -599,6 +1033,31 @@ index a36c4e1b..cc6b7ef6 100644
  	void FallbackSafePos(CCircuitUnit* unit);
  	void ApplySafePos(const CQueryPathMulti* query);
  	void Fallback(CCircuitUnit* unit, bool proceed);
+diff --git a/src/circuit/task/fighter/AttackTask.cpp b/src/circuit/task/fighter/AttackTask.cpp
+index 2f556d6d..0ec7aa31 100644
+--- a/src/circuit/task/fighter/AttackTask.cpp
++++ b/src/circuit/task/fighter/AttackTask.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "task/fighter/AttackTask.h"
++#include "unit/enemy/EnemyManager.h"
++#include "util/AnarvaSwitches.h"
+ #include "map/InfluenceMap.h"
+ #include "map/ThreatMap.h"
+ #include "module/MilitaryManager.h"
+@@ -36,8 +38,9 @@ CAttackTask::CAttackTask(ITaskModule* mgr, float minPower, float powerMod)
+ 		, minPower(minPower)
+ {
+ 	CCircuitAI* circuit = manager->GetCircuit();
+-	float x = rand() % circuit->GetTerrainManager()->GetTerrainWidth();
+-	float z = rand() % circuit->GetTerrainManager()->GetTerrainHeight();
++	// Anarva (switch decide): start toward the enemy's centre, not a random map point
++	float x = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().x : rand() % circuit->GetTerrainManager()->GetTerrainWidth();
++	float z = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().z : rand() % circuit->GetTerrainManager()->GetTerrainHeight();
+ 	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
+ }
+ 
 diff --git a/src/circuit/task/fighter/DefendTask.cpp b/src/circuit/task/fighter/DefendTask.cpp
 index af382ba3..7544d2f7 100644
 --- a/src/circuit/task/fighter/DefendTask.cpp
@@ -684,6 +1143,60 @@ index 981b94f9..16b5c6df 100644
  };
  
  } // namespace circuit
+diff --git a/src/circuit/task/fighter/FighterTask.cpp b/src/circuit/task/fighter/FighterTask.cpp
+index 0400f8d6..d64db858 100644
+--- a/src/circuit/task/fighter/FighterTask.cpp
++++ b/src/circuit/task/fighter/FighterTask.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "task/fighter/FighterTask.h"
++#include "util/AnarvaSwitches.h"
++#include "util/AnarvaDecide.h"
+ #include "task/RetreatTask.h"
+ #include "map/InfluenceMap.h"
+ #include "map/ThreatMap.h"
+@@ -116,13 +118,13 @@ void IFighterTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+ 
+ 	if (unit->HasShield()) {
+ 		const float minShield = circuit->GetSetupManager()->GetEmptyShield();
+-		if ((healthPerc > cdef->GetRetreat()) && unit->IsShieldCharged(minShield)) {
++		if ((anarva::switches.decide ? !anarva::ShouldRetreat(circuit, unit) : (healthPerc > cdef->GetRetreat())) && unit->IsShieldCharged(minShield)) {
+ 			if (cdef->IsRoleHeavy() && (healthPerc < 0.9f) && !unit->IsAttrNoRepair()) {
+ 				circuit->GetBuilderManager()->Enqueue(TaskB::Repair(IBuilderTask::Priority::NOW, unit));
+ 			}
+ 			return;
+ 		}
+-	} else if ((healthPerc > cdef->GetRetreat()) && !unit->IsDisarmed(frame)) {
++	} else if ((anarva::switches.decide ? !anarva::ShouldRetreat(circuit, unit) : (healthPerc > cdef->GetRetreat())) && !unit->IsDisarmed(frame)) {
+ 		if (cdef->IsRoleHeavy() && (healthPerc < 0.9f) && !unit->IsAttrNoRepair()) {
+ 			circuit->GetBuilderManager()->Enqueue(TaskB::Repair(IBuilderTask::Priority::NOW, unit));
+ 		}
+diff --git a/src/circuit/task/fighter/RaidTask.cpp b/src/circuit/task/fighter/RaidTask.cpp
+index b62de532..9062ae67 100644
+--- a/src/circuit/task/fighter/RaidTask.cpp
++++ b/src/circuit/task/fighter/RaidTask.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "task/fighter/RaidTask.h"
++#include "unit/enemy/EnemyManager.h"
++#include "util/AnarvaSwitches.h"
+ #include "map/InfluenceMap.h"
+ #include "map/ThreatMap.h"
+ #include "module/MilitaryManager.h"
+@@ -35,8 +37,9 @@ CRaidTask::CRaidTask(ITaskModule* mgr, float maxPower, float powerMod)
+ 		, maxPower(maxPower)
+ {
+ 	CCircuitAI* circuit = manager->GetCircuit();
+-	float x = rand() % circuit->GetTerrainManager()->GetTerrainWidth();
+-	float z = rand() % circuit->GetTerrainManager()->GetTerrainHeight();
++	// Anarva (switch decide): start toward the enemy's centre, not a random map point
++	float x = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().x : rand() % circuit->GetTerrainManager()->GetTerrainWidth();
++	float z = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().z : rand() % circuit->GetTerrainManager()->GetTerrainHeight();
+ 	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
+ }
+ 
 diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
 index 154ce4bf..7720920d 100644
 --- a/src/circuit/task/fighter/SquadTask.cpp
@@ -725,6 +1238,30 @@ index 154ce4bf..7720920d 100644
  				unit->Attack(newPos, GetTarget(), targetTile, isGround, isStatic, frame + FRAMES_PER_SEC * 60);
  			}
  
+diff --git a/src/circuit/terrain/TerrainManager.cpp b/src/circuit/terrain/TerrainManager.cpp
+index 64571199..a7920971 100644
+--- a/src/circuit/terrain/TerrainManager.cpp
++++ b/src/circuit/terrain/TerrainManager.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "terrain/TerrainManager.h"
++#include "unit/enemy/EnemyManager.h"
++#include "util/AnarvaSwitches.h"
+ #include "terrain/BlockRectangle.h"
+ #include "terrain/BlockCircle.h"
+ #include "terrain/path/PathFinder.h"
+@@ -769,8 +771,8 @@ void CTerrainManager::DoLineOfDef(const AIFloat3& start, const AIFloat3& end, CC
+ 
+ AIFloat3 CTerrainManager::GetRandomMovePosition(CCircuitUnit* unit)
+ {
+-	float x = rand() % GetTerrainWidth();
+-	float z = rand() % GetTerrainHeight();
++	float x = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().x : rand() % GetTerrainWidth();  // Anarva: toward the enemy
++	float z = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().z : rand() % GetTerrainHeight();
+ 	AIFloat3 pos(x, circuit->GetMap()->GetElevationAt(x, z), z);
+ 	return GetMovePosition(unit->GetArea(), pos);
+ }
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
 index a0f5a922..9105beb3 100644
 --- a/src/circuit/unit/CircuitDef.cpp
@@ -880,12 +1417,123 @@ index 0247bcb8..4f03b7f9 100644
  	std::array<int, static_cast<ThreatT>(ThreatType::_SIZE_)> threatRange;
  	float shieldRadius;
  	float maxShield;
+diff --git a/src/circuit/unit/FactoryData.cpp b/src/circuit/unit/FactoryData.cpp
+index a16e2e21..549e42dd 100644
+--- a/src/circuit/unit/FactoryData.cpp
++++ b/src/circuit/unit/FactoryData.cpp
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "unit/FactoryData.h"
++#include "util/AnarvaSwitches.h"
+ #include "module/FactoryManager.h"
+ #include "module/BuilderManager.h"  // FIXME: only for IsBuilderInArea
+ #include "module/EconomyManager.h"  // FIXME: only for IsFactoryDefAvail
+@@ -99,7 +100,7 @@ CCircuitDef* CFactoryData::GetFactoryToBuild(CCircuitAI* circuit, AIFloat3 posit
+ 			((mtId >= 0) && mobileType[mtId].typeUsable))
+ 		{
+ 			availFacs.push_back(defId);
+-			const float offset = (float)rand() / RAND_MAX * lenOffset + minOffset;
++			const float offset = minOffset + 0.5f * lenOffset;  // Anarva: no dice (middle of the range)
+ 			const float speedPercent = sfac.mapSpeedPerc;
+ 			const float mapPercent = (mtId < 0) ? airMapPerc : mobileType[mtId].areaLargest->percentOfMap;
+ 			percents[defId] = offset + importance * (mapPercent + speedPercent);
+diff --git a/src/circuit/util/AnarvaDecide.h b/src/circuit/util/AnarvaDecide.h
+new file mode 100644
+index 00000000..6e04da05
+--- /dev/null
++++ b/src/circuit/util/AnarvaDecide.h
+@@ -0,0 +1,84 @@
++/*
++ * AnarvaDecide.h
++ *
++ * Systematic replacements for the core's dice (switch anarva::switches.decide). No randomness: a choice among
++ * weighted candidates goes to the one furthest below its target share of what we have.
++ */
++
++#ifndef SRC_CIRCUIT_UTIL_ANARVADECIDE_H_
++#define SRC_CIRCUIT_UTIL_ANARVADECIDE_H_
++
++#include "unit/CircuitDef.h"
++#include "unit/CircuitUnit.h"
++#include "map/ThreatMap.h"
++#include "map/InfluenceMap.h"
++#include "setup/SetupManager.h"
++#include "CircuitAI.h"
++
++#include <vector>
++#include <limits>
++
++namespace circuit {
++namespace anarva {
++
++// Largest deficit: target share = weight / total weight; current share = alive count x metal cost / total over
++// the candidates. Returns the index furthest below its target (ties: the cheaper). With no weights at all, the
++// cheapest candidate. -1 if empty.
++template <class T, class GetDef, class GetWeight>
++int DeficitPick(const std::vector<T>& cands, GetDef getDef, GetWeight getWeight)
++{
++	if (cands.empty()) {
++		return -1;
++	}
++	float sumW = 0.f, sumHave = 0.f;
++	for (const T& c : cands) {
++		sumW += getWeight(c);
++		const CCircuitDef* d = getDef(c);
++		sumHave += d->GetCount() * d->GetCostM();
++	}
++	int best = -1;
++	float bestGap = -std::numeric_limits<float>::max();
++	for (int i = 0; i < (int)cands.size(); ++i) {
++		const CCircuitDef* d = getDef(cands[i]);
++		const float want = (sumW > 0.f) ? getWeight(cands[i]) / sumW : 0.f;
++		const float have = (sumHave > 0.f) ? d->GetCount() * d->GetCostM() / sumHave : 0.f;
++		const float gap = (sumW > 0.f) ? (want - have) : -d->GetCostM();
++		if ((gap > bestGap) || ((gap == bestGap) && (best >= 0) && (d->GetCostM() < getDef(cands[best])->GetCostM()))) {
++			bestGap = gap;
++			best = i;
++		}
++	}
++	return best;
++}
++
++
++// Retreat as a decision (replaces the random retreat health fraction). A damaged unit leaves when the fight where it
++// stands is going against us (enemy threat there above our influence) and it can still get out: its health lasts
++// longer under the incoming damage (the threat map's value there) than its trip home. If it can't get out, running
++// only wastes the damage it can still deal; if the fight is ours, it stays.
++inline bool ShouldRetreat(CCircuitAI* circuit, CCircuitUnit* unit)
++{
++	const int frame = circuit->GetLastFrame();
++	const springai::AIFloat3& pos = unit->GetPos(frame);
++	CThreatMap* threatMap = circuit->GetThreatMap();
++	threatMap->SetThreatType(unit);
++	const float incoming = threatMap->GetThreatAt(unit, pos);
++	if (incoming <= 0.f) {
++		return false;  // nothing can hit it here
++	}
++	const float ours = circuit->GetInflMap()->GetAllyInflAt(pos);
++	const float theirs = circuit->GetInflMap()->GetEnemyInflAt(pos);
++	if (ours > theirs) {
++		return false;  // the fight here is ours
++	}
++	const CCircuitDef* cdef = unit->GetCircuitDef();
++	const float health = unit->GetHealthPercent() * cdef->GetHealth();
++	const float tKill = health / incoming;
++	const float tHome = circuit->GetSetupManager()->GetBasePos().distance2D(pos) / std::max(1.f, cdef->GetSpeed());
++	return tKill > tHome;
++}
++
++} // namespace anarva
++} // namespace circuit
++
++#endif // SRC_CIRCUIT_UTIL_ANARVADECIDE_H_
 diff --git a/src/circuit/util/AnarvaSwitches.h b/src/circuit/util/AnarvaSwitches.h
 new file mode 100644
-index 00000000..ec0b46df
+index 00000000..10bbcf10
 --- /dev/null
 +++ b/src/circuit/util/AnarvaSwitches.h
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,27 @@
 +/*
 + * AnarvaSwitches.h
 + *
@@ -904,7 +1552,8 @@ index 00000000..ec0b46df
 +	bool highGroundArty = false;  // artillery: height-aware range, firing spot reached soonest
 +	bool heightSquads = false;    // squads: each unit's standoff scaled by its range at the height it stands on
 +	bool scoutMap = false;
-+	bool engageSeen = false;      // gathering squads also fight enemies inside their own sight that they can beat, not only inside our defence influence        // scouts go to the targets the script ranks (vision age x stake), not the core's cluster order
++	bool engageSeen = false;
++	bool decide = false;          // every dice roll in the core replaced by a computed choice (AUDIT.md)      // gathering squads also fight enemies inside their own sight that they can beat, not only inside our defence influence        // scouts go to the targets the script ranks (vision age x stake), not the core's cluster order
 +};
 +inline SSwitches switches;
 +
@@ -912,3 +1561,42 @@ index 00000000..ec0b46df
 +} // namespace circuit
 +
 +#endif // SRC_CIRCUIT_UTIL_ANARVASWITCHES_H_
+diff --git a/src/circuit/util/math/Region.cpp b/src/circuit/util/math/Region.cpp
+index d8e22df4..8fab2b21 100644
+--- a/src/circuit/util/math/Region.cpp
++++ b/src/circuit/util/math/Region.cpp
+@@ -62,25 +62,18 @@ bool CPolygon::ContainsPoint(const AIFloat3& point) const
+ 
+ AIFloat3 CPolygon::Random() const
+ {
+-	int choice = 0;
+-	float dice = (float)rand() / RAND_MAX * area;
++	// Anarva: no dice. The polygon's area-weighted centroid (sum of triangle centroids x triangle area / area).
++	AIFloat3 c(0.f, 0.f, 0.f);
++	float total = 0.f;
+ 	for (int i = 0; i < (int)areas.size(); ++i) {
+-		dice -= areas[i];
+-		if (dice < 0.f) {
+-			choice = i;
+-			break;
+-		}
++		const AIFloat3 t = (verts[tris[i * 3 + 0]] + verts[tris[i * 3 + 1]] + verts[tris[i * 3 + 2]]) / 3.f;
++		c += t * areas[i];
++		total += areas[i];
+ 	}
+-	AIFloat3 a = verts[tris[choice * 3 + 1]] - verts[tris[choice * 3 + 0]];
+-	AIFloat3 b = verts[tris[choice * 3 + 2]] - verts[tris[choice * 3 + 0]];
+-	float u1 = (float)rand() / RAND_MAX;
+-	float u2 = (float)rand() / RAND_MAX;
+-	if (u1 + u2 > 1.f) {  // parallelogram, reflection
+-		u1 = 1.f - u1;
+-		u2 = 1.f - u2;
++	if (total > 0.f) {
++		return AIFloat3(c.x / total, c.y / total, c.z / total);
+ 	}
+-	AIFloat3 w = a * u1 + b * u2;
+-	return w + verts[tris[choice * 3 + 0]];
++	return verts.empty() ? c : AIFloat3(verts[0]);
+ }
+ 
+ void CPolygon::Scale(float factor)
