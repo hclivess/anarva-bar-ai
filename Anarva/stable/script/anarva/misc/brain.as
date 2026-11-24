@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_RECLAIM = false;   // constructors reclaim wreck fields when the metal, minus walk and risk, beats their current job
 const bool F_DEFRISK = false;   // a turret is built only where it is more likely to survive than not (cover vs the danger that can reach it)
 const bool F_BUILDERSAFE = false; // constructors leave a job when (1-P) x job - P x own cost is worth less than assisting a factory
 const bool F_HOLDALL = false;   // the just-in-time defence covers every constructor and structure, not only extractors
@@ -3238,6 +3239,63 @@ float CommFog(const AIFloat3& in p, float tHome, float seenThreat, float seenSpe
 	return dist / AiMax(1.f, sp) <= tHome ? hidden : 0.f;
 }
 float commDanger = 0.f, commCover = 0.f, commDps = 0.f;
+
+/*
+ * Wreck reclaim (owner: "24 minutes in, zero reclaim" with ~3000 metal in 47 wrecks and metal at 0/6700).
+ * Each wreck field (wrecks within a builder's sight of its centre) is worth its metal, minus the walk (the
+ * builder's share of our spending while it walks) and P(death) there x the builder's cost. The constructor that
+ * reaches it soonest takes it when that beats its current job. One builder per field per round.
+ */
+int reclaimOrders = 0;
+array<IUnitTask@> reclaimTasks;
+void ReclaimUpdate()
+{
+	if (!F_RECLAIM) return;
+	array<AIFloat3> wp; array<float> wm; array<bool> wr;
+	const uint w = AiGetWrecks(wp, wm, wr);
+	if (w == 0) return;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	array<CCircuitUnit@> cons;
+	for (uint i = 0; i < all.length(); ++i) {
+		const CCircuitDef@ d = all[i].circuitDef;
+		if (all[i] is commander || !d.IsMobile() || !d.IsRoleAny(Unit::Role::BUILDER.mask) || d.buildSpeed <= 0.f) continue;
+		if (all[i].task !is null && reclaimTasks.findByRef(all[i].task) >= 0) continue;
+		cons.insertLast(all[i]);
+	}
+	if (cons.length() == 0) return;
+	const float income = aiEconomyMgr.metal.income;
+	const float bp = AiMax(1.f, aiBuilderMgr.GetBuildPower());
+	array<bool> taken(w, false);
+	for (uint i = 0; i < w; ++i) {
+		if (taken[i]) continue;
+		// the builder that reaches this field soonest
+		CCircuitUnit@ best = null; float bt = 1e30f;
+		for (uint k = 0; k < cons.length(); ++k) {
+			if (cons[k] is null) continue;
+			const float t = MoveTime(cons[k].circuitDef, cons[k].GetPos(ai.frame).distance2D(wp[i]));
+			if (t < bt) { bt = t; @best = cons[k]; }
+		}
+		if (best is null) break;
+		const float R = best.circuitDef.losRadius;
+		float metal = 0.f;
+		for (uint j = 0; j < w; ++j) if (!taken[j] && wp[j].distance2D(wp[i]) <= R) metal += wm[j];
+		const float walk = best.circuitDef.buildSpeed / bp * income * bt;  // what it would have built meanwhile
+		const float risk = UnitPDeath(best, wp[i], bt) * Brain::Economist::MetalValue(best.circuitDef);
+		IBuilderTask@ cur = cast<IBuilderTask>(best.task);
+		const float curV = (cur !is null && cur.buildDef !is null) ? Brain::Economist::MetalValue(cur.buildDef) * best.circuitDef.buildSpeed / bp : best.circuitDef.buildSpeed / bp * income * 20.f;
+		if (metal - walk - risk <= curV) continue;
+		IUnitTask@ t = aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, wp[i], R, 2 * MINUTE));
+		if (t is null) continue;
+		aiBuilderMgr.AssignTask(best, t);
+		reclaimTasks.insertLast(t);
+		++reclaimOrders;
+		for (uint j = 0; j < w; ++j) if (wp[j].distance2D(wp[i]) <= R) taken[j] = true;
+		for (uint k = 0; k < cons.length(); ++k) if (cons[k] is best) @cons[k] = null;
+	}
+	for (int k = int(reclaimTasks.length()) - 1; k >= 0; --k)
+		if (reclaimTasks[k] is null || reclaimTasks[k].GetUnits().length() == 0) reclaimTasks.removeAt(k);
+}
+
 CCircuitUnit@ riskUnit = null;  // whose danger is being measured (the commander, or any builder)
 float riskHealth = 0.f;          // >0: measure a structure being built (its health), not riskUnit's
 void CommForces(const AIFloat3& in p, float tHome)
@@ -3586,12 +3644,14 @@ void Update()  // every 30 frames
 		CommGuardUpdate();
 	if (F_BUILDERSAFE && ai.frame % (2 * SECOND) < SECOND)
 		BuilderSafeUpdate();
+	if (F_RECLAIM && ai.frame % (5 * SECOND) < SECOND)
+		ReclaimUpdate();
 
 	if (ai.frame % MINUTE < SECOND) {
 		if (commander !is null) {
 			const AIFloat3 cp = commander.GetPos(ai.frame);
 			AiLog("[ANV] commander at (" + int(cp.x) + "," + int(cp.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(cp) : -1.f)
-				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects + " guards=" + commGuards + " retreats=" + commRetreats + " frontReclaims=" + commReclaims + " fwdClaims=" + commFwd + " fwdFailed=" + fwdFailed + " fwd(calls/busy/none)=" + fwdCalls + "/" + fwdBusy + "/" + fwdNone + " fwdBest=" + int(fwdBestSeen) + " vs cur " + int(fwdCurSeen));
+				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects + " guards=" + commGuards + " reclaimOrders=" + reclaimOrders + " builderEvacs=" + builderEvacs + " retreats=" + commRetreats + " frontReclaims=" + commReclaims + " fwdClaims=" + commFwd + " fwdFailed=" + fwdFailed + " fwd(calls/busy/none)=" + fwdCalls + "/" + fwdBusy + "/" + fwdNone + " fwdBest=" + int(fwdBestSeen) + " vs cur " + int(fwdCurSeen));
 		}
 		if (F_SCOUTMAP) AiLog("[ANV] " + Scout::Status());
 		AiLog("[ANV] eco t=" + Minute() + "m workers=" + aiBuilderMgr.GetWorkerCount() + " mex=" + Economist::mexes.length()
