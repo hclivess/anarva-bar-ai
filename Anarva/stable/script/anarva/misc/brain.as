@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_TURN = false;      // travel times include turning (turn rate, arcs) and acceleration, not distance/top speed
 const bool F_SCOUTMAP = false;  // scouts go where vision is worth most: our assets an unseen enemy could have reached since we last looked (C++ switch)
 const bool F_MOHO = true;       // T2 lab builds T2 constructors while one more saves more on the extractor-upgrade queue than it costs
 const bool F_COMMFWD = false;   // (with F_COMMRISK) commander claims the free extractor spot with the best gain - risk, anywhere: the human front-builder pattern
@@ -59,6 +60,27 @@ const bool F_COMMRISK = false;  // commander takes any job whose value beats P(d
 const bool F_COMMSPOT = false;  // commander retreats to the safe spot where its death explosion would destroy least (not into the eco)
 const bool F_JIT = false;       // build-power scale from the ratio at each enemy arrival time (just in time), not from everything at once
 const bool F_POWERALL = true;   // our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool
+
+
+/*
+ * Travel time with the unit's real motion: turn to face the target, accelerate, cruise. Vehicles turn slowly
+ * and on an arc (no turn in place); distance/top speed makes them look as agile as bots, which overstates how
+ * fast they reach a raid, retreat or kite. Heading unknown: the expected turn of a random heading is 90 deg.
+ */
+const float EXPECTED_TURN = 90.f;  // mean of a uniform 0..180 deg turn (heading unknown), not a tuning knob
+float MoveTime(const CCircuitDef@ d, float dist)
+{
+	const float v = AiMax(1.f, d.speed);
+	if (!F_TURN) return dist / v;
+	const float tTurn = d.turnRate > 0.f ? EXPECTED_TURN / d.turnRate : 0.f;
+	float tMove;
+	if (d.accel > 0.f) {
+		const float tAcc = v / d.accel, dAcc = 0.5f * v * tAcc;
+		tMove = dist <= dAcc ? sqrt(2.f * dist / d.accel) : tAcc + (dist - dAcc) / v;
+	} else tMove = dist / v;
+	// turn in place (bots) or on an arc of radius v/omega (most vehicles): either way the heading takes angle/omega
+	return tTurn + tMove;
+}
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -130,6 +152,16 @@ void Init()
 		sum += raiders[i].power;
 	raiderPower = (raiders.length() > 0) ? sum / raiders.length() : 0.f;
 
+	{
+		array<string> probe = {"armflash", "armstump", "armbull", "armpw", "armham", "armzeus", "corgator", "corak"};
+		string s = "[ANV] Motion (turn deg/s, in place, accel, 500 elmos):";
+		for (uint i = 0; i < probe.length(); ++i) {
+			CCircuitDef@ d = ai.GetCircuitDef(probe[i]);
+			if (d is null) continue;
+			s += " " + probe[i] + "=" + int(d.turnRate) + "/" + (d.turnInPlace ? "y" : "n") + "/" + int(d.accel) + "/" + F1(MoveTime(d, 500.f)) + "s";
+		}
+		AiLog(s);
+	}
 	AiLog("[ANV] Army init: attack=" + F1(baseAttack) + " raidMin=" + F1(baseRaidMin)
 		+ " scout=" + baseScout + " raiderPower=" + F1(raiderPower));
 }
@@ -538,7 +570,7 @@ void Update()
 		array<float> arr; array<uint> idx;
 		for (uint i = 0; i < free.length(); ++i) {
 			if (free[i] is null) continue;
-			const float t = free[i].GetPos(ai.frame).distance2D(mp[m]) / AiMax(1.f, free[i].circuitDef.speed);
+			const float t = MoveTime(free[i].circuitDef, free[i].GetPos(ai.frame).distance2D(mp[m]));
 			if (t > eta[m]) continue;
 			uint k = 0; while (k < arr.length() && arr[k] < t) ++k;
 			arr.insertAt(k, t); idx.insertAt(k, i);
@@ -2704,7 +2736,7 @@ float JitRatio(float ours, float theirs, float trade)
 		if (d is null || !d.IsMobile() || d.threat <= 0.f || (ef[i] & 4) != 0) continue;
 		float dmin = 1e9f;
 		for (uint a = 0; a < assets.length(); ++a) dmin = AiMin(dmin, ep[i].distance2D(assets[a]));
-		const float t = AiMax(0.f, dmin - d.GetMaxRange()) / AiMax(1.f, d.speed);
+		const float t = MoveTime(d, AiMax(0.f, dmin - d.GetMaxRange()));
 		uint k = 0; while (k < ts.length() && ts[k] < t) ++k;
 		ts.insertAt(k, t); th.insertAt(k, d.threat);
 		seen += d.threat; speedSum += d.speed; ++moving;
@@ -3070,7 +3102,7 @@ void CommForces(const AIFloat3& in p, float tHome)
 		if (d is null || d.threat <= 0.f || (ef[i] & 4) != 0) continue;
 		const float reach = AiMax(0.f, ep[i].distance2D(p) - d.GetMaxRange());
 		if (!d.IsMobile()) { if (reach <= 0.f) { commDanger += d.threat; commDps += d.surfThrDmg; } continue; }
-		if (reach / AiMax(1.f, d.speed) <= tHome) { commDanger += d.threat * eh[i]; commDps += d.surfThrDmg * eh[i]; }
+		if (MoveTime(d, reach) <= tHome) { commDanger += d.threat * eh[i]; commDps += d.surfThrDmg * eh[i]; }
 	}
 	{
 		float seenT = 0.f, seenS = 0.f, perThreatDps = 0.f; uint seenN = 0;
@@ -3089,7 +3121,7 @@ void CommForces(const AIFloat3& in p, float tHome)
 		const CCircuitDef@ d = u.circuitDef;
 		if (u is commander || d.power <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
 		const float dist = u.GetPos(ai.frame).distance2D(p);
-		if (d.IsMobile() ? (dist / AiMax(1.f, d.speed) <= tHome) : (dist <= d.GetMaxRange()))
+		if (d.IsMobile() ? (MoveTime(d, dist) <= tHome) : (dist <= d.GetMaxRange()))
 			commCover += d.power;
 	}
 }
@@ -3112,7 +3144,7 @@ float GameValue()
 float EscapeTime(const AIFloat3& in p)
 {
 	CCircuitUnit@ h = NearestFactory(p);
-	return h is null ? 0.f : h.GetPos(ai.frame).distance2D(p) / AiMax(1.f, commander.circuitDef.speed);
+	return h is null ? 0.f : MoveTime(commander.circuitDef, h.GetPos(ai.frame).distance2D(p));
 }
 // A build job is worth what it builds. Any other job (assist, reclaim, repair) is worth the commander's
 // share of our build power applied to our income over the job's span: that's the spending it carries.
@@ -3237,7 +3269,7 @@ float CommExposure(const AIFloat3& in p, float tHome)
 		if (d is null || d.threat <= 0.f || (ef[i] & 4) != 0) continue;
 		const float reach = AiMax(0.f, ep[i].distance2D(p) - d.GetMaxRange());
 		if (!d.IsMobile()) { if (reach <= 0.f) danger += d.threat; continue; }
-		if (reach / AiMax(1.f, d.speed) <= tHome) danger += d.threat * eh[i];
+		if (MoveTime(d, reach) <= tHome) danger += d.threat * eh[i];
 	}
 	if (F_COMMFOG) {
 		float seenT = 0.f, seenS = 0.f; uint seenN = 0;
@@ -3251,7 +3283,7 @@ float CommExposure(const AIFloat3& in p, float tHome)
 		const CCircuitDef@ d = u.circuitDef;
 		if (u is commander || d.power <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
 		const float dist = u.GetPos(ai.frame).distance2D(p);
-		if (d.IsMobile() ? (dist / AiMax(1.f, d.speed) <= tHome) : (dist <= d.GetMaxRange()))
+		if (d.IsMobile() ? (MoveTime(d, dist) <= tHome) : (dist <= d.GetMaxRange()))
 			cover += d.power;
 	}
 	return danger - cover;
@@ -3282,7 +3314,7 @@ void CommGuardUpdate()
 		return;
 	}
 	CCircuitUnit@ home = NearestFactory(c);
-	const float tHome = home.GetPos(ai.frame).distance2D(c) / AiMax(1.f, commander.circuitDef.speed);
+	const float tHome = MoveTime(commander.circuitDef, home.GetPos(ai.frame).distance2D(c));
 	if (CommExposure(c, tHome) <= 0.f) return;
 	if (F_COMMSPOT) {
 		@home = CommRefuge(c);

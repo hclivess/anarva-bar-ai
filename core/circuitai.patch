@@ -134,7 +134,7 @@ index 0be6a835..b91cfe6e 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..47223e01 100644
+index c3aaefe5..a48bcc38 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -171,18 +171,22 @@ index c3aaefe5..47223e01 100644
  #include "Log.h"
  #include "Drawer.h"
  #include "Game.h"
-@@ -702,6 +714,10 @@ void CInitScript::RegisterCore()
+@@ -702,6 +714,14 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float pwrDmg", asOFFSET(CCircuitDef, pwrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float airThrDmg", asOFFSET(CCircuitDef, airThrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float surfThrDmg", asOFFSET(CCircuitDef, surfThrDmg)); ASSERT(r >= 0);
 +	r = engine->RegisterObjectProperty("CCircuitDef", "const float deathAoe", asOFFSET(CCircuitDef, deathAoe)); ASSERT(r >= 0);
 +	r = engine->RegisterObjectProperty("CCircuitDef", "const float buildSpeed", asOFFSET(CCircuitDef, buildSpeed)); ASSERT(r >= 0);
 +	r = engine->RegisterObjectProperty("CCircuitDef", "const float buildTime", asOFFSET(CCircuitDef, buildTime)); ASSERT(r >= 0);
++	r = engine->RegisterObjectProperty("CCircuitDef", "const float turnRate", asOFFSET(CCircuitDef, turnRate)); ASSERT(r >= 0);
++	r = engine->RegisterObjectProperty("CCircuitDef", "const bool turnInPlace", asOFFSET(CCircuitDef, turnInPlace)); ASSERT(r >= 0);
++	r = engine->RegisterObjectProperty("CCircuitDef", "const float accel", asOFFSET(CCircuitDef, accel)); ASSERT(r >= 0);
++	r = engine->RegisterObjectProperty("CCircuitDef", "const float brake", asOFFSET(CCircuitDef, brake)); ASSERT(r >= 0);
 +	r = engine->RegisterObjectProperty("CCircuitDef", "const float deathDamage", asOFFSET(CCircuitDef, deathDamage)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float waterThrDmg", asOFFSET(CCircuitDef, waterThrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float minRange", asOFFSET(CCircuitDef, minRange)); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetMaxRange(Type) const", asMETHODPR(CCircuitDef, GetMaxRange, (CCircuitDef::RangeType) const, float), asCALL_THISCALL); ASSERT(r >= 0);
-@@ -711,8 +727,10 @@ void CInitScript::RegisterCore()
+@@ -711,8 +731,10 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetAirThreat() const", asMETHOD(CCircuitDef, GetAirThreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetSurfThreat() const", asMETHOD(CCircuitDef, GetSurfThreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetWaterThreat() const", asMETHOD(CCircuitDef, GetWaterThreat), asCALL_THISCALL); ASSERT(r >= 0);
@@ -194,7 +198,7 @@ index c3aaefe5..47223e01 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -738,6 +756,155 @@ void CInitScript::RegisterCore()
+@@ -738,6 +760,155 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitUnit", "string GetRulesParam(const string& in, const string& in) const", asFUNCTION(CCircuitUnit_GetRulesParamString), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
  }
  
@@ -350,7 +354,7 @@ index c3aaefe5..47223e01 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +934,26 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +938,26 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -699,7 +703,7 @@ index 154ce4bf..7720920d 100644
  			}
  
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a922..2e82cf2d 100644
+index a0f5a922..1a2276a6 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -710,7 +714,18 @@ index a0f5a922..2e82cf2d 100644
  
  #include "WeaponMount.h"
  #include "WeaponDef.h"
-@@ -479,6 +480,24 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -230,6 +231,10 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 	isStealth         = def->IsStealth();
+ 	isSonarStealth    = def->IsSonarStealth();
+ 	isTurnLarge       = (speed / (def->GetTurnRate() + DIV0_SLACK) > 0.09f);  // empirical magic number
++	turnRate          = def->GetTurnRate() * FRAMES_PER_SEC * 360.f / 65536.f;  // Anarva: deg/s
++	turnInPlace       = def->IsTurnInPlace();
++	accel             = def->GetMaxAcceleration() * FRAMES_PER_SEC * FRAMES_PER_SEC;
++	brake             = def->GetMaxDeceleration() * FRAMES_PER_SEC * FRAMES_PER_SEC;
+ 	isAbleToCloak     = def->IsAbleToCloak();
+ 	isAbleToRepair    = def->IsAbleToRepair();
+ 	isAbleToReclaim   = def->IsAbleToReclaim();
+@@ -479,6 +484,24 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  		waterDps += dps;
  
  		minRange = std::min(minRange, range);
@@ -735,7 +750,7 @@ index a0f5a922..2e82cf2d 100644
  		if ((weaponCat & circuit->GetAirCategory()) && isAirWeapon) {
  			float& mr = maxRange[static_cast<RangeT>(RangeType::AIR)];
  			mr = std::max(mr, range);
-@@ -568,6 +587,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -568,6 +591,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  	}
  
  	isAttacker = (airDps > .1f) || (surfDps > .1f) || (waterDps > .1f);
@@ -753,7 +768,7 @@ index a0f5a922..2e82cf2d 100644
  	if (IsMobile() && !IsAttacker()) {  // mobile bomb?
  		WeaponDef* wd = def->GetDeathExplosion();
  		aoe = wd->GetAreaOfEffect();
-@@ -843,3 +873,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
+@@ -843,3 +877,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
  }
  
  } // namespace circuit
@@ -793,7 +808,7 @@ index a0f5a922..2e82cf2d 100644
 +
 +} // namespace circuit
 diff --git a/src/circuit/unit/CircuitDef.h b/src/circuit/unit/CircuitDef.h
-index 0247bcb8..7503429f 100644
+index 0247bcb8..3b873298 100644
 --- a/src/circuit/unit/CircuitDef.h
 +++ b/src/circuit/unit/CircuitDef.h
 @@ -249,6 +249,10 @@ public:
@@ -807,13 +822,17 @@ index 0247bcb8..7503429f 100644
  	int GetThreatRange(ThreatType type) const { return threatRange[static_cast<ThreatT>(type)]; }
  	float GetShieldRadius() const { return shieldRadius; }
  	float GetMaxShield() const { return maxShield; }
-@@ -414,11 +418,19 @@ private:
+@@ -414,11 +418,23 @@ private:
  	float waterThrDmg, waterThrMod;  // underwater enemy damage
  	ThrDmgArray thrDmgMod;  // mod by role
  	float aoe;  // radius
 +public:
 +	float deathAoe = 0.f;     // death explosion radius (elmos), every def
 +	float deathDamage = 0.f;  // death explosion default damage
++	float turnRate = 0.f;     // degrees per second (engine: angle units per frame)
++	bool turnInPlace = true;  // false: turns along an arc while moving (most vehicles)
++	float accel = 0.f;        // elmos per second^2
++	float brake = 0.f;        // elmos per second^2
 +private:
  	float power;  // ally max threat
  	float defThreat;  // enemy max threat
