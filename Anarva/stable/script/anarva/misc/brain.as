@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_NANOS = false;     // reclaim caretakers whose metal is worth more than the build power they actually apply
 const bool F_ECORECLAIM = false; // reclaim the energy plant whose metal now is worth more than its energy over the horizon (no fixed gates)
 const bool F_FOCUS = false;     // core switch: each unit focuses the visible enemy in range with the highest threat per remaining health
 const bool F_DECIDE = false;    // core switch: every dice roll in the core replaced by a computed choice (unit/role pick, constructor, retreat, superweapon, chance, map points)
@@ -1024,6 +1025,46 @@ void EcoReclaimUpdate()
 	++ecoReclaims;
 	AiLog("[ANV] EcoReclaim: " + best.circuitDef.GetName() + " (metal " + int(best.circuitDef.costM) + " now vs its energy "
 		+ int(bestMake * H / epm) + " metal-eq over " + int(H) + " s)");
+	Reclaim(best);
+}
+
+
+/*
+ * Idle caretakers (owner: old nano turrets left unused in the middle of the base). A caretaker is worth the build
+ * power it actually applies: its share of our build power x our income x the horizon x its utilisation. Utilisation
+ * is a moving average of busy (on a builder task) vs idle, averaged over the planning horizon itself. Reclaiming it
+ * returns its metal now; that wins once the nano stands where nothing is being built any more.
+ */
+dictionary nanoUse;   // unit id -> utilisation 0..1
+int nanoLastFrame = 0, nanoReclaims = 0;
+void NanoUpdate()
+{
+	if (!F_NANOS) return;
+	const float dt = float(ai.frame - nanoLastFrame) / SECOND;
+	nanoLastFrame = ai.frame;
+	const float H = AiMax(1.f, Brain::Economist::Horizon());
+	const float a = AiMin(1.f, dt / H);  // moving average over the horizon
+	const float income = aiEconomyMgr.metal.income;
+	const float bp = AiMax(1.f, aiBuilderMgr.GetBuildPower());
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	CCircuitUnit@ best = null; float bestGain = 0.f;
+	for (uint i = 0; i < all.length(); ++i) {
+		CCircuitUnit@ u = all[i];
+		const CCircuitDef@ d = u.circuitDef;
+		if (d.IsMobile() || d.buildSpeed <= 0.f || Brain::Intel::allFactories.findByRef(u) >= 0 || pending.findByRef(u) >= 0) continue;
+		const string key = "" + u.id;
+		const bool busy = (u.task !is null && u.task.GetType() == Task::Type::BUILDER);
+		float use = 1.f;  // a new nano is presumed useful until measured
+		nanoUse.get(key, use);
+		use = use + a * ((busy ? 1.f : 0.f) - use);
+		nanoUse.set(key, use);
+		const float keep = d.buildSpeed / bp * income * H * use;
+		const float gain = d.costM - keep;
+		if (gain > bestGain) { bestGain = gain; @best = u; }
+	}
+	if (best is null || !Brain::Storage::Fits(best.circuitDef.costM)) return;
+	++nanoReclaims;
+	AiLog("[ANV] Nanos: reclaiming idle " + best.circuitDef.GetName() + " (metal " + int(best.circuitDef.costM) + " > its use " + int(best.circuitDef.costM - bestGain) + ")");
 	Reclaim(best);
 }
 
@@ -3727,6 +3768,8 @@ void Update()  // every 30 frames
 		ReclaimUpdate();
 	if (F_ECORECLAIM && ai.frame % (5 * SECOND) < SECOND)
 		Recycler::EcoReclaimUpdate();
+	if (F_NANOS && ai.frame % (5 * SECOND) < SECOND)
+		Recycler::NanoUpdate();
 
 	if (ai.frame % MINUTE < SECOND) {
 		if (commander !is null) {
