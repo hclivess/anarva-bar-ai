@@ -284,6 +284,35 @@
     }
    },
    "decision": "no pre-alpha release yet: parity, not a win. Open maps 0-3; the one outright loss was a blind commander walking 2361 from base (fix F_COMMFOG in testing)"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "F_COMMRISK (commander takes a job when value > P(death) x everything we own; P = Lanchester loss x tEscape/(tEscape+tKill)) on vs off, 2 concurrent rounds x 8, 1v2",
+   "results": {
+    "on": {
+     "share": [
+      0.2,
+      0.28
+     ],
+     "outright": [
+      3,
+      3
+     ],
+     "commander_deaths": 6
+    },
+    "off": {
+     "share": [
+      0.22,
+      0.36
+     ],
+     "outright": [
+      3,
+      0
+     ],
+     "commander_deaths": 3
+    }
+   },
+   "decision": "kept off: twice the commander deaths; the escape term makes it too bold, and P(death) only counts seen enemies (F_COMMFOG next)"
   }
  ],
  "install": {

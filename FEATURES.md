@@ -8,7 +8,7 @@ minus risk), never a hand-picked cutoff. Each behaviour sits behind a flag, ship
 on only after it wins a paired A/B test (2 concurrent rounds x 8 games vs 2 BARb hard, judged on outright
 losses, value share and damage ratio).
 
-## Feature flags (11 on, 28 off)
+## Feature flags (11 on, 30 off)
 
 | Flag | Default | What it does | Measured |
 |---|---|---|---|
@@ -17,7 +17,7 @@ losses, value share and damage ratio).
 | `F_HOLD` | **on** | just-in-time extractor defence: meet each incoming enemy group at the extractor it is heading for (C++ bridge) | F_HOLD+F_COMMGUARD on vs off, CI core, 2 concurrent rounds x 8 games, 1v2: both on by default: fewer outright losses, share unchanged |
 | `F_INTEL` | **on** | eyes, scouting, phantom threat | first build |
 | `F_OPENER` | **on** | constructor-rich T1 opener (false = BARb hard opener) | r8: 13-2-1 vs base |
-| `F_POWERALL` | **on** | our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool | F_POWERALL (Director measures our power from every armed surface unit, not the gather pool) on vs off, 2 concurrent rounds x 8, 1v2: on by default: better share and no outright losses in both rounds (pooled 0.41 vs 0.27, 0 vs 3 outright) |
+| `F_POWERALL` | **on** | our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool | F_POWERALL (Director measures our power from every armed surface unit, not the gather pool) on vs off, 2 concurrent rounds x 8, 1v2: on by default: better share and no outright losses in both rounds (pooled 0.41 vs 0.27, 0 vs 3 outright); Release gate: current defaults (F_POWERALL on) 1v1 vs one BARb hard, 8 games, 30 min cap: no pre-alpha release yet: parity, not a win. Open maps 0-3; the one outright loss was a blind commander walking 2361 from base (fix F_COMMFOG in testing) |
 | `F_RECALL` | **on** | broken-squad recall | not measured yet |
 | `F_RECYCLE` | **on** | eco recycling + T1 salvage | first build |
 | `F_SCALE` | **on** | Director drives buildpowerRatio | r9: 9-4-3 vs base |
@@ -25,7 +25,9 @@ losses, value share and damage ratio).
 | `F_TERRAIN` | **on** | fortify the choke from the high ground (map analysis) | not measured yet |
 | `F_AA` | off | static AA counter | harmful as always-on |
 | `F_BOOM` | off | scale on pressure, not presence (human playbook vs BARbs) | not measured yet |
-| `F_COMMRISK` | off | commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle | not measured yet |
+| `F_COMMFOG` | off | commander danger also counts the enemy strength we believe exists but can't see, from their centre | Release gate: current defaults (F_POWERALL on) 1v1 vs one BARb hard, 8 games, 30 min cap: no pre-alpha release yet: parity, not a win. Open maps 0-3; the one outright loss was a blind commander walking 2361 from base (fix F_COMMFOG in testing); F_COMMRISK (commander takes a job when value > P(death) x everything we own; P = Lanchester loss x tEscape/(tEscape+tKill)) on vs off, 2 concurrent rounds x 8, 1v2: kept off: twice the commander deaths; the escape term makes it too bold, and P(death) only counts seen enemies (F_COMMFOG next) |
+| `F_COMMFWD` | off | (with F_COMMRISK) commander claims the free extractor spot with the best gain - risk, anywhere: the human front-builder pattern | not measured yet |
+| `F_COMMRISK` | off | commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle | F_COMMRISK (commander takes a job when value > P(death) x everything we own; P = Lanchester loss x tEscape/(tEscape+tKill)) on vs off, 2 concurrent rounds x 8, 1v2: kept off: twice the commander deaths; the escape term makes it too bold, and P(death) only counts seen enemies (F_COMMFOG next) |
 | `F_COMMSAFE` | off | commander only works inside the zone our army protects | 1v2, 12 games each: F_COMMSAFE+F_COMMZONE (commander only where nothing died): value share 0.11 vs 0.36, commander deaths 4 vs 1: rejected |
 | `F_COMMSPOT` | off | commander retreats to the safe spot where its death explosion would destroy least (not into the eco) | not measured yet |
 | `F_COMMZONE` | off | commander works only inside the zone where nothing of ours has died (with F_COMMSAFE) | 1v2, 12 games each: F_COMMSAFE+F_COMMZONE (commander only where nothing died): value share 0.11 vs 0.36, commander deaths 4 vs 1: rejected |
