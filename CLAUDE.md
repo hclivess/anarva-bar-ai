@@ -2,6 +2,23 @@
 
 These are the owner's standing rules. They apply to every change, every claim and every comment.
 
+## 0. Work ethic: improve first, test later
+
+From the owner, 2026-11-24, after watching Anarva play like BARb while ~200 test games were spent on small tweaks:
+"YOU MUST STOP TESTING NOW. FOCUS ON IMPROVEMENTS AND AFTER YOU HAVE REACHED A REASONABLE JUSTIFIABLE
+IMPROVEMENT ONLY THEN YOU CAN TEST."
+
+- **Fix what a strong player would call obviously wrong, first.** One watched game shows more than a hundred
+  A/B rounds on a marginal flag. Every remark from the owner's games is a bug: open an issue for it at once
+  (cause, fix, status) and work it.
+- **Do not run test batches per small change.** Build a batch of reasoned improvements that together justify a
+  measurable step, then test that batch. Tests confirm improvements; they are not a substitute for reasoning.
+- **Trust no inherited code.** BARb's scripts, configs and C++ hold hand-picked gates and dice that quietly block
+  the reasoning layered on top (example: the Recycler never reclaimed a solar because three fixed conditions had to
+  hold at once). Read what actually decides before adding anything on top of it.
+- **No substitutes for decisions.** A rotation, a fixed range middle or a "more likely than not" cutoff is not a
+  decision; derive the choice from value.
+
 ## 1. Every strategic claim is verified against replays
 
 - **Always verify claims against replays.** Before arguing that strong players do X, or that X wins,
