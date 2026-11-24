@@ -821,8 +821,8 @@ bool OnDestroyed(CCircuitUnit@ unit)
 
 float EnergyMake(const CCircuitDef@ d)
 {
-	float m = aiEconomyMgr.GetEnergyMake(d);
-	return (m > 0.f) ? m : 20.f;  // wind/tidal report 0 here; assume a typical value
+	// what it really makes on this map: fixed make, tidal at the map's tidal strength, wind at the map's average wind
+	return AiEnergyMake(d);
 }
 
 float BigMake()
@@ -1012,7 +1012,7 @@ void EcoReclaimUpdate()
 		CCircuitUnit@ u = all[i];
 		const CCircuitDef@ d = u.circuitDef;
 		if (d.IsMobile() || pending.findByRef(u) >= 0) continue;
-		const float make = aiEconomyMgr.GetEnergyMake(d);
+		const float make = AiEnergyMake(d);
 		if (make <= 0.f) continue;
 		const float gain = d.costM - make * H / epm;
 		if (gain > bestGain) { bestGain = gain; @best = u; bestMake = make; }

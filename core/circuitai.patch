@@ -339,7 +339,7 @@ index 0be6a835..b91cfe6e 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..975f4008 100644
+index c3aaefe5..8f0d4213 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -405,7 +405,7 @@ index c3aaefe5..975f4008 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -738,6 +762,155 @@ void CInitScript::RegisterCore()
+@@ -738,6 +762,172 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitUnit", "string GetRulesParam(const string& in, const string& in) const", asFUNCTION(CCircuitUnit_GetRulesParamString), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
  }
  
@@ -527,6 +527,23 @@ index c3aaefe5..975f4008 100644
 +}
 +
 +// Do we see this spot right now (our line of sight, as of the core's last LOS refresh)?
++
++// Anarva: what an energy plant actually makes on this map: its fixed make, tidal generators at the map's tidal
++// strength, wind generators at the map's average wind (capped by the generator's own maximum).
++static float Bridge_EnergyMake(CCircuitDef* cdef)
++{
++	if (cdef == nullptr) {
++		return 0.f;
++	}
++	springai::Resource* e = bridgeAI->GetEconomyManager()->GetEnergyRes();
++	springai::UnitDef* def = cdef->GetDef();
++	CMap* map = bridgeAI->GetMap();
++	const float avgWind = 0.5f * (map->GetMinWind() + map->GetMaxWind());
++	return def->GetResourceMake(e)
++		+ def->GetTidalResourceGenerator(e) * map->GetTidalStrength()
++		+ std::min(def->GetWindResourceGenerator(e), avgWind) * (def->GetWindResourceGenerator(e) > 0.f ? 1.f : 0.f);
++}
++
 +static bool Bridge_IsInLOS(const AIFloat3& pos)
 +{
 +	AIFloat3 p = pos;
@@ -561,7 +578,7 @@ index c3aaefe5..975f4008 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +940,29 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +957,30 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -580,6 +597,7 @@ index c3aaefe5..975f4008 100644
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyIds(array<int>@+)", asFUNCTION(Bridge_GetEnemyIds), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetMetalSpots(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetMetalSpots), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiIsInLOS(const AIFloat3& in)", asFUNCTION(Bridge_IsInLOS), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterGlobalFunction("float AiEnergyMake(CCircuitDef@)", asFUNCTION(Bridge_EnergyMake), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("array<CCircuitUnit@>@ AiGetTeamUnits()", asFUNCTION(Bridge_GetTeamUnits), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiGetElevation(float, float)", asFUNCTION(Bridge_GetElevation), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiMaxElevation()", asFUNCTION(Bridge_MaxElevation), asCALL_CDECL); ASSERT(r >= 0);
