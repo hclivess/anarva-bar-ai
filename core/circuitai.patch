@@ -134,7 +134,7 @@ index 0be6a835..b91cfe6e 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..a48bcc38 100644
+index c3aaefe5..7302d9cb 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -354,7 +354,7 @@ index c3aaefe5..a48bcc38 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +938,26 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +938,27 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -367,6 +367,7 @@ index c3aaefe5..a48bcc38 100644
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHighGroundArty", &anarva::switches.highGroundArty); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHeightSquads", &anarva::switches.heightSquads); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchScoutMap", &anarva::switches.scoutMap); ASSERT(r >= 0);
++	r = engine->RegisterGlobalProperty("bool aiSwitchEngageSeen", &anarva::switches.engageSeen); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyIds(array<int>@+)", asFUNCTION(Bridge_GetEnemyIds), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetMetalSpots(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetMetalSpots), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiIsInLOS(const AIFloat3& in)", asFUNCTION(Bridge_IsInLOS), asCALL_CDECL); ASSERT(r >= 0);
@@ -597,10 +598,18 @@ index a36c4e1b..cc6b7ef6 100644
  	void ApplySafePos(const CQueryPathMulti* query);
  	void Fallback(CCircuitUnit* unit, bool proceed);
 diff --git a/src/circuit/task/fighter/DefendTask.cpp b/src/circuit/task/fighter/DefendTask.cpp
-index af382ba3..1b734677 100644
+index af382ba3..7544d2f7 100644
 --- a/src/circuit/task/fighter/DefendTask.cpp
 +++ b/src/circuit/task/fighter/DefendTask.cpp
-@@ -104,7 +104,7 @@ void CDefendTask::Update()
+@@ -21,6 +21,7 @@
+ #include "unit/CircuitUnit.h"
+ #include "CircuitAI.h"
+ #include "util/Utils.h"
++#include "util/AnarvaSwitches.h"
+ 
+ #include "spring/SpringMap.h"
+ 
+@@ -104,7 +105,7 @@ void CDefendTask::Update()
  	/*
  	 * Promote task if possible
  	 */
@@ -609,7 +618,7 @@ index af382ba3..1b734677 100644
  		CMilitaryManager* militaryMgr = static_cast<CMilitaryManager*>(manager);
  		if ((attackPower >= maxPower) || !militaryMgr->GetTasks(check).empty()) {
  			IFighterTask* task = militaryMgr->Enqueue(TaskF::Common(promote));
-@@ -120,7 +120,7 @@ void CDefendTask::Update()
+@@ -120,7 +121,7 @@ void CDefendTask::Update()
  	/*
  	 * Merge tasks if possible
  	 */
@@ -618,7 +627,7 @@ index af382ba3..1b734677 100644
  	if (task != nullptr) {
  		task->Merge(this);
  		units.clear();
-@@ -169,7 +169,11 @@ void CDefendTask::Update()
+@@ -169,7 +170,11 @@ void CDefendTask::Update()
  	}
  
  	if (!isTargetsFound) {  // enemyPositions.empty()
@@ -631,7 +640,19 @@ index af382ba3..1b734677 100644
  		return;
  	}
  
-@@ -368,7 +372,7 @@ void CDefendTask::FallbackBasePos()
+@@ -248,7 +253,10 @@ bool CDefendTask::FindTarget()
+ 		}
+ 
+ 		const AIFloat3& ePos = enemy->GetPos();
+-		if ((inflMap->GetAllyDefendInflAt(ePos) < INFL_EPS)
++		// Anarva (switch engageSeen): an enemy the leader can see is in play even outside our defence influence;
++		// whether we can beat it is still decided below (our power vs the threat at its position)
++		const bool seen = anarva::switches.engageSeen && (pos.SqDistance2D(ePos) <= SQUARE(cdef->GetLosRadius()));
++		if ((!seen && (inflMap->GetAllyDefendInflAt(ePos) < INFL_EPS))
+ 			|| !terrainMgr->CanMoveToPos(area, ePos))
+ 		{
+ 			continue;
+@@ -368,7 +376,7 @@ void CDefendTask::FallbackBasePos()
  	CSetupManager* setupMgr = circuit->GetSetupManager();
  
  	const AIFloat3& startPos = leader->GetPos(circuit->GetLastFrame());
@@ -848,10 +869,10 @@ index 0247bcb8..3b873298 100644
  	float maxShield;
 diff --git a/src/circuit/util/AnarvaSwitches.h b/src/circuit/util/AnarvaSwitches.h
 new file mode 100644
-index 00000000..975377df
+index 00000000..ec0b46df
 --- /dev/null
 +++ b/src/circuit/util/AnarvaSwitches.h
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,26 @@
 +/*
 + * AnarvaSwitches.h
 + *
@@ -869,7 +890,8 @@ index 00000000..975377df
 +struct SSwitches {
 +	bool highGroundArty = false;  // artillery: height-aware range, firing spot reached soonest
 +	bool heightSquads = false;    // squads: each unit's standoff scaled by its range at the height it stands on
-+	bool scoutMap = false;        // scouts go to the targets the script ranks (vision age x stake), not the core's cluster order
++	bool scoutMap = false;
++	bool engageSeen = false;      // gathering squads also fight enemies inside their own sight that they can beat, not only inside our defence influence        // scouts go to the targets the script ranks (vision age x stake), not the core's cluster order
 +};
 +inline SSwitches switches;
 +

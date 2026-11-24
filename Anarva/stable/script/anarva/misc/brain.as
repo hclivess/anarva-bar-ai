@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_ENGAGE = false;    // core switch: gathering squads fight enemies inside their own sight that they can beat (owner saw a raider pace past a lone pawn)
 const bool F_TURN = false;      // travel times include turning (turn rate, arcs) and acceleration, not distance/top speed
 const bool F_SCOUTMAP = false;  // scouts go where vision is worth most: our assets an unseen enemy could have reached since we last looked (C++ switch)
 const bool F_MOHO = true;       // T2 lab builds T2 constructors while one more saves more on the extractor-upgrade queue than it costs
@@ -3360,6 +3361,7 @@ void Update()  // every 30 frames
 	aiSwitchHighGroundArty = F_ARTYHIGH;
 	aiSwitchHeightSquads = F_HEIGHTSQUAD;
 	aiSwitchScoutMap = F_SCOUTMAP;
+	aiSwitchEngageSeen = F_ENGAGE;
 	if (F_INTEL) Intel::Update();
 	Assess::Update();
 	if (F_WASTE) Waste::Update();
