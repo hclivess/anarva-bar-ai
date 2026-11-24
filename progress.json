@@ -340,6 +340,43 @@
     }
    },
    "decision": "kept off"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "F_MOHO (T2 constructors sized by the extractor-upgrade queue, priced at the shadow price of metal) on vs off, 2 rounds x 8, 1v2",
+   "results": {
+    "on": {
+     "share": [
+      0.37,
+      0.17
+     ],
+     "outright": [
+      1,
+      2
+     ],
+     "m_inc_med_21_27_30": [
+      63.9,
+      86.9,
+      97.0
+     ]
+    },
+    "off": {
+     "share": [
+      0.14,
+      0.29
+     ],
+     "outright": [
+      3,
+      2
+     ],
+     "m_inc_med_21_27_30": [
+      38.4,
+      65.8,
+      75.3
+     ]
+    }
+   },
+   "decision": "undecided: income +30% from minute 21, fewer outright losses, but share disagrees between rounds; two more rounds"
   }
  ],
  "install": {
