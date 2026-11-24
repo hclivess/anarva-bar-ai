@@ -3774,7 +3774,14 @@ void Update()  // every 30 frames
 	if (F_CONVERT) Convert::Update();
 	if (F_ENERGY) Energy::Update();
 	Director::Update();
-	if (F_QUOTA) Army::Update(Intel::jamAlert);
+	if (F_DECIDE) {
+		// no config floors (quota.attack 60, raid min): an attack launches with the power needed to beat what we know of
+		// the enemy at our trade rate; a raid with what beats the raiders that will answer it
+		aiMilitaryMgr.quota.attack = Director::needPower;
+		aiMilitaryMgr.quota.raid.min = aiEnemyMgr.GetEnemyThreat(RT::RAIDER) / AiMax(1e-3f, Assess::trade);
+		aiMilitaryMgr.quota.raid.avg = AiMax(aiMilitaryMgr.quota.raid.avg, aiMilitaryMgr.quota.raid.min);
+		Army::CheckSquads();
+	} else if (F_QUOTA) Army::Update(Intel::jamAlert);
 	else Army::CheckSquads();
 	if (ai.frame % (2 * SECOND) < SECOND) {
 		if (F_RECYCLE) Recycler::Update();
