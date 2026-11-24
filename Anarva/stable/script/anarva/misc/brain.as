@@ -1339,43 +1339,37 @@ void Update()
 }
 
 // Put a cheap long-sight camera where we keep dying. Under a jammer, sight is the only way to see.
+// Cameras by value, no caps or clocks: the hottest cell we can't see, if the metal recently lost there beats a camera.
+// Placed back toward our base by the camera's own sight radius, so it watches the cell from as far as it can see.
 void OrderVision()
 {
 	if (eyesDef is null || !eyesDef.IsAvailable(ai.frame))
 		return;
-	const uint maxEyes = jamAlert ? 16 : 8;
-	if (eyes.length() >= maxEyes)
-		return;
-	const float threshold = jamAlert ? 250.f : 500.f;
-
+	const float cost = Brain::Economist::MetalValue(eyesDef);
+	const float sight = AiMax(1.f, eyesDef.losRadius);
 	int best = -1;
-	float bestHeat = threshold;
+	float bestHeat = cost;
 	for (uint c = 0; c < heat.length(); ++c) {
-		if (heat[c] > bestHeat && ai.frame - lastEyesFrame[c] > 3 * MINUTE) {
+		if (heat[c] > bestHeat && !AiIsInLOS(CellCenter(int(c)))) {
 			bestHeat = heat[c];
 			best = int(c);
 		}
 	}
 	if (best < 0)
 		return;
-
-	lastEyesFrame[best] = ai.frame;
 	AIFloat3 hot = CellCenter(best);
-	if (hot.distance2D(basePos) < 900.f)
-		return;  // base already has sight
-	// Stand off toward our base so the builder isn't fed to whatever is there.
 	AIFloat3 dir = basePos - hot;
 	dir.y = 0.f;
 	const float len = dir.Length2D();
 	if (len > 1.f)
-		hot = hot + dir * (AiMin(350.f, len * 0.4f) / len);
-	if (EyesNear(hot, 450.f))
+		hot = hot + dir * (AiMin(sight, len) / len);
+	if (EyesNear(hot, sight))
 		return;
-
+	lastEyesFrame[best] = ai.frame;
 	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, eyesDef, hot,
 		SQUARE_SIZE * 16, true, 2 * MINUTE));
 	++eyesOrdered;
-	AiLog("[ANV] Intel: vision ordered at (" + int(hot.x) + "," + int(hot.z) + ") heat=" + F1(bestHeat));
+	AiLog("[ANV] Intel: vision ordered at (" + int(hot.x) + "," + int(hot.z) + ") heat=" + F1(bestHeat) + " > camera " + int(cost));
 }
 
 float MaxHeat()
