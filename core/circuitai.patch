@@ -1529,7 +1529,7 @@ index b62de532..6b361bd2 100644
  			if (enemy->IsInRadarOrLOS()) {
  				if (((targetCat & noChaseCat) == 0) && !enemy->IsBeingBuilt()) {
 diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
-index 154ce4bf..b477e183 100644
+index 154ce4bf..88db2ca2 100644
 --- a/src/circuit/task/fighter/SquadTask.cpp
 +++ b/src/circuit/task/fighter/SquadTask.cpp
 @@ -6,6 +6,7 @@
@@ -1540,17 +1540,18 @@ index 154ce4bf..b477e183 100644
  #include "map/InfluenceMap.h"
  #include "map/ThreatMap.h"
  #include "module/BuilderManager.h"
-@@ -16,6 +17,9 @@
+@@ -16,6 +17,10 @@
  #include "unit/action/TravelAction.h"
  #include "CircuitAI.h"
  #include "util/Utils.h"
 +#include "util/AnarvaSwitches.h"
++#include <unordered_map>
 +#include "terrain/TerrainData.h"
 +#include "terrain/TerrainManager.h"
  
  #include <cmath>
  
-@@ -387,10 +391,98 @@ void ISquadTask::Attack(const int frame)
+@@ -387,10 +392,129 @@ void ISquadTask::Attack(const int frame)
  	Attack(frame, GetTarget()->GetUnit()->IsCloaked());
  }
  
@@ -1560,6 +1561,36 @@ index 154ce4bf..b477e183 100644
 +static void AnarvaFocusFire(CCircuitAI* circuit, const std::set<CCircuitUnit*>& units, const int frame)
 +{
 +	const CCircuitAI::EnemyInfos& enemies = circuit->GetEnemyInfos();
++	// Anarva (#44): a kill also removes what its death explosion destroys. Threat a target's blast takes from its
++	// neighbours: each enemy within the blast radius loses min(1, blast damage / its health) of its threat; our own
++	// units in the blast count against it the same way.
++	std::vector<CEnemyInfo*> seen;
++	for (auto& kv : enemies) {
++		if ((kv.second->GetCircuitDef() != nullptr) && kv.second->IsInLOS()) {
++			seen.push_back(kv.second);
++		}
++	}
++	std::unordered_map<CEnemyInfo*, float> chain;
++	for (CEnemyInfo* e : seen) {
++		CCircuitDef* edef = e->GetCircuitDef();
++		const float aoe = edef->deathAoe, dmg = edef->deathDamage;
++		if ((aoe <= 0.f) || (dmg <= 0.f)) {
++			continue;
++		}
++		float c = 0.f;
++		for (CEnemyInfo* n : seen) {
++			if ((n == e) || (n->GetPos().SqDistance2D(e->GetPos()) > SQUARE(aoe))) {
++				continue;
++			}
++			c += std::min(1.f, dmg / std::max(1.f, n->GetHealth())) * n->GetCircuitDef()->GetDefThreat();
++		}
++		for (CCircuitUnit* u : units) {
++			if (u->GetPos(frame).SqDistance2D(e->GetPos()) <= SQUARE(aoe)) {
++				c -= std::min(1.f, dmg / std::max(1.f, u->GetUnit()->GetHealth())) * u->GetCircuitDef()->GetDefThreat();
++			}
++		}
++		chain[e] = c;
++	}
 +	for (CCircuitUnit* unit : units) {
 +		const AIFloat3& up = unit->GetPos(frame);
 +		const float range = unit->GetCircuitDef()->GetMaxRange();
@@ -1572,7 +1603,8 @@ index 154ce4bf..b477e183 100644
 +				continue;
 +			}
 +			const float hp = std::max(1.f, e->GetHealth());
-+			const float score = edef->GetDefThreat() / hp;
++			auto it = chain.find(e);
++			const float score = (edef->GetDefThreat() + ((it != chain.end()) ? it->second : 0.f)) / hp;  // threat removed per damage dealt
 +			const float tie = edef->GetCostM() / hp;
 +			if ((score > bestScore) || ((score == bestScore) && (tie > bestTie))) {
 +				bestScore = score;
@@ -1650,7 +1682,7 @@ index 154ce4bf..b477e183 100644
  	attackFrame = isRepeatAttack ? frame : attackFrame;
  
  	auto it = rangeUnits.begin()->second.begin();
-@@ -459,9 +551,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+@@ -459,9 +583,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
  				|| (unit->GetTargetTile() != targetTile))
  			{
  				const float angle = alpha + beta;
