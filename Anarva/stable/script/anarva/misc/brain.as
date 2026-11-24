@@ -84,6 +84,37 @@ float MoveTime(const CCircuitDef@ d, float dist)
 	return tTurn + tMove;
 }
 
+
+// Systematic choices (no dice): assisting adds the same build power to any factory, so the difference is the walk.
+CCircuitUnit@ FactoryReachedSoonest(const AIFloat3& in from, const CCircuitDef@ mover)
+{
+	CCircuitUnit@ best = null; float bt = 1e30f;
+	for (uint i = 0; i < Brain::Intel::allFactories.length(); ++i) {
+		CCircuitUnit@ f = Brain::Intel::allFactories[i];
+		const float t = (mover is null) ? f.GetPos(ai.frame).distance2D(from) : MoveTime(mover, f.GetPos(ai.frame).distance2D(from));
+		if (t < bt) { bt = t; @best = f; }
+	}
+	return best;
+}
+// The factory with the fewest caretakers, each caretaker counted for the factory nearest to it.
+CCircuitUnit@ FactoryWithFewestNanos(const CCircuitDef@ nanoDef)
+{
+	const array<CCircuitUnit@>@ facs = Brain::Intel::allFactories;
+	if (facs.length() == 0) return null;
+	array<int> n(facs.length(), 0);
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) {
+		if (all[i].circuitDef !is nanoDef) continue;
+		const AIFloat3 p = all[i].GetPos(ai.frame);
+		int k = -1; float bd = 1e30f;
+		for (uint j = 0; j < facs.length(); ++j) { const float d = facs[j].GetPos(ai.frame).distance2D(p); if (d < bd) { bd = d; k = int(j); } }
+		if (k >= 0) ++n[k];
+	}
+	int best = 0;
+	for (uint j = 1; j < facs.length(); ++j) if (n[j] < n[best]) best = int(j);
+	return facs[best];
+}
+
 CCircuitDef@ Def(const string& in name)
 {
 	return ai.GetCircuitDef(name);
@@ -1148,7 +1179,7 @@ void Update()
 	if (ai.frame - lastScoutFrame > interval && Brain::Army::scouts.length() < uint((jamAlert || blind) ? 4 : 2)) {
 		array<CCircuitUnit@>@ facs = airFactories.length() > 0 ? airFactories : allFactories;
 		if (facs.length() > 0) {
-			CCircuitUnit@ fac = facs[AiRandom(0, int(facs.length()) - 1)];
+			CCircuitUnit@ fac = FactoryReachedSoonest(basePos, null);
 			CCircuitDef@ scout = aiFactoryMgr.GetRoleDef(fac.circuitDef, RT::SCOUT);
 			if (scout !is null && scout.IsAvailable(ai.frame)) {
 				aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::FIREPOWER, Task::Priority::HIGH,
@@ -1937,7 +1968,8 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// T1/T2 weights). Hand that share of decisions back to the core so its constructor logic keeps the
 	// economy growing; we choose only the army picks. (Debt: replace with a measured marginal value of a
 	// constructor: income it adds now vs its cost and the horizon.)
-	if (NeedBuilder() || AiRandom(0, 99) < BuilderSharePercent()) {
+	// constructor share as a quota, not a dice roll: a constructor whenever builders so far are below their share
+	if (NeedBuilder() || 100 * builders < BuilderSharePercent() * (builders + choices + 1)) {
 		++builders;
 		return null;
 	}
@@ -1997,7 +2029,16 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			s += " " + cands[i].GetName() + "=" + formatFloat(scores[i], "", 0, 3);
 		AiLog(s);
 	}
-	const int pick = AiDice(scores);
+	// Largest deficit, not dice: each candidate's target share of what we build is its share of the scores; pick the
+	// one furthest below its target in metal built so far.
+	float sumS = 0.f, sumB = 0.f;
+	for (uint i = 0; i < cands.length(); ++i) { sumS += scores[i]; sumB += float(built[cands[i].id]) * cands[i].costM; }
+	int pick = -1; float bestGap = -1e30f;
+	for (uint i = 0; i < cands.length(); ++i) {
+		const float want = scores[i] / AiMax(1e-6f, sumS);
+		const float have = sumB > 0.f ? float(built[cands[i].id]) * cands[i].costM / sumB : 0.f;
+		if (want - have > bestGap) { bestGap = want - have; pick = int(i); }
+	}
 	if (pick < 0)
 		return null;
 	CCircuitDef@ d = cands[pick];
@@ -2102,7 +2143,7 @@ void Update()  // every second
 		lastNano = ai.frame;
 		++nanos;
 		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::NANO, Task::Priority::HIGH, nanoDef,
-			Brain::Intel::allFactories[AiRandom(0, int(Brain::Intel::allFactories.length()) - 1)].GetPos(ai.frame), SQUARE_SIZE * 12, true, 2 * MINUTE));
+			FactoryWithFewestNanos(nanoDef).GetPos(ai.frame), SQUARE_SIZE * 12, true, 2 * MINUTE));
 	}
 	if (energyOverflow && !metalOverflow && ai.frame - lastMaker > 30 * SECOND) {
 		const float spare = e.income - e.pull;
@@ -2454,7 +2495,7 @@ void Update()
 	const float deficit = AiMax(0.f, 1.f - Brain::Director::ratio);
 	const int want = int(float(aiBuilderMgr.GetWorkerCount()) * deficit + 0.5f);
 	while (int(guards.length()) < want) {
-		CCircuitUnit@ fac = facs[AiRandom(0, int(facs.length()) - 1)];
+		CCircuitUnit@ fac = FactoryReachedSoonest(basePos, null);
 		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, GUARD_SPAN));
 		if (g is null)
 			break;
@@ -2478,13 +2519,31 @@ namespace Tech {
 
 int lastLog = 0;
 
+// Tier from unit facts (the old Factory::userData attrs were never set, so every lab looked like T1):
+// a lab that builds a T2 constructor is T2; the T3 gantries are known by name.
+int Tier(const CCircuitDef@ d)
+{
+	if (d is null) return 0;
+	const string n = d.GetName();
+	if (n == "armshltx" || n == "corgant" || n == "leggant" || n == "armshltxuw" || n == "corgantuw") return 3;
+	const array<string>@ opts = Facts::BuildOptions(n);
+	for (uint i = 0; i < opts.length(); ++i)
+		if (Brain::Production::T2_CONS.find(opts[i]) >= 0) return 2;
+	return 1;
+}
+int TierWeHave()
+{
+	int t = 0;
+	for (uint i = 0; i < Brain::Intel::allFactories.length(); ++i) t = AiMax(t, Tier(Brain::Intel::allFactories[i].circuitDef));
+	return t;
+}
+
+// Tech decision, always live (no flag, no clock): a lower or equal tier is always allowed; a higher tier when it pays.
 bool Allowed(const CCircuitDef@ facDef)
 {
-	if (!F_TECH)
-		return true;
-	const int attr = Factory::userData[facDef.id].attr;
-	const bool t3 = (attr & Factory::Attr::T3) != 0;
-	const bool t2 = (attr & Factory::Attr::T2) != 0;
+	const int tier = Tier(facDef);
+	const bool t3 = tier >= 3;
+	const bool t2 = tier == 2;
 	if (!t2 && !t3)
 		return true;
 	const float H = Brain::Economist::Horizon();
@@ -3041,7 +3100,7 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 			return task;
 	}
 	++commRedirects;
-	CCircuitUnit@ fac = Brain::Intel::allFactories[AiRandom(0, int(Brain::Intel::allFactories.length()) - 1)];
+	CCircuitUnit@ fac = FactoryReachedSoonest(comm.GetPos(ai.frame), comm.circuitDef);
 	return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, 30 * SECOND));
 }
 

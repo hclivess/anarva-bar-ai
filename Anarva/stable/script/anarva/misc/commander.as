@@ -229,7 +229,9 @@ const array<SO>@ GetOpener(const CCircuitDef@ facDef)
 	for (uint i = 0, l = queues.length(); i < l; ++i)
 		weights.insertLast(queues[i].weight);
 
-	int choice = AiDice(weights);
+	// the highest-weighted opener, not a dice roll (the openers themselves are fixed orders: AUDIT.md)
+	int choice = -1; float bw = -1.f;
+	for (uint i = 0; i < weights.length(); ++i) if (weights[i] > bw) { bw = weights[i]; choice = int(i); }
 	if (choice < 0)
 		return open.def;
 

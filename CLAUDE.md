@@ -22,11 +22,24 @@ These are the owner's standing rules. They apply to every change, every claim an
   `tools/analyze_comm.py` (commander behaviour). Extend the analyzer widget
   (`tools/replay_harness/LuaUI/Widgets/zz_replay_analyzer.lua`) when a claim needs data it doesn't log yet.
 
-## 2. No static thresholds: active decisions only
+## 2. No random numbers and no constants: every decision is computed
 
-A decision is a live comparison of value (metal-equivalent over the planning horizon, minus risk), never
-a hand-picked cutoff. A threshold is a frozen priority. Copy the reasoning behind a behaviour seen in
-replays, never the behaviour itself.
+**No random numbers. No hand-picked constants. Every single one.** A decision is a live comparison of value
+(metal-equivalent over the planning horizon, minus risk), computed from measured game state, unit facts
+(read from the unit defs through the bridge) or replay evidence. A threshold is a frozen priority; a dice roll
+is a decision nobody made.
+
+- Allowed numbers: game and physics facts (30 frames per second, 65536 angle units, a unit's cost, range,
+  speed, turn rate, storage, read from its def), unit conversions, numeric guards against division by zero.
+  Everything else must be derived and the derivation written next to it.
+- Not allowed: `AiRandom`, dice (`AiDice`), probabilities, "chance", fixed minutes, fixed income levels, fixed
+  ratios, caps, fudge factors, hand-tuned weights, magic distances, inherited BARb config curves.
+- Choices among equals are made by a systematic rule (the best value, the least travel time, the largest
+  deficit against the target mix), never by chance.
+- The full inventory lives in [AUDIT.md](AUDIT.md): every random number and constant in the scripts, the
+  configs and the C++ core, what it decides and the computed replacement. Each one is replaced; the list is
+  only allowed to shrink. New code that adds one is a bug.
+- Copy the reasoning behind a behaviour seen in replays, never the behaviour itself.
 
 ## 3. Everything is measured
 

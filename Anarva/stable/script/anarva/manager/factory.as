@@ -51,7 +51,6 @@ string legadvshipyard   ("legadvshipyard");
 string legaap  ("legaap");
 string leggant ("leggant");
 
-float switchLimit = MakeSwitchLimit();
 
 IUnitTask@ AiMakeTask(CCircuitUnit@ unit)
 {
@@ -129,12 +128,14 @@ void AiSave(OStream& ostream)
  */
 bool AiIsSwitchTime(int lastSwitchFrame)
 {
-	const float value = pow((ai.frame - lastSwitchFrame), 0.9) * aiEconomyMgr.metal.income + (aiEconomyMgr.metal.current * 7);
-	if (value > switchLimit) {
-		switchLimit = MakeSwitchLimit();
-		return true;
-	}
-	return false;
+	// No clock, no dice (the inherited rule waited for a random 8000-12000 s limit). Switch when the lab the core
+	// would build next is a higher tier than any we have and the tech decision says it pays now.
+	if (!Brain::HasBase() || Brain::Intel::allFactories.length() == 0)
+		return false;
+	CCircuitDef@ next = aiFactoryMgr.DefaultGetFactoryToBuild(Brain::basePos, false, false);
+	if (next is null)
+		return false;
+	return Brain::Tech::Tier(next) > Brain::Tech::TierWeHave() && Brain::Tech::Allowed(next);
 }
 
 bool AiIsSwitchAllowed(CCircuitDef@ facDef)
@@ -149,9 +150,5 @@ CCircuitDef@ AiGetFactoryToBuild(const AIFloat3& in pos, bool isStart, bool isRe
 
 /* --- Utils --- */
 
-float MakeSwitchLimit()
-{
-	return AiRandom(8000, 12000) * SECOND;
-}
 
 }  // namespace Factory
