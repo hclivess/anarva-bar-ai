@@ -2936,28 +2936,27 @@ void OnLoss(CCircuitUnit@ unit)
 
 void Update()  // every second
 {
-	lostNear *= 0.992f;  // half-life ~85 s
-	lostFar *= 0.992f;
-	killed *= 0.992f;
-	killedHome *= 0.992f;
-	killedAway *= 0.992f;
-	if (F_ZONES) TrackKills();
-	const float ev = EnemyValue();
-	if (enemyPrev >= 0.f && ev < enemyPrev) {
-		killed += AiMin(enemyPrev - ev, 3000.f);  // drops in known enemy value ~ our kills
-		killedTotal += AiMin(enemyPrev - ev, 3000.f);
-	}
-	enemyPrev = ev;
+	// Memory on the planning horizon itself (no hand-picked half-life): per second, evidence decays by e^(-1/H).
+	const float H = AiMax(1.f, Brain::Economist::Horizon());
+	const float decay = pow(2.71828183f, -1.f / H);  // e^(-1/H); the script math has pow, not exp
+	lostNear *= decay;
+	lostFar *= decay;
+	killedHome *= decay;
+	killedAway *= decay;
+	// Kills located through the bridge (enemy ids that vanish), no value-drop proxy with a cap.
+	const float kh = killedHome, ka = killedAway;
+	TrackKills();
+	killedTotal += (killedHome - kh) + (killedAway - ka);
+	killed = killedHome + killedAway;
 	const float lost = lostNear + lostFar;
-	// Evidence weighted by the stake: exchanges small next to the army we'd be risking can't swing the
-	// estimate (a few cheap kills once turned 0.7 into 5.1 and launched an all-in), real exchanges do.
-	const float stake = F_STAKE ? AiMax(50.f, Brain::Strategic::armyMetal) : 50.f;
+	// Evidence weighted by the army at stake: exchanges small next to what we'd risk can't swing the estimate.
+	const float stake = AiMax(1.f, Brain::Strategic::armyMetal);
 	trade = (killed + stake) / (lost + stake);
 	tradeHome = (killedHome + stake) / (lostNear + stake);
 	tradeAway = (killedAway + stake) / (lostFar + stake);
-	// The loss windows decay by 0.992 per second: they hold ~1/(1-0.992) = 125 s of losses. Pushed back = home losses
+	// Pushed back = home losses
 	// over that window exceed what our income replaces in it; pushing = our losses happen mostly away from home.
-	const float window = 1.f / (1.f - 0.992f);
+	const float window = H;  // the evidence window is the horizon (see decay above)
 	pushedBack = lostNear > aiEconomyMgr.metal.income * window;
 	pushing = lostFar > lostNear && lostFar > aiEconomyMgr.metal.income * window;
 
