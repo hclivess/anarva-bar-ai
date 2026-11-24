@@ -1604,7 +1604,9 @@ bool TerrainFortify()
 		const float len = AiMax(1.f, dir.Length2D());
 		dir = dir / len;
 		const AIFloat3 side(-dir.z, 0.f, dir.x);
-		for (int k = -3; k <= 3; ++k)
+		// across the measured choke width, walls touching (no fixed 7)
+		const int half = int(AiMax(0.f, m.choke) / (4.f * AiMax(1.f, wallDef.GetRadius())));
+		for (int k = -half; k <= half; ++k)
 			aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, wallDef, choke + side * (2.f * wallDef.GetRadius() * float(k)), 0.f, true, OrderLife(wallDef, choke)));  // touching
 	}
 	// mines in the choke mouth, on the enemy's side of the teeth: BARb walks its lanes and never sweeps
@@ -1612,9 +1614,11 @@ bool TerrainFortify()
 		AIFloat3 dir = choke - AIFloat3(m.sx[myStart], 0.f, m.sz[myStart]);
 		dir = dir / AiMax(1.f, dir.Length2D());
 		const AIFloat3 side(-dir.z, 0.f, dir.x);
-		for (int k = -2; k <= 2; ++k)
+		// one row just beyond the walls, across the choke width (no fixed 5 mines or 3 cycling rows)
+		const int mhalf = int(AiMax(0.f, m.choke) / (4.f * AiMax(1.f, mineDef.GetRadius())));
+		for (int k = -mhalf; k <= mhalf; ++k)
 			aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, mineDef,
-				choke + dir * (2.f * ((wallDef !is null) ? wallDef.GetRadius() : mineDef.GetRadius()) * float(1 + forts % 3)) + side * (2.f * mineDef.GetRadius() * float(k)), 0.f, true, OrderLife(mineDef, choke)));
+				choke + dir * (2.f * ((wallDef !is null) ? wallDef.GetRadius() : mineDef.GetRadius())) + side * (2.f * mineDef.GetRadius() * float(k)), 0.f, true, OrderLife(mineDef, choke)));
 	}
 	AiLog("[ANV] Terrain: " + n + "x " + tur.GetName() + " on high ground (+" + int(m.gain[myStart]) + ")" + (forts % 2 == 1 ? " + teeth across the choke" : "")
 		+ (minelayers > 0 ? " + mines" : ""));
@@ -1827,7 +1831,8 @@ IUnitTask@ MineLayerTask(CCircuitUnit@ fac)
  * constructors, the k-th upgrade waits ~k*tau/C, so one more constructor saves ~extra*tau*U^2/(2C(C+1))
  * of metal (extra = income an upgrade adds, tau = one upgrade's build time). Build it while that beats its cost.
  */
-array<string> T2_CONS = {"armack", "corack", "legack", "armacv", "coracv", "legacv", "armacsub", "coracsub", "legacsub"};
+// an upgrade constructor is one that can build the T2 extractor (unit facts, no name list)
+bool IsUpgradeCon(const CCircuitDef@ d) { return d !is null && Brain::Economist::mexT2 !is null && d.CanBuild(Brain::Economist::mexT2); }
 int mohoCons = 0;
 string mohoWhy = "";
 IUnitTask@ MohoConTask(CCircuitUnit@ fac)
@@ -1837,7 +1842,7 @@ IUnitTask@ MohoConTask(CCircuitUnit@ fac)
 	const array<string>@ opts = Facts::BuildOptions(fac.circuitDef.GetName());
 	CCircuitDef@ con = null;
 	for (uint i = 0; i < opts.length() && con is null; ++i)
-		if (T2_CONS.find(opts[i]) >= 0) { CCircuitDef@ d = ai.GetCircuitDef(opts[i]); if (d !is null && d.IsAvailable(ai.frame)) @con = d; }
+		{ CCircuitDef@ d = ai.GetCircuitDef(opts[i]); if (d !is null && d.IsAvailable(ai.frame) && IsUpgradeCon(d)) @con = d; }
 	if (con is null) return null;
 	// safe T1 extractors left to upgrade
 	uint U = 0;
@@ -1847,7 +1852,7 @@ IUnitTask@ MohoConTask(CCircuitUnit@ fac)
 	if (U == 0) { mohoWhy = "nothing safe to upgrade"; return null; }
 	uint C = 0;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
-	for (uint i = 0; i < all.length(); ++i) if (T2_CONS.find(all[i].circuitDef.GetName()) >= 0) ++C;
+	for (uint i = 0; i < all.length(); ++i) if (IsUpgradeCon(all[i].circuitDef)) ++C;
 	const float perMex = aiEconomyMgr.metal.income / float(AiMax(1, int(mx.length())));
 	const float extra = perMex * (Brain::Economist::MexExtract(Brain::Economist::mexT2) / AiMax(1e-9f, Brain::Economist::MexExtract(Brain::Economist::mexT1)) - 1.f)
 		- (Brain::Economist::MexUpkeep(Brain::Economist::mexT2) - Brain::Economist::MexUpkeep(Brain::Economist::mexT1)) / AiMax(1e-3f, Brain::Economist::energyPerMetal);
@@ -2071,17 +2076,13 @@ namespace Tech {
 
 int lastLog = 0;
 
-// Tier from unit facts (the old Factory::userData attrs were never set, so every lab looked like T1):
-// a lab that builds a T2 constructor is T2; the T3 gantries are known by name.
+// Tier from unit facts: a factory's build depth from the commander (gen_facts.py: the commander's labs are 1, a lab
+// built by a tier-t constructor is t + 1). No name lists. A unit that is no factory counts as tier 1.
 int Tier(const CCircuitDef@ d)
 {
 	if (d is null) return 0;
-	const string n = d.GetName();
-	if (n == "armshltx" || n == "corgant" || n == "leggant" || n == "armshltxuw" || n == "corgantuw") return 3;
-	const array<string>@ opts = Facts::BuildOptions(n);
-	for (uint i = 0; i < opts.length(); ++i)
-		if (Brain::Production::T2_CONS.find(opts[i]) >= 0) return 2;
-	return 1;
+	const int t = int(Facts::FactoryTier(d.GetName()));
+	return (t > 0) ? t : 1;
 }
 int TierWeHave()
 {

@@ -62,6 +62,26 @@ def main():
                  if d["buildoptions"] and not d.get("workertime", 0) == 0 and (
                      n.endswith(("lab", "vp", "ap", "sy", "hp", "gant", "shltx", "plat", "amsub"))
                      or "lab" in n or n.endswith("gantuw"))}
+    # Factory tier by build depth from the commanders (facts, no name lists): a commander's labs are tier 1; a
+    # constructor has its lab's tier; a lab built by a constructor of tier t is tier t + 1.
+    tier = {}
+    frontier = [(c, 0) for c in ("armcom", "corcom", "legcom") if c in defs]
+    seen = set()
+    while frontier:
+        b, t = frontier.pop(0)
+        if b in seen:
+            continue
+        seen.add(b)
+        for o in defs.get(b, {}).get("buildoptions", []):
+            if o in factories:
+                if o not in tier or tier[o] > t + 1:
+                    tier[o] = t + 1
+                for u in factories[o]:
+                    if defs.get(u, {}).get("buildoptions"):
+                        frontier.append((u, tier[o]))
+    defs_tier = {n: {"factorytier": float(t)} for n, t in tier.items()}
+    for n, v in defs_tier.items():
+        defs[n]["factorytier"] = v["factorytier"]
     emp = sorted(n for n, d in defs.items() if d["paralyzer"] and "metalcost" in d)
     crawl = sorted(n for n, d in defs.items() if d["crawl"] and "metalcost" in d)
     rez = sorted(n for n, d in defs.items() if d["canresurrect"])
@@ -106,7 +126,7 @@ def main():
     lines.append("}")
     lines.append("")
     for key, fn in (("stockpiletime", "StockpileTime"), ("metalpershot", "ShotMetal"), ("shieldradius", "ShieldRadius"),
-                    ("extractsmetal", "ExtractsMetal"), ("energyupkeep", "EnergyUpkeep")):
+                    ("extractsmetal", "ExtractsMetal"), ("energyupkeep", "EnergyUpkeep"), ("factorytier", "FactoryTier")):
         items = sorted((n, d[key]) for n, d in defs.items() if key in d)
         lines.append("dictionary %s_ = {" % key)
         lines.append(",\n".join('\t{"%s", %g}' % (n, v) for n, v in items))

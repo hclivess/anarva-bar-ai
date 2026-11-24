@@ -352,6 +352,49 @@ dictionary energyupkeep_ = {
 };
 float EnergyUpkeep(const string& in name) { double v = 0; energyupkeep_.get(name, v); return float(v); }
 
+dictionary factorytier_ = {
+	{"armaap", 2},
+	{"armalab", 2},
+	{"armamsub", 2},
+	{"armap", 1},
+	{"armasy", 2},
+	{"armavp", 2},
+	{"armfhp", 1},
+	{"armhp", 1},
+	{"armlab", 1},
+	{"armplat", 2},
+	{"armshltx", 3},
+	{"armsy", 1},
+	{"armvp", 1},
+	{"coraap", 2},
+	{"coralab", 2},
+	{"coramsub", 2},
+	{"corap", 1},
+	{"corasy", 2},
+	{"coravp", 2},
+	{"corfhp", 1},
+	{"corgant", 3},
+	{"corgantuw", 3},
+	{"corhp", 1},
+	{"corlab", 1},
+	{"corplat", 2},
+	{"corsy", 1},
+	{"corvp", 1},
+	{"legaap", 2},
+	{"legalab", 2},
+	{"legamphlab", 2},
+	{"legap", 1},
+	{"legavp", 2},
+	{"legfhp", 1},
+	{"leggant", 3},
+	{"leghp", 1},
+	{"leglab", 1},
+	{"legsplab", 2},
+	{"legsy", 1},
+	{"legvp", 1}
+};
+float FactoryTier(const string& in name) { double v = 0; factorytier_.get(name, v); return float(v); }
+
 array<string> BuildOptions(const string& in fac)
 {
 	array<string>@ o;
