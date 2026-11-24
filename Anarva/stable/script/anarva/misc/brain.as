@@ -1683,7 +1683,10 @@ IUnitTask@ MohoConTask(CCircuitUnit@ fac)
 	if (extra <= 0.f) { mohoWhy = "upgrade doesn't pay its upkeep"; return null; }
 	const float tau = t2.buildTime / AiMax(1.f, con.buildSpeed);
 	const float saving = (C == 0) ? 1e9f : extra * tau * float(U * U) / (2.f * float(C) * float(C + 1));
-	const float price = Brain::Economist::MetalValue(con);
+	// Metal has a shadow price: while we are short of the army we need, a metal not spent on army costs
+	// needed/ours of it (the Director's ratio). Upgrades must beat army at that price.
+	const float shadow = AiMax(1.f, 1.f / AiMax(1e-2f, Brain::Director::ratio));
+	const float price = Brain::Economist::MetalValue(con) * shadow;
 	mohoWhy = "U=" + U + " C=" + C + " saving=" + int(AiMin(saving, 1e6f)) + " vs " + int(price);
 	if (saving <= price) return null;
 	++mohoCons;
