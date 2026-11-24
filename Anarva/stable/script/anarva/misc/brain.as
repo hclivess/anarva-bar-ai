@@ -48,6 +48,7 @@ const bool F_REZ = false;       // rez-bot fleet sized to the wreck metal on the
 const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
 const bool F_HOLD = true;       // just-in-time extractor defence: meet each incoming enemy group at the extractor it is heading for (C++ bridge)
 const bool F_ARTYHIGH = false;  // core switch: artillery fires from the spot it reaches soonest, height-aware range (C++)
+const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 
 CCircuitDef@ Def(const string& in name)
@@ -298,10 +299,10 @@ void Update(bool jamAlert)
 {
 	// A wave must be able to win what it will meet (Director: needed power, incl. jammer guesses).
 	// If we can't reach it, the wave doesn't launch: the gathered army defends at home, where trades are better.
-	aiMilitaryMgr.quota.attack = AiMax(baseAttack, Brain::Director::needPower);
+	aiMilitaryMgr.quota.attack = AiMax(baseAttack, F_ZONES ? Brain::Director::needPowerAway : Brain::Director::needPower);
 
 	// A raid pack must beat the raiders that will answer it (their raider threat at our trade rate).
-	float raidMin = AiMax(baseRaidMin, aiEnemyMgr.GetEnemyThreat(RT::RAIDER) / AiMax(0.25f, Brain::Assess::trade));	aiMilitaryMgr.quota.raid.min = raidMin;
+	float raidMin = AiMax(baseRaidMin, aiEnemyMgr.GetEnemyThreat(RT::RAIDER) / AiMax(0.25f, F_ZONES ? Brain::Assess::tradeAway : Brain::Assess::trade));	aiMilitaryMgr.quota.raid.min = raidMin;
 	// raid.avg caps how big a raid may grow by joining; never below the gather size
 	aiMilitaryMgr.quota.raid.avg = AiMax(aiMilitaryMgr.quota.raid.avg, raidMin * 1.5f);
 
@@ -2260,6 +2261,46 @@ array<float> incomeHist;  // one sample per minute
 float growth = 0.f;
 bool pushedBack = false, pushing = false;
 float trade = 1.f;
+// Where exchanges happen (C++ bridge): our side of the map = closer to our base than to any known enemy
+// building, the live midpoint of the territory (no distance constant). Kills are located: an enemy that
+// leaves the core's list died, at its last known spot.
+float killedHome = 0.f, killedAway = 0.f, tradeHome = 1.f, tradeAway = 1.f;
+dictionary seen;  // enemy id -> last spot and cost
+class SSeen { AIFloat3 pos; float cost; }
+array<AIFloat3> enemyStatics;
+
+bool OnOurSide(const AIFloat3& in p)
+{
+	if (!HasBase()) return true;
+	const float dU = basePos.distance2D(p);
+	if (enemyStatics.length() == 0) return dU < basePos.distance2D(aiEnemyMgr.GetEnemyPos());
+	for (uint j = 0; j < enemyStatics.length(); ++j)
+		if (enemyStatics[j].distance2D(p) < dU) return false;
+	return true;
+}
+
+void TrackKills()
+{
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef, ids;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	AiGetEnemyIds(ids);
+	enemyStatics.resize(0);
+	for (uint i = 0; i < n; ++i)
+		if (ed[i] !is null && !ed[i].IsMobile()) enemyStatics.insertLast(ep[i]);
+	dictionary now;
+	for (uint i = 0; i < n && i < ids.length(); ++i) {
+		SSeen e; e.pos = ep[i]; e.cost = ec[i];
+		now.set(formatInt(ids[i]), @e);
+	}
+	array<string>@ keys = seen.getKeys();
+	for (uint k = 0; k < keys.length(); ++k) {
+		if (now.exists(keys[k])) continue;
+		SSeen@ e = cast<SSeen>(seen[keys[k]]);
+		if (e is null) continue;
+		if (OnOurSide(e.pos)) killedHome += e.cost; else killedAway += e.cost;
+	}
+	seen = now;
+}
 
 float EnemyValue()
 {
@@ -2279,12 +2320,14 @@ void OnLoss(CCircuitUnit@ unit)
 	const float dist = HasBase() ? basePos.distance2D(unit.GetPos(ai.frame)) : 0.f;
 	if (F_TERRAIN)
 		Brain::Strategic::OnTerrainLoss(unit.GetPos(ai.frame), d.costM);
-	if (dist < 1500.f) {
+	const bool home = F_ZONES ? OnOurSide(unit.GetPos(ai.frame)) : dist < 1500.f;
+	if (home) {
 		lostNear += d.costM;
 		lostNearTotal += d.costM;
-	} else
+	} else {
 		lostFar += d.costM;
 		lostFarTotal += d.costM;
+	}
 	if (d.IsMobile())
 		frontDist = 0.9f * frontDist + 0.1f * dist;
 }
@@ -2294,6 +2337,9 @@ void Update()  // every second
 	lostNear *= 0.992f;  // half-life ~85 s
 	lostFar *= 0.992f;
 	killed *= 0.992f;
+	killedHome *= 0.992f;
+	killedAway *= 0.992f;
+	if (F_ZONES) TrackKills();
 	const float ev = EnemyValue();
 	if (enemyPrev >= 0.f && ev < enemyPrev) {
 		killed += AiMin(enemyPrev - ev, 3000.f);  // drops in known enemy value ~ our kills
@@ -2305,6 +2351,8 @@ void Update()  // every second
 	// estimate (a few cheap kills once turned 0.7 into 5.1 and launched an all-in), real exchanges do.
 	const float stake = F_STAKE ? AiMax(50.f, Brain::Strategic::armyMetal) : 50.f;
 	trade = (killed + stake) / (lost + stake);
+	tradeHome = (killedHome + stake) / (lostNear + stake);
+	tradeAway = (killedAway + stake) / (lostFar + stake);
 	pushedBack = lostNear > 300.f && lostNear > 1.5f * lostFar;
 	pushing = lostFar > 300.f && lostFar > 2.f * lostNear && frontDist > 1800.f;
 
@@ -2319,6 +2367,7 @@ void Update()  // every second
 string Status()
 {
 	return (pushedBack ? "PUSHED-BACK" : (pushing ? "PUSHING" : "holding")) + " trade=" + F1(trade)
+		+ " home/away trade=" + F1(tradeHome) + "/" + F1(tradeAway) + " kill(h/a)=" + int(killedHome) + "/" + int(killedAway)
 		+ " lost(n/f)=" + int(lostNear) + "/" + int(lostFar) + " front=" + int(frontDist) + " growth3m=" + int(growth * 100.f) + "%";
 }
 
@@ -2424,6 +2473,7 @@ string reason = "start";
 
 float OurPower() { return Brain::Army::groundPower + Brain::Army::raiderPoolPower; }
 
+float needPowerAway = 0.f;
 float needPower = 0.f;   // army power needed to win against what we know (and guess) is out there
 
 void Update()
@@ -2441,6 +2491,7 @@ void Update()
 	if (F_DETAIL)
 		theirs /= float(AiMax(1, ai.GetEnemyTeamSize()));
 	needPower = theirs / AiMax(0.25f, Brain::Assess::trade);  // 0.25: numeric guard, not a tuning knob
+	needPowerAway = theirs / AiMax(0.25f, Brain::Assess::tradeAway);  // what an attack must bring, at the trade we get away
 	ratio = ours / AiMax(1.f, needPower);
 
 	/*

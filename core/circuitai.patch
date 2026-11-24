@@ -84,7 +84,7 @@ index 0be6a835..ec2cfaf1 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..ea406c9d 100644
+index c3aaefe5..93635af7 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -133,7 +133,7 @@ index c3aaefe5..ea406c9d 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -738,6 +752,141 @@ void CInitScript::RegisterCore()
+@@ -738,6 +752,155 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitUnit", "string GetRulesParam(const string& in, const string& in) const", asFUNCTION(CCircuitUnit_GetRulesParamString), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
  }
  
@@ -224,6 +224,20 @@ index c3aaefe5..ea406c9d 100644
 +	return pos->GetSize();
 +}
 +
++// Unit ids of the enemies AiGetEnemies returns, in the same order (call in the same frame).
++// An id that disappears from the list died (the core drops an enemy only when it is destroyed).
++static asUINT Bridge_GetEnemyIds(CScriptArray* ids)
++{
++	const CCircuitAI::EnemyInfos& enemies = bridgeAI->GetEnemyInfos();
++	ids->Resize(0);
++	for (auto& kv : enemies) {
++		if (kv.second->IsHidden()) continue;
++		int id = kv.first;
++		ids->InsertLast(&id);
++	}
++	return ids->GetSize();
++}
++
 +// Every metal spot: position, income, open (not ours or queued by us/allies).
 +static asUINT Bridge_GetMetalSpots(CScriptArray* pos, CScriptArray* income, CScriptArray* open)
 +{
@@ -275,7 +289,7 @@ index c3aaefe5..ea406c9d 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +916,23 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +930,24 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -286,6 +300,7 @@ index c3aaefe5..ea406c9d 100644
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyGroups(array<AIFloat3>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemyGroups), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetWrecks(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetWrecks), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHighGroundArty", &anarva::switches.highGroundArty); ASSERT(r >= 0);
++	r = engine->RegisterGlobalFunction("uint AiGetEnemyIds(array<int>@+)", asFUNCTION(Bridge_GetEnemyIds), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetMetalSpots(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetMetalSpots), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiIsInLOS(const AIFloat3& in)", asFUNCTION(Bridge_IsInLOS), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("array<CCircuitUnit@>@ AiGetTeamUnits()", asFUNCTION(Bridge_GetTeamUnits), asCALL_CDECL); ASSERT(r >= 0);
