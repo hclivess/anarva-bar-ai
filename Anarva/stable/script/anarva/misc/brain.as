@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_RAIDRESP = false;  // answer raids already in progress: the 'arrive before the enemy' test can never pass once they are there
 const bool F_RECLAIM = false;   // constructors reclaim wreck fields when the metal, minus walk and risk, beats their current job
 const bool F_DEFRISK = false;   // a turret is built only where it is more likely to survive than not (cover vs the danger that can reach it)
 const bool F_BUILDERSAFE = false; // constructors leave a job when (1-P) x job - P x own cost is worth less than assisting a factory
@@ -702,10 +703,18 @@ void Update()
 		if (have >= incoming[m]) continue;
 		// who can be there before the enemy, nearest first
 		array<float> arr; array<uint> idx;
+		// A raid already on the asset (eta 0) can't be beaten to it; what matters then is whether anything of ours is
+		// still there when help arrives: the assets within the raiders' reach of this one after our travel time.
+		float raidSpeed = 1.f;
+		for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile() && ep[i].distance2D(mp[m]) <= ed[i].GetMaxRange() + ed[i].speed) raidSpeed = AiMax(raidSpeed, ed[i].speed);
 		for (uint i = 0; i < free.length(); ++i) {
 			if (free[i] is null) continue;
 			const float t = MoveTime(free[i].circuitDef, free[i].GetPos(ai.frame).distance2D(mp[m]));
-			if (t > eta[m]) continue;
+			if (F_RAIDRESP && eta[m] <= 0.f) {
+				float stake = 0.f;
+				for (uint k = 0; k < M; ++k) if (mp[k].distance2D(mp[m]) <= raidSpeed * t + mexes[k].circuitDef.GetMaxRange()) stake += mexes[k].circuitDef.costM;
+				if (stake <= 0.f) continue;
+			} else if (t > eta[m]) continue;
 			uint k = 0; while (k < arr.length() && arr[k] < t) ++k;
 			arr.insertAt(k, t); idx.insertAt(k, i);
 		}
