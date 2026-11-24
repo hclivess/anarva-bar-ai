@@ -133,6 +133,60 @@
    "experiment": "tech progression per team (new harness tech line), 4 games 1v2",
    "finding": "Not tech timing: Anarva gets T2 labs/moho as early as each bot. It is territory: Anarva's T1 extractors peak ~14 at 12-15 min then fall to ~8 by 30, each bot climbs to ~25 (49 vs 14 at 21 min for the two bots). Bots also keep more constructors (16-24 vs 10-16). Energy is not wasted (pull ~ income, 8 T1 converters running).",
    "next": "expansion from live free spots weighted by holdability (F_EXPAND rewrite), metric: extractor count at 15/21/27"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "F_EXPAND rewrite (live free spots x holdability) on vs off, 8+8 concurrent",
+   "results": {
+    "on": "share 0.29, 2 outright, mex 17.4/16.9/17.9, inc 42/70/90",
+    "off": "share 0.32, 3 outright, mex 17.6/17.4/15.3, inc 42/67/86"
+   },
+   "decision": "off: more constructors don't take more spots; the safe free spots are already taken, the rest is held by the enemy army"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "F_ZONES (located kills, home/away trade, attack+raid quotas by away trade) on vs off",
+   "results": {
+    "on": "share 0.31, 3 outright, dmg out/in 1.11",
+    "off": "share 0.40, 0 outright, dmg out/in 1.02"
+   },
+   "finding": "The old kill proxy (drops in known enemy value) undercounted kills ~2x: located kills put the away trade near 2. Fights are even by damage (out/in ~1.0-1.1) against 2x enemy production; the plateau is military.",
+   "decision": "off: bolder away play exposes the base"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "F_ARTYHIGH (artillery fires from the spot reached soonest, engine range-at-height, threat-free) on vs off, 2 concurrent rounds x 8, 1v2",
+   "results": {
+    "on": {
+     "share": [
+      0.58,
+      0.31
+     ],
+     "outright": [
+      0,
+      3
+     ],
+     "dmg_out_in": [
+      0.96,
+      0.88
+     ]
+    },
+    "off": {
+     "share": [
+      0.26,
+      0.26
+     ],
+     "outright": [
+      1,
+      5
+     ],
+     "dmg_out_in": [
+      0.86,
+      1.11
+     ]
+    }
+   },
+   "decision": "on by default: better share and fewer outright losses in both rounds (pooled 0.44 vs 0.26, 3 vs 6 outright)"
   }
  ],
  "install": {

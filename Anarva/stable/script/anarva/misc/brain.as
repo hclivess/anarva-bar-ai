@@ -47,7 +47,7 @@ const bool F_COMMZONE = false;  // commander works only inside the zone where no
 const bool F_REZ = false;       // rez-bot fleet sized to the wreck metal on the map
 const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
 const bool F_HOLD = true;       // just-in-time extractor defence: meet each incoming enemy group at the extractor it is heading for (C++ bridge)
-const bool F_ARTYHIGH = false;  // core switch: artillery fires from the spot it reaches soonest, height-aware range (C++)
+const bool F_ARTYHIGH = true;   // core switch: artillery fires from the spot it reaches soonest, height-aware range (C++)
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 
