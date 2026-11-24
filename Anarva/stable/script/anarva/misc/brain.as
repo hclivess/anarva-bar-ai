@@ -2816,7 +2816,7 @@ void OnLoss(CCircuitUnit@ unit)
 	const float dist = HasBase() ? basePos.distance2D(unit.GetPos(ai.frame)) : 0.f;
 	if (F_TERRAIN)
 		Brain::Strategic::OnTerrainLoss(unit.GetPos(ai.frame), d.costM);
-	const bool home = F_ZONES ? OnOurSide(unit.GetPos(ai.frame)) : dist < 1500.f;
+	const bool home = OnOurSide(unit.GetPos(ai.frame));  // our side: closer to our assets than to theirs (no 1500-elmo ring)
 	if (home) {
 		lostNear += d.costM;
 		lostNearTotal += d.costM;
@@ -2849,8 +2849,11 @@ void Update()  // every second
 	trade = (killed + stake) / (lost + stake);
 	tradeHome = (killedHome + stake) / (lostNear + stake);
 	tradeAway = (killedAway + stake) / (lostFar + stake);
-	pushedBack = lostNear > 300.f && lostNear > 1.5f * lostFar;
-	pushing = lostFar > 300.f && lostFar > 2.f * lostNear && frontDist > 1800.f;
+	// The loss windows decay by 0.992 per second: they hold ~1/(1-0.992) = 125 s of losses. Pushed back = home losses
+	// over that window exceed what our income replaces in it; pushing = our losses happen mostly away from home.
+	const float window = 1.f / (1.f - 0.992f);
+	pushedBack = lostNear > aiEconomyMgr.metal.income * window;
+	pushing = lostFar > lostNear && lostFar > aiEconomyMgr.metal.income * window;
 
 	if (ai.frame % MINUTE < SECOND) {
 		incomeHist.insertLast(aiEconomyMgr.metal.income);
@@ -3067,8 +3070,8 @@ void Update()
 	// Napoleon: several enemies are several armies. Beat them one at a time before they combine.
 	if (F_DETAIL)
 		theirs /= float(AiMax(1, ai.GetEnemyTeamSize()));
-	needPower = theirs / AiMax(0.25f, Brain::Assess::trade);  // 0.25: numeric guard, not a tuning knob
-	needPowerAway = theirs / AiMax(0.25f, Brain::Assess::tradeAway);  // what an attack must bring, at the trade we get away
+	needPower = theirs / AiMax(1e-3f, Brain::Assess::trade);  // numeric guard only
+	needPowerAway = theirs / AiMax(1e-3f, Brain::Assess::tradeAway);  // what an attack must bring, at the trade we get away
 	ratio = ours / AiMax(1.f, needPower);
 
 	/*
@@ -3104,7 +3107,9 @@ void Update()
 		scale = AiMin(2.f, AiMax(scale, 1.f) * (1.f + float(Brain::Waste::metalSec) / 60.f));
 		scaleWhy = "metal overflowing: more build power";
 	}
-	if (F_SCALE)
+	if (F_DECIDE)
+		aiFactoryMgr.buildpowerRatio = 1e9f;  // no cap or band: the core's constructor rule is 'only while income goes unspent'
+	else if (F_SCALE)
 		aiFactoryMgr.buildpowerRatio = baseBP * scale;
 	if (F_EXPAND && !Brain::Assess::pushedBack)
 		Expand();
