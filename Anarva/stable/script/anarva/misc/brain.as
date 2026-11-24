@@ -2710,7 +2710,8 @@ float Horizon()
 {
 	const float P = Brain::Director::OurPower();
 	const float T = EnemyThreat();
-	const float elapsed = AiMax(float(ai.frame) / SECOND, 60.f);
+	// plan as far ahead as the game has run, scaled by our share of the strength (x2: 1 at parity); no 60 s floor
+	const float elapsed = AiMax(float(ai.frame) / SECOND, 1.f);
 	return elapsed * 2.f * P / AiMax(1.f, P + T);
 }
 
