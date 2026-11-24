@@ -68,7 +68,7 @@ const bool F_HOLDALL = true;    // the just-in-time defence covers every constru
 const bool F_STORAGE = true;    // reclaims only start when the metal fits; metal storage built when held-back reclaims are worth more than it costs
 const bool F_ENGAGE = true;     // core switch: gathering squads fight enemies inside their own sight that they can beat (owner saw a raider pace past a lone pawn)
 const bool F_TURN = true;       // travel times include turning (turn rate, arcs) and acceleration, not distance/top speed
-const bool F_SCOUTMAP = false;  // scouts go where vision is worth most: our assets an unseen enemy could have reached since we last looked (C++ switch)
+const bool F_SCOUTMAP = true;   // scouts go where vision is worth most: our assets an unseen enemy could have reached since we last looked (C++ switch)
 const bool F_MOHO = true;       // T2 lab builds T2 constructors while one more saves more on the extractor-upgrade queue than it costs
 const bool F_COMMFWD = true;    // (with F_COMMRISK) commander claims the free extractor spot with the best gain - risk, anywhere: the human front-builder pattern
 const bool F_COMMRISK = true;   // commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle
@@ -651,6 +651,26 @@ void Update()
 	 */
 	array<int> assets;
 	for (int c = 0; c < n; ++c) if (ours[c] > 0.f) assets.insertLast(c);
+	/*
+	 * Offence (Vritrasura108 #74: scouts in several directions find unprotected extractors and constructors to raid).
+	 * An open metal spot on the enemy's side may have been taken since we last looked: the chance grows with how
+	 * long the cell has been dark against the time the enemy needs to cross the map (diagonal / their speed). Its
+	 * value is what a raid there kills: an extractor.
+	 */
+	array<float> raidable(n, 0.f);
+	{
+		array<AIFloat3> msp; array<float> msi; array<bool> mso;
+		const uint ns2 = AiGetMetalSpots(msp, msi, mso);
+		CCircuitDef@ mexDef = Strategic::Side("armmex", "cormex", "legmex");
+		const float mexCost = mexDef is null ? 0.f : Economist::MetalValue(mexDef);
+		const float cross = AiTerrainDiagonal() / AiMax(1.f, speed);
+		for (uint i = 0; i < ns2; ++i) {
+			if (!mso[i] || Assess::OnOurSide(msp[i])) continue;
+			const int c = Intel::CellOf(msp[i]);
+			const float age = float(ai.frame - lastSeen[c]) / SECOND;
+			raidable[c] += mexCost * AiMin(1.f, age / AiMax(1.f, cross));
+		}
+	}
 	// our army's centre: where the response comes from
 	float axs = 0.f, azs = 0.f, aw = 0.f;
 	for (uint i = 0; i < all.length(); ++i) {
@@ -675,7 +695,7 @@ void Update()
 			const AIFloat3 cc = Intel::CellCenter(c);
 			const float age = float(ai.frame - lastSeen[c]) / SECOND;
 			if (age <= 0.f && dots[c] <= 0.f) continue;
-			float v = dots[c] * meanCost;
+			float v = dots[c] * meanCost + raidable[c];
 			for (uint k = 0; k < assets.length(); ++k) {
 				const AIFloat3 ac = Intel::CellCenter(assets[k]);
 				const float d = AiMax(1.f, cc.distance2D(ac));
