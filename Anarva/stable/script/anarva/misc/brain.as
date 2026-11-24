@@ -56,6 +56,8 @@ const bool F_NANOS = true;      // reclaim caretakers whose metal is worth more 
 const bool F_ECORECLAIM = true;  // reclaim the energy plant whose metal now is worth more than its energy over the horizon (no fixed gates)
 const bool F_STRAFE = true;     // core switch: units sidestep dodgeable shots (flight time x our speed > blast radius)
 const bool F_FOCUS = true;      // core switch: each unit focuses the visible enemy in range with the highest threat per remaining health
+const bool F_ECOPOS = true;     // Vritrasura108 #41: economically behind -> economy; in surplus -> accumulate army (no new constructors)
+const bool F_MEXPORC = true;    // Vritrasura108 #43: a turret on an outer extractor when the metal lost around it beats the turret and it would survive
 const bool F_DECIDE = true;     // core switch: every dice roll in the core replaced by a computed choice (unit/role pick, constructor, retreat, superweapon, chance, map points)
 const bool F_RAIDRESP = true;   // answer raids already in progress: the 'arrive before the enemy' test can never pass once they are there
 const bool F_RECLAIM = true;    // constructors and rez bots reclaim/revive wreck fields when the metal, minus walk and risk, beats their current job
@@ -487,6 +489,72 @@ void Update()
 string Status() { return "storage orders=" + ordered; }
 
 }  // namespace Storage
+
+
+/*
+ * Economic position (Vritrasura108, #41): "I try to reduce army only when I am economically behind. Otherwise when I
+ * am in surplus I accumulate army for attack. Defensive army can also become offensive army if accumulated for long
+ * enough. Having no army at all ruins the possibility to exploit fast once a critical weakness is discovered."
+ * Enemy income is estimated from the extractors of theirs we have seen, at what our own extractors yield. Behind:
+ * income goes to constructors and economy. Ahead: no new constructors; income becomes army (option value).
+ */
+namespace EcoPos {
+float ours = 0.f, theirs = 0.f;
+bool behind = true;
+void Update()
+{
+	if (!F_ECOPOS) return;
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	uint enemyMex = 0;
+	for (uint i = 0; i < n; ++i) {
+		if (ed[i] is null || ed[i].IsMobile()) continue;
+		const string nm = ed[i].GetName();
+		if (nm.findFirst("mex") >= 0 || nm.findFirst("moho") >= 0) ++enemyMex;
+	}
+	ours = aiEconomyMgr.metal.income;
+	const float perMex = ours / float(AiMax(1, int(Economist::mexes.length())));
+	theirs = float(enemyMex) * perMex;
+	behind = ours < theirs;
+	// the core's constructor rule (decide): builds constructors while build power < income x ratio
+	if (F_DECIDE) {
+		aiFactoryMgr.buildpowerRatio = behind ? 1e9f
+			: aiBuilderMgr.GetBuildPower() / AiMax(1e-3f, aiEconomyMgr.metal.income);  // ahead: hold constructors where they are
+	}
+}
+string Status() { return "ecoPos " + (behind ? "behind" : "ahead") + " ours=" + int(ours) + " theirs~" + int(theirs); }
+}  // namespace EcoPos
+
+/*
+ * Outer extractor defence (Vritrasura108, #43: "invest early into LLTs or pawns ... however LLTs can be killed by a
+ * single rocket bot so they should not be overinvested"). An extractor gets a turret when the metal lost around it
+ * recently (raid evidence, Intel heat) exceeds the turret's cost and the turret would survive there (TurretSurvives).
+ */
+namespace MexPorc {
+int orders = 0;
+dictionary guarded;  // mex id -> frame ordered
+void Update()
+{
+	if (!F_MEXPORC || !HasBase()) return;
+	CCircuitDef@ tur = Strategic::BestTurret();
+	if (tur is null || !tur.IsAvailable(ai.frame)) return;
+	const float cost = Economist::MetalValue(tur);
+	const array<CCircuitUnit@>@ mx = Economist::mexes;
+	CCircuitUnit@ best = null; float bestHeat = cost;
+	for (uint i = 0; i < mx.length(); ++i) {
+		if (guarded.exists("" + mx[i].id)) continue;
+		const float h = Intel::heat[Intel::CellOf(mx[i].GetPos(ai.frame))];
+		if (h > bestHeat) { bestHeat = h; @best = mx[i]; }
+	}
+	if (best is null) return;
+	const AIFloat3 p = best.GetPos(ai.frame);
+	if (!TurretSurvives(tur, p)) return;
+	guarded.set("" + best.id, ai.frame);
+	++orders;
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, p, SQUARE_SIZE * 8, true, 3 * MINUTE));
+	AiLog("[ANV] MexPorc: " + tur.GetName() + " at raided extractor (lost " + int(bestHeat) + " metal around it > turret " + int(cost) + ")");
+}
+}  // namespace MexPorc
 
 /* ======================================================================== */
 /*
@@ -2138,7 +2206,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// constructor: income it adds now vs its cost and the horizon.)
 	// constructor share as a quota, not a dice roll: a constructor whenever builders so far are below their share
 	// A constructor while income goes unspent (we can't spend what we earn); otherwise the metal is worth more as army.
-	if (aiEconomyMgr.metal.pull < aiEconomyMgr.metal.income) {
+	if (aiEconomyMgr.metal.pull < aiEconomyMgr.metal.income && (!F_ECOPOS || EcoPos::behind)) {
 		++builders;
 		return null;
 	}
@@ -3111,7 +3179,7 @@ void Update()
 		scale = AiMin(2.f, AiMax(scale, 1.f) * (1.f + float(Brain::Waste::metalSec) / 60.f));
 		scaleWhy = "metal overflowing: more build power";
 	}
-	if (F_DECIDE)
+	if (F_DECIDE && !F_ECOPOS)
 		aiFactoryMgr.buildpowerRatio = 1e9f;  // no cap or band: the core's constructor rule is 'only while income goes unspent'
 	else if (F_SCALE)
 		aiFactoryMgr.buildpowerRatio = baseBP * scale;
@@ -3796,6 +3864,10 @@ void Update()  // every 30 frames
 		Hold::Update();
 	if (F_SCOUTMAP && ai.frame % (3 * SECOND) < SECOND)
 		Scout::Update();
+	if (F_ECOPOS && ai.frame % (2 * SECOND) < SECOND)
+		EcoPos::Update();
+	if (F_MEXPORC && ai.frame % (5 * SECOND) < SECOND)
+		MexPorc::Update();
 	if (F_STORAGE && ai.frame % (5 * SECOND) < SECOND)
 		Storage::Update();
 	if (F_COMMGUARD && ai.frame % (2 * SECOND) < SECOND)
