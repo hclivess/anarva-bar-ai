@@ -339,7 +339,7 @@ index 0be6a835..b91cfe6e 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..fa9c7474 100644
+index c3aaefe5..975f4008 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -561,7 +561,7 @@ index c3aaefe5..fa9c7474 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +940,28 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +940,29 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -576,6 +576,7 @@ index c3aaefe5..fa9c7474 100644
 +	r = engine->RegisterGlobalProperty("bool aiSwitchScoutMap", &anarva::switches.scoutMap); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchEngageSeen", &anarva::switches.engageSeen); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchDecide", &anarva::switches.decide); ASSERT(r >= 0);
++	r = engine->RegisterGlobalProperty("bool aiSwitchFocusFire", &anarva::switches.focusFire); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyIds(array<int>@+)", asFUNCTION(Bridge_GetEnemyIds), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetMetalSpots(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetMetalSpots), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiIsInLOS(const AIFloat3& in)", asFUNCTION(Bridge_IsInLOS), asCALL_CDECL); ASSERT(r >= 0);
@@ -1198,10 +1199,18 @@ index b62de532..9062ae67 100644
  }
  
 diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
-index 154ce4bf..7720920d 100644
+index 154ce4bf..162509d8 100644
 --- a/src/circuit/task/fighter/SquadTask.cpp
 +++ b/src/circuit/task/fighter/SquadTask.cpp
-@@ -16,6 +16,9 @@
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "task/fighter/SquadTask.h"
++#include "unit/enemy/EnemyUnit.h"
+ #include "map/InfluenceMap.h"
+ #include "map/ThreatMap.h"
+ #include "module/BuilderManager.h"
+@@ -16,6 +17,9 @@
  #include "unit/action/TravelAction.h"
  #include "CircuitAI.h"
  #include "util/Utils.h"
@@ -1211,7 +1220,51 @@ index 154ce4bf..7720920d 100644
  
  #include <cmath>
  
-@@ -459,9 +462,25 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+@@ -387,8 +391,43 @@ void ISquadTask::Attack(const int frame)
+ 	Attack(frame, GetTarget()->GetUnit()->IsCloaked());
+ }
+ 
++// Anarva (switch focusFire): Lanchester target order. Each unit focuses the visible enemy inside its own range whose
++// removal cuts the enemy's firepower most per point of damage we spend: threat / remaining health (ties: metal per
++// health). Set-target keeps the unit's movement orders.
++static void AnarvaFocusFire(CCircuitAI* circuit, const std::set<CCircuitUnit*>& units, const int frame)
++{
++	const CCircuitAI::EnemyInfos& enemies = circuit->GetEnemyInfos();
++	for (CCircuitUnit* unit : units) {
++		const AIFloat3& up = unit->GetPos(frame);
++		const float range = unit->GetCircuitDef()->GetMaxRange();
++		CEnemyInfo* best = nullptr;
++		float bestScore = -1.f, bestTie = -1.f;
++		for (auto& kv : enemies) {
++			CEnemyInfo* e = kv.second;
++			CCircuitDef* edef = e->GetCircuitDef();
++			if ((edef == nullptr) || !e->IsInLOS() || (up.SqDistance2D(e->GetPos()) > SQUARE(range))) {
++				continue;
++			}
++			const float hp = std::max(1.f, e->GetHealth());
++			const float score = edef->GetDefThreat() / hp;
++			const float tie = edef->GetCostM() / hp;
++			if ((score > bestScore) || ((score == bestScore) && (tie > bestTie))) {
++				bestScore = score;
++				bestTie = tie;
++				best = e;
++			}
++		}
++		if (best != nullptr) {
++			unit->CmdSetTarget(best);
++		}
++	}
++}
++
+ void ISquadTask::Attack(const int frame, const bool isGround)
+ {
++	if (anarva::switches.focusFire) {
++		AnarvaFocusFire(manager->GetCircuit(), units, frame);
++	}
+ 	const AIFloat3& tPos = GetTarget()->GetPos();
+ 	const bool isRepeatAttack = (frame >= attackFrame + FRAMES_PER_SEC * 3);
+ 	attackFrame = isRepeatAttack ? frame : attackFrame;
+@@ -459,9 +498,25 @@ void ISquadTask::Attack(const int frame, const bool isGround)
  				|| (unit->GetTargetTile() != targetTile))
  			{
  				const float angle = alpha + beta;
@@ -1530,10 +1583,10 @@ index 00000000..6e04da05
 +#endif // SRC_CIRCUIT_UTIL_ANARVADECIDE_H_
 diff --git a/src/circuit/util/AnarvaSwitches.h b/src/circuit/util/AnarvaSwitches.h
 new file mode 100644
-index 00000000..10bbcf10
+index 00000000..5e019aff
 --- /dev/null
 +++ b/src/circuit/util/AnarvaSwitches.h
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,28 @@
 +/*
 + * AnarvaSwitches.h
 + *
@@ -1553,7 +1606,8 @@ index 00000000..10bbcf10
 +	bool heightSquads = false;    // squads: each unit's standoff scaled by its range at the height it stands on
 +	bool scoutMap = false;
 +	bool engageSeen = false;
-+	bool decide = false;          // every dice roll in the core replaced by a computed choice (AUDIT.md)      // gathering squads also fight enemies inside their own sight that they can beat, not only inside our defence influence        // scouts go to the targets the script ranks (vision age x stake), not the core's cluster order
++	bool decide = false;
++	bool focusFire = false;       // each unit focuses the visible enemy in its range with the highest threat per remaining health          // every dice roll in the core replaced by a computed choice (AUDIT.md)      // gathering squads also fight enemies inside their own sight that they can beat, not only inside our defence influence        // scouts go to the targets the script ranks (vision age x stake), not the core's cluster order
 +};
 +inline SSwitches switches;
 +
