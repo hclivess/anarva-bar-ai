@@ -1485,16 +1485,22 @@ void OnDestroyed(CCircuitUnit@ u)
 	RemoveUnit(silos, u); RemoveUnit(shields, u); RemoveUnit(infra, u); RemoveUnit(aaTowers, u);
 }
 
+// No cooldown clock: a kind is ready when no order of it is still outstanding (one more exists, or the build task
+// we queued has expired at its own lifetime, ORDER_LIFE, set where it is enqueued).
+const int ORDER_LIFE = 5 * MINUTE;
+array<int> countAtOrder(8, -1);
 bool Ready(int kind, CCircuitDef@ d)
 {
-	return d !is null && d.IsAvailable(ai.frame) && ai.frame - lastOrder[kind] > 4 * MINUTE;
+	if (d is null || !d.IsAvailable(ai.frame)) return false;
+	return countAtOrder[kind] < 0 || d.count > countAtOrder[kind] || ai.frame - lastOrder[kind] > ORDER_LIFE;
 }
 
 void Order(int kind, CCircuitDef@ d, const AIFloat3& in pos, Task::Priority pri, float shake)
 {
 	lastOrder[kind] = ai.frame;
+	countAtOrder[kind] = d.count;
 	++orders;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::BIG_GUN, pri, d, pos, shake, true, 5 * MINUTE));
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::BIG_GUN, pri, d, pos, shake, true, ORDER_LIFE));
 	AiLog("[ANV] Strategic: ordering " + d.GetName() + " at (" + int(pos.x) + "," + int(pos.z) + ")");
 }
 
@@ -1553,32 +1559,35 @@ void Update(bool jamAlert)
 		Order(1, amdDef, basePos, enemyNuke ? Task::Priority::NOW : Task::Priority::HIGH, SQUARE_SIZE * 32);
 		return;
 	}
-	// Juno: EMP missile that wipes radar, jammers and mines in its blast. Our answer to jammers.
-	if (jamAlert && minute >= 12 && junos.length() < 1 && Ready(0, junoDef)) {
+	// Juno: EMP missile that wipes radar, jammers and mines in its blast. Worth it when the enemy jammers it can wipe
+	// are worth more than it (no game clock).
+	if (jamAlert && junos.length() < 1 && Ready(0, junoDef)
+		&& aiEnemyMgr.GetEnemyCost(RT::JAMMER) > Brain::Economist::MetalValue(junoDef)) {
 		Order(0, junoDef, basePos, Task::Priority::HIGH, SQUARE_SIZE * 32);
 		return;
 	}
 	// Everything below is an investment that doesn't fight today: only when our army covers what we need.
 	if (Brain::Director::ratio < 1.f)
 		return;
-	// Shields over the most valuable uncovered infrastructure (they drain ~560 E/s recharging).
-	const uint wantShields = uint(AiMin(6.f, AiMax(0.f, (m - 30.f) / 25.f)));
-	if (minute >= 14 && e >= 1500.f && shields.length() < wantShields && Ready(4, shieldDef)) {
+	// Shields over the most valuable uncovered infrastructure: one more while what it would cover is worth more than
+	// the shield (no clock, no energy level, no count formula, no fixed value floor).
+	if (Ready(4, shieldDef)) {
 		AIFloat3 pos;
 		float value;
-		if (BestShieldSpot(pos, value) && value >= 2500.f) {
+		if (BestShieldSpot(pos, value) && value > Brain::Economist::MetalValue(shieldDef)) {
 			Order(4, shieldDef, pos, Task::Priority::NORMAL, SQUARE_SIZE * 6);
 			return;
 		}
 	}
-	// Tactical / EMP launcher, forward of base.
-	const uint wantTac = (minute >= 18 && m >= 40.f) ? (m >= 80.f ? 2 : 1) : 0;
-	if (tacs.length() < wantTac && Ready(2, tacDef)) {
+	// Tactical / EMP launcher, forward of base: one more while the enemy's static metal exceeds what our launchers cost.
+	const float enemyStatic = aiEnemyMgr.GetEnemyCost(RT::STATIC);
+	if (tacDef !is null && Ready(2, tacDef) && enemyStatic > Brain::Economist::MetalValue(tacDef) * float(tacs.length() + 1)) {
 		Order(2, tacDef, ForwardPos(900.f), Task::Priority::NORMAL, SQUARE_SIZE * 24);
 		return;
 	}
-	// Nuke: late, rich, and only under our own anti-nuke umbrella.
-	if (minute >= 30 && m >= 90.f && amds.length() >= 1 && silos.length() < 1 && Ready(3, siloDef)) {
+	// Nuke: only under our own anti-nuke umbrella, while the enemy's static metal exceeds the silo.
+	if (amds.length() >= 1 && silos.length() < 1 && siloDef !is null && Ready(3, siloDef)
+		&& enemyStatic > Brain::Economist::MetalValue(siloDef)) {
 		Order(3, siloDef, basePos, Task::Priority::NORMAL, SQUARE_SIZE * 32);
 		return;
 	}
