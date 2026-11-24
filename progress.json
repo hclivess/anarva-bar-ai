@@ -59,6 +59,45 @@
    },
    "finding": "The earlier build used CircuitAI e3bebd3 (1.6.30), two commits past what engine 2026.09.03 ships (f4a6ca3, 1.6.29: move-order timeout 60->300 s). 1.6.30 did worse; the patch itself did not. Core now based on f4a6ca3 and built by CI in BAR's own container (gcc 13), so tests use the official toolchain.",
    "next": "A/B official vs CI-built patched 1.6.29 (flags off); then F_HOLD, F_COMMGUARD, high-ground artillery one at a time."
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "isolating the self-built core, 1v2, 8 maps per arm",
+   "results": {
+    "official #1": [
+     0.42,
+     28.6,
+     1
+    ],
+    "official #2": [
+     0.42,
+     28.6,
+     2
+    ],
+    "CI unpatched (near byte-identical)": [
+     0.26,
+     27.6,
+     2
+    ],
+    "CI patched + old scripts": [
+     0.17,
+     29.4,
+     2
+    ],
+    "CI patched + new scripts #1": [
+     0.2,
+     28.4,
+     4
+    ],
+    "CI patched + new scripts #2": [
+     0.12,
+     25.6,
+     5
+    ]
+   },
+   "columns": "share, survival min, outright losses",
+   "finding": "8-game batches cannot resolve effects under ~0.15 share: near byte-identical code scored 0.26-0.42. Arms were not run concurrently (official ran beside another batch; controls alone) and CircuitAI pathing is asynchronous, so load is a confound. From now on: paired arms run concurrently, two rounds each, judged on outright losses and share together. Core behaviour changes are script switches, off by default; by review the switched-off core is passive.",
+   "next": "F_HOLD+F_COMMGUARD on vs off, same CI DLL, 2 concurrent rounds"
   }
  ],
  "install": {
