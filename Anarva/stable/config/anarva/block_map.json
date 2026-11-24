@@ -16,7 +16,7 @@
 			"size": [8, 8],  // default: size of a unit
 
 			// Spacer, block_size = size + yard
-			"yard": [8, 30]  // default: [0, 0]
+			"yard": "units"  // Anarva: lane sized by the largest unit this factory makes  // default: [0, 0]
 
 			
 			// "ignore" / "not_ignore" specified structures: "ignore": [<structure_type>, <structure_type>, ...] 
@@ -25,7 +25,7 @@
 		"fac_land_t2":{
 			"type": ["rectangle", "factory"],
 			//"size": [8 ,8],
-			"yard": [16, 20],
+			"yard": "units",  // Anarva: lane sized by the largest unit this factory makes
 			"offset": [4, 6],
 			"ignore": ["none"]
 		},		
@@ -37,13 +37,13 @@
 		"fac_water": {
 			"type": ["rectangle", "factory"],
 			
-			"yard": [10, 12],
+			"yard": "units",  // Anarva: lane sized by the largest unit this factory makes
 			"offset": [0, 4]
 		},
 		"fac_strider": {                        //t3 factory 9x9
 			"type": ["rectangle", "factory"],
 			"offset": [0, 4],
-			"yard": [6, 8],
+			"yard": "units",  // Anarva: lane sized by the largest unit this factory makes
 			"ignore":["none"]
 		},
 		"solar": {
