@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_ECORECLAIM = false; // reclaim the energy plant whose metal now is worth more than its energy over the horizon (no fixed gates)
 const bool F_FOCUS = false;     // core switch: each unit focuses the visible enemy in range with the highest threat per remaining health
 const bool F_DECIDE = false;    // core switch: every dice roll in the core replaced by a computed choice (unit/role pick, constructor, retreat, superweapon, chance, map points)
 const bool F_RAIDRESP = false;  // answer raids already in progress: the 'arrive before the enemy' test can never pass once they are there
@@ -986,6 +987,44 @@ void Reclaim(CCircuitUnit@ u)
 	aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, u, RECLAIM_TIMEOUT));
 	pending.insertLast(u);
 	pendingFrame.insertLast(ai.frame);
+}
+
+
+/*
+ * Energy plants by value (owner: never consumed a fusion to fund the AFUS, never reclaimed advanced solars; the
+ * Recycler's fixed gates - big plants >= 60% of income, storage > 50%, surplus > max(8% income, 40) - never held
+ * while converters pulled the energy). Keeping a plant is worth its energy until the horizon at the converter price
+ * (make x horizon / energy-per-metal); reclaiming it is worth its metal now, which funds what we are building. The
+ * plant with the largest positive difference is reclaimed, if its loss doesn't run energy dry before a new plant
+ * could be built and the metal fits in storage.
+ */
+int ecoReclaims = 0;
+void EcoReclaimUpdate()
+{
+	if (!F_ECORECLAIM) return;
+	const SResourceInfo@ e = aiEconomyMgr.energy;
+	const float epm = AiMax(1e-3f, Brain::Economist::energyPerMetal);
+	const float H = Brain::Economist::Horizon();
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	CCircuitUnit@ best = null; float bestGain = 0.f, bestMake = 0.f;
+	for (uint i = 0; i < all.length(); ++i) {
+		CCircuitUnit@ u = all[i];
+		const CCircuitDef@ d = u.circuitDef;
+		if (d.IsMobile() || pending.findByRef(u) >= 0) continue;
+		const float make = aiEconomyMgr.GetEnergyMake(d);
+		if (make <= 0.f) continue;
+		const float gain = d.costM - make * H / epm;
+		if (gain > bestGain) { bestGain = gain; @best = u; bestMake = make; }
+	}
+	if (best is null) return;
+	// no stall: after losing its output, energy must last longer than it takes to build a new plant
+	const float net = e.income - bestMake - e.pull;
+	if (net < 0.f && e.current / (-net) < Economy::LeadTime(Economy::cheapEnergy)) return;
+	if (!Brain::Storage::Fits(best.circuitDef.costM)) { Brain::Storage::Block(best.circuitDef.costM); return; }
+	++ecoReclaims;
+	AiLog("[ANV] EcoReclaim: " + best.circuitDef.GetName() + " (metal " + int(best.circuitDef.costM) + " now vs its energy "
+		+ int(bestMake * H / epm) + " metal-eq over " + int(H) + " s)");
+	Reclaim(best);
 }
 
 void Update()
@@ -3686,6 +3725,8 @@ void Update()  // every 30 frames
 		BuilderSafeUpdate();
 	if (F_RECLAIM && ai.frame % (5 * SECOND) < SECOND)
 		ReclaimUpdate();
+	if (F_ECORECLAIM && ai.frame % (5 * SECOND) < SECOND)
+		Recycler::EcoReclaimUpdate();
 
 	if (ai.frame % MINUTE < SECOND) {
 		if (commander !is null) {
