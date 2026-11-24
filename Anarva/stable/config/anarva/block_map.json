@@ -47,38 +47,52 @@
 			"ignore":["none"]
 		},
 		"solar": {
-			"type": ["rectangle", "engy_mid"],
-			"ignore": ["engy_mid", "def_low", "mex", "def_low"],
-			"yard": [6, 6]
-			
+			// Anarva: spacing from the reason, not a hand-picked yard: a circle of this building's own death-explosion
+			// radius (read from its unit def by the core) that other explosive buildings stay out of, so one death
+			// cannot chain into the next. Extractors may sit inside: their spots are fixed by the map.
+			"type": ["circle", "engy_mid"],
+			"radius": "explosion",
+			"ignore": ["mex", "def_low", "unknown", "terra"]
 		},
-		"advsolar":{
-			"type": ["rectangle", "engy_mid"],
-			"yard": [5, 5],
-			"ignore": ["mex", "engy_mid", "def_low", "nano"]
+		"advsolar": {
+			// Anarva: spacing from the reason, not a hand-picked yard: a circle of this building's own death-explosion
+			// radius (read from its unit def by the core) that other explosive buildings stay out of, so one death
+			// cannot chain into the next. Extractors may sit inside: their spots are fixed by the map.
+			"type": ["circle", "engy_mid"],
+			"radius": "explosion",
+			"ignore": ["mex", "def_low", "unknown", "terra"]
 		},
 		"wind": {
-			"type": ["rectangle", "engy_low"],
-// 			Integer radius of a blocker or description string.
-// 			Available string values: explosion, expl_ally
-//			"radius": "explosion",  // default: "explosion"
-//			"yard": [10,10],  // "default": "explosion"
-			"ignore": ["engy_low"]
+			// Anarva: spacing from the reason, not a hand-picked yard: a circle of this building's own death-explosion
+			// radius (read from its unit def by the core) that other explosive buildings stay out of, so one death
+			// cannot chain into the next. Extractors may sit inside: their spots are fixed by the map.
+			"type": ["circle", "engy_low"],
+			"radius": "explosion",
+			"ignore": ["mex", "def_low", "unknown", "terra"]
 		},
 		"geo": {
-			"type": ["rectangle", "geo"],
-			"yard": [4, 4],
-			"ignore": ["none"]
+			// Anarva: spacing from the reason, not a hand-picked yard: a circle of this building's own death-explosion
+			// radius (read from its unit def by the core) that other explosive buildings stay out of, so one death
+			// cannot chain into the next. Extractors may sit inside: their spots are fixed by the map.
+			"type": ["circle", "geo"],
+			"radius": "explosion",
+			"ignore": ["mex", "def_low", "unknown", "terra"]
 		},
 		"geo2": {
-			"type": ["rectangle", "geo"],
-			"yard": [6, 6],
-			"ignore": ["none"]
+			// Anarva: spacing from the reason, not a hand-picked yard: a circle of this building's own death-explosion
+			// radius (read from its unit def by the core) that other explosive buildings stay out of, so one death
+			// cannot chain into the next. Extractors may sit inside: their spots are fixed by the map.
+			"type": ["circle", "geo"],
+			"radius": "explosion",
+			"ignore": ["mex", "def_low", "unknown", "terra"]
 		},
 		"fusion": {
-			"type": ["rectangle", "engy_high"],
-			"yard": [5, 5],
-			"ignore": ["mex", "engy_high"]
+			// Anarva: spacing from the reason, not a hand-picked yard: a circle of this building's own death-explosion
+			// radius (read from its unit def by the core) that other explosive buildings stay out of, so one death
+			// cannot chain into the next. Extractors may sit inside: their spots are fixed by the map.
+			"type": ["circle", "engy_high"],
+			"radius": "explosion",
+			"ignore": ["mex", "def_low", "unknown", "terra"]
 		},
 //		"singu": {
 //			"type": ["circle", "engy_high"],
@@ -86,9 +100,12 @@
 //			"ignore": ["mex", "engy_low", "def_low", "nano"]
 //		},
 		"store": {
-			"type": ["rectangle", "mex"],
-			"yard": [4, 4],
-			"not_ignore": ["factory", "terra"]
+			// Anarva: spacing from the reason, not a hand-picked yard: a circle of this building's own death-explosion
+			// radius (read from its unit def by the core) that other explosive buildings stay out of, so one death
+			// cannot chain into the next. Extractors may sit inside: their spots are fixed by the map.
+			"type": ["circle", "mex"],
+			"radius": "explosion",
+			"ignore": ["mex", "def_low", "unknown", "terra"]
 		},
 		"mex": {
 			"type": ["rectangle", "mex"],
@@ -101,9 +118,12 @@
 			"ignore": ["all"]
 		},
 		"converter": {
-			"type": ["rectangle", "convert"],
-			"yard": [7, 7],
-			"ignore": ["convert"]
+			// Anarva: spacing from the reason, not a hand-picked yard: a circle of this building's own death-explosion
+			// radius (read from its unit def by the core) that other explosive buildings stay out of, so one death
+			// cannot chain into the next. Extractors may sit inside: their spots are fixed by the map.
+			"type": ["circle", "convert"],
+			"radius": "explosion",
+			"ignore": ["mex", "def_low", "unknown", "terra"]
 		},
 		"def_low": {
 			"type": ["circle", "def_low"],
@@ -124,8 +144,12 @@
 			"not_ignore": ["factory", "mex"]
 		},
 		"caretaker": {
-			"type": ["rectangle", "nano"],
-			"ignore": ["mex", "engy_mid", "engy_high"]
+			// Anarva: spacing from the reason, not a hand-picked yard: a circle of this building's own death-explosion
+			// radius (read from its unit def by the core) that other explosive buildings stay out of, so one death
+			// cannot chain into the next. Extractors may sit inside: their spots are fixed by the map.
+			"type": ["circle", "nano"],
+			"radius": "explosion",
+			"ignore": ["mex", "def_low", "unknown", "terra"]
 		},
 		"superweapon": {
 			"type": ["circle", "special"],
