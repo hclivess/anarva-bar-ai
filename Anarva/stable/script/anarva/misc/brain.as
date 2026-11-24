@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_STORAGE = false;   // reclaims only start when the metal fits; metal storage built when held-back reclaims are worth more than it costs
 const bool F_ENGAGE = false;    // core switch: gathering squads fight enemies inside their own sight that they can beat (owner saw a raider pace past a lone pawn)
 const bool F_TURN = false;      // travel times include turning (turn rate, arcs) and acceleration, not distance/top speed
 const bool F_SCOUTMAP = false;  // scouts go where vision is worth most: our assets an unseen enemy could have reached since we last looked (C++ switch)
@@ -355,6 +356,52 @@ void Update(bool jamAlert)
 
 }  // namespace Army
 
+
+
+/* ======================================================================== */
+/*
+ * Metal storage (owner: storage is needed for midgame transitions that eat T2 labs etc.; replays: of 228 players
+ * 37% built metal storage, the first one a median 1.1 min before their first T2 lab, n=28, runs/comm_study +
+ * runs/lib_play 2026-11-24). Metal reclaimed into full storage is thrown away. A reclaim starts only when what
+ * it returns, on top of what is already coming back, fits; reclaims held back for room make a storage worth
+ * building when the metal they'd save beats its cost.
+ */
+namespace Storage {
+
+CCircuitDef@ storeDef = null;
+float blockedMax = 0.f;
+int ordered = 0, orderFrame = -10 * MINUTE, countAtOrder = -1;
+
+float Incoming()
+{
+	float m = 0.f;
+	for (uint i = 0; i < Recycler::pending.length(); ++i)
+		if (Recycler::pending[i] !is null) m += Recycler::pending[i].circuitDef.costM;
+	return m;
+}
+float Free() { return AiMax(0.f, aiEconomyMgr.metal.storage - aiEconomyMgr.metal.current); }
+bool Fits(float m) { return Incoming() + m <= Free(); }
+void Block(float m) { blockedMax = AiMax(blockedMax, Incoming() + m - Free()); }
+
+void Update()
+{
+	if (!F_STORAGE) return;
+	if (storeDef is null) @storeDef = Strategic::Side("armmstor", "cormstor", "legmstor");
+	const float want = blockedMax;
+	blockedMax = 0.f;
+	if (storeDef is null || !storeDef.IsAvailable(ai.frame) || want <= 0.f || !HasBase()) return;
+	// one order at a time: outstanding until one more storage exists or the task would have timed out
+	if (countAtOrder >= 0 && storeDef.count <= countAtOrder && ai.frame - orderFrame < 3 * MINUTE) return;
+	const float saved = AiMin(want, storeDef.storageM);
+	if (saved <= Economist::MetalValue(storeDef)) return;
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::STORE, Task::Priority::NORMAL, storeDef, basePos, SQUARE_SIZE * 32, true, 3 * MINUTE));
+	countAtOrder = storeDef.count; orderFrame = ai.frame; ++ordered;
+	AiLog("[ANV] Storage: ordering " + storeDef.GetName() + " (reclaims held back: " + int(want) + " metal over free storage, it holds " + int(storeDef.storageM) + ")");
+}
+
+string Status() { return "storage orders=" + ordered; }
+
+}  // namespace Storage
 
 /* ======================================================================== */
 /*
@@ -744,7 +791,11 @@ bool IsObsoleteT1(CCircuitUnit@ u)
 
 void Salvage()
 {
-	if (ai.frame < 22 * MINUTE || advFactories <= 0 || aiEconomyMgr.metal.income < 30.f
+	if (F_STORAGE) {
+		// obsolete once we have advanced labs; the metal must fit (Reclaim checks), no clock or income bar
+		if (advFactories <= 0 || salvagePending.length() >= 2 || ai.frame - lastSalvageFrame < 15 * SECOND)
+			return;
+	} else if (ai.frame < 22 * MINUTE || advFactories <= 0 || aiEconomyMgr.metal.income < 30.f
 		|| aiEconomyMgr.isMetalFull || salvagePending.length() >= 2 || ai.frame - lastSalvageFrame < 15 * SECOND)
 		return;
 	array<CCircuitUnit@>@ pools = Brain::Army::raiders;
@@ -830,6 +881,11 @@ CCircuitUnit@ PickCandidate(const array<CCircuitUnit@>& in list)
 
 void Reclaim(CCircuitUnit@ u)
 {
+	// Metal that comes back into full storage is thrown away: only start when it fits (else ask for storage)
+	if (F_STORAGE && !Brain::Storage::Fits(u.circuitDef.costM)) {
+		Brain::Storage::Block(u.circuitDef.costM);
+		return;
+	}
 	aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, u, RECLAIM_TIMEOUT));
 	pending.insertLast(u);
 	pendingFrame.insertLast(ai.frame);
@@ -3382,6 +3438,8 @@ void Update()  // every 30 frames
 		Hold::Update();
 	if (F_SCOUTMAP && ai.frame % (3 * SECOND) < SECOND)
 		Scout::Update();
+	if (F_STORAGE && ai.frame % (5 * SECOND) < SECOND)
+		Storage::Update();
 	if (F_COMMGUARD && ai.frame % (2 * SECOND) < SECOND)
 		CommGuardUpdate();
 
