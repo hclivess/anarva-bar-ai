@@ -19,11 +19,14 @@ namespace Brain {
  * and on an arc (no turn in place); distance/top speed makes them look as agile as bots, which overstates how
  * fast they reach a raid, retreat or kite. Heading unknown: the expected turn of a random heading is 90 deg.
  */
-const float EXPECTED_TURN = 90.f;  // mean of a uniform 0..180 deg turn (heading unknown), not a tuning knob
+// math: PI, and the expected turn when the heading is unknown (the mean of a uniform turn of 0..PI is PI/2, i.e.
+// acos(0)), converted to the degrees turnRate uses
+float Pi() { return acos(-1.f); }
+float ExpectedTurnDeg() { return acos(0.f) * 180.f / Pi(); }
 float MoveTime(const CCircuitDef@ d, float dist)
 {
 	const float v = AiMax(1.f, d.speed);
-	const float tTurn = d.turnRate > 0.f ? EXPECTED_TURN / d.turnRate : 0.f;
+	const float tTurn = d.turnRate > 0.f ? ExpectedTurnDeg() / d.turnRate : 0.f;
 	float tMove;
 	if (d.accel > 0.f) {
 		const float tAcc = v / d.accel, dAcc = 0.5f * v * tAcc;
@@ -140,16 +143,6 @@ void Init()
 		| Unit::Role::COMM.mask | Unit::Role::MINE.mask | Unit::Role::TRANS.mask
 		| Unit::Role::BOMBER.mask | Unit::Role::AS.mask;
 
-	{
-		array<string> probe = {"armflash", "armstump", "armbull", "armpw", "armham", "armzeus", "corgator", "corak"};
-		string s = "[ANV] Motion (turn deg/s, in place, accel, 500 elmos):";
-		for (uint i = 0; i < probe.length(); ++i) {
-			CCircuitDef@ d = ai.GetCircuitDef(probe[i]);
-			if (d is null) continue;
-			s += " " + probe[i] + "=" + int(d.turnRate) + "/" + (d.turnInPlace ? "y" : "n") + "/" + int(d.accel) + "/" + F1(MoveTime(d, 500.f)) + "s";
-		}
-		AiLog(s);
-	}
 }
 
 bool IsGround(const CCircuitDef@ d)
@@ -196,8 +189,6 @@ array<int> squadStart;
 int recalls = 0;
 
 int tasksSeen = 0, fightersSeen = 0;
-array<int> ftHist(13, 0);
-string Hist() { string s; for (uint i = 0; i < ftHist.length(); ++i) s += "" + ftHist[i] + ","; return s; }
 
 void OnTaskAdded(IUnitTask@ task)
 {
@@ -209,7 +200,6 @@ void OnTaskAdded(IUnitTask@ task)
 		return;
 	++fightersSeen;
 	const int ft = int(f.GetFightType()) & 0xFF;
-	if (ft >= 0 && ft < 13) ftHist[ft]++;
 	if (ft != Task::FightType::RAID && ft != Task::FightType::ATTACK)
 		return;
 	squads.insertLast(f);
@@ -543,8 +533,8 @@ void Update()
 				const float ang = atan2(cc.z - ac.z, cc.x - ac.x);
 				for (uint w = 0; w < watched[k].length(); ++w) {
 					float da = AiMax(ang - watched[k][w], watched[k][w] - ang);
-					if (da > 3.14159265f) da = 2.f * 3.14159265f - da;
-					dir = AiMin(dir, da / 3.14159265f);
+					if (da > Pi()) da = 2.f * Pi() - da;
+					dir = AiMin(dir, da / Pi());
 				}
 				v += ours[assets[k]] * warn * stale * dir;
 			}
@@ -2809,7 +2799,7 @@ void Update()  // every 30 frames
 		AiLog("[ANV] hold " + Hold::Status());
 
 		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | allPow=" + F1(Director::MeasuredPower()) + " units=" + Army::ground.length()
-			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " recalls=" + Army::recalls + " ft=" + Army::Hist()
+			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " recalls=" + Army::recalls
 			+ " quota.attack=" + F1(aiMilitaryMgr.quota.attack) + " raidMin=" + F1(aiMilitaryMgr.quota.raid.min)
 			+ " enemyMob=" + F1(aiEnemyMgr.mobileThreat) + " jamCost=" + F1(Intel::jammerCost)
 			+ " maxHeat=" + F1(Intel::MaxHeat()) + " eyes=" + Intel::eyes.length() + "/" + Intel::eyesOrdered
