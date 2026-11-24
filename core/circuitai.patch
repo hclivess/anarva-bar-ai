@@ -676,7 +676,7 @@ index 733f7a43..355ad0c1 100644
  	float GetClusterRange() const { return clusterRange; }
  	float GetPylonRange() const { return pylonRange; }
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
-index 54fef916..311d0686 100644
+index 54fef916..45f203d5 100644
 --- a/src/circuit/module/FactoryManager.cpp
 +++ b/src/circuit/module/FactoryManager.cpp
 @@ -6,6 +6,8 @@
@@ -834,9 +834,70 @@ index 54fef916..311d0686 100644
  			return true;
  		}
  		SArea* area;
-@@ -1715,18 +1636,16 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
- 		return {buildDef->GetId(), getPriority(isResponse)};
+@@ -1634,7 +1555,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+ 		return isValid && ((area == nullptr) || terrainMgr->IsEnemyInArea(area));
+ 	};
+ 	auto isAvailableDef = [&](CCircuitDef* bd) {
+-		return (((bd->GetCloakCost() < .1f)/* || (energyNet > bd->GetCloakCost())*/ || !isEnergyStalling)
++		return (((bd->GetCloakCost() <= 0.f)/* || (energyNet > bd->GetCloakCost())*/ || !isEnergyStalling)
+ 			&& bd->IsAvailable(frame)
+ 			&& (isActive || bd->IsAttrRare())
+ 			&& terrainMgr->CanBeBuiltAt(bd, pos, range)
+@@ -1651,13 +1572,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+ #endif
+ 	CCircuitDef* buildDef = nullptr;
+ 	bool isResponse = false;
+-	std::tie(buildDef, isResponse) = GetLastRequiredDef(it->first, probs, isAvailableDef);
+-	if ((buildDef != nullptr) && isResponse) {
+-#ifdef FACTORY_CHOICE
+-		circuit->LOG("batch %s", buildDef->GetDef()->GetName());
+-#endif
+-		return {buildDef->GetId(), getPriority(isResponse)};
+-	}
++	// Anarva: no batch repeats (config numBatch); each unit is chosen afresh
+ 
+ 	struct SCandidate {
+ 		CCircuitDef* cdef;
+@@ -1667,9 +1582,6 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+ 	std::vector<SCandidate> candidates;
+ 	candidates.reserve(facDef.buildDefs.size());
+ 
+-	CMilitaryManager* militaryMgr = circuit->GetMilitaryManager();
+-	const float maxCost = militaryMgr->GetArmyCost();
+-	float magnitude = 0.f;
+ 	for (unsigned i = 0; i < facDef.buildDefs.size(); ++i) {
+ 		CCircuitDef* bd = facDef.buildDefs[i];
+ 		if (!isAvailableDef(bd)) {
+@@ -1691,42 +1603,23 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+ 			continue;
+ 		}
+ 
+-		if (probs[i] > 0.f) {
+-			// (probs[i] + response_weight) hints preferable buildDef within same role
+-			float prob = militaryMgr->RoleProbability(bd) * (probs[i] + reWeight);
+-			// NOTE: with probs=[n1, n2, n3, n4, n5]
+-			//       previous response system provided probs2=[0, res(n2), 0, 0, res(n5)]
+-			//       current is probs2=[n1, res(n2), n3, n4, res(n5)]
+-			bool isResp = (prob > 0.f) && (bd->GetCostM() <= maxCost);
+-			isResponse |= isResp;
+-			prob = isResp ? prob : probs[i];
+-			candidates.push_back({bd, prob, isResp});
+-			magnitude += prob;
+-#ifdef FACTORY_CHOICE
+-			circuit->LOG("%s | %s | %f", isResp ? "response" : "regular", bd->GetDef()->GetName(), prob);
+-#endif
++		// Anarva: every available unit competes on value per metal (no config tier probabilities, response weights)
++		if (bd->GetPower() > 0.f) {
++			candidates.push_back({bd, 0.f, false});
+ 		}
  	}
+ 
+-	if ((buildDef != nullptr) && !isResponse) {
+-#ifdef FACTORY_CHOICE
+-		circuit->LOG("batch %s", buildDef->GetDef()->GetName());
+-#endif
+-		return {buildDef->GetId(), getPriority(isResponse)};
+-	}
  
 -	if (magnitude == 0.f) {  // workaround for disabled units
 -		if (!candidates.empty()) {
@@ -860,7 +921,7 @@ index 54fef916..311d0686 100644
  			}
  		}
  	}
-@@ -1799,19 +1718,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
+@@ -1799,19 +1692,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
  	}
  
  	CCircuitDef* buildDef = nullptr;
