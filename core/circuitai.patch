@@ -5179,10 +5179,18 @@ index 05974b1b..47fb224e 100644
  	)
  	targetFrame = frame;
 diff --git a/src/circuit/terrain/TerrainData.cpp b/src/circuit/terrain/TerrainData.cpp
-index 0d479758..dcfec529 100644
+index 0d479758..42c42044 100644
 --- a/src/circuit/terrain/TerrainData.cpp
 +++ b/src/circuit/terrain/TerrainData.cpp
-@@ -36,7 +36,7 @@ namespace terrain {
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "terrain/TerrainData.h"
++#include <cmath>
+ #include "terrain/TerrainManager.h"
+ #include "scheduler/Scheduler.h"
+ #include "setup/SetupManager.h"
+@@ -36,7 +37,7 @@ namespace terrain {
  using namespace circuit;
  using namespace springai;
  
@@ -5191,6 +5199,40 @@ index 0d479758..dcfec529 100644
  // FIXME: Make Engine consts available to AI. @see rts/Sim/MoveTypes/MoveDefHandler.cpp
  #define MAX_ALLOWED_WATER_DAMAGE_GMM	1e3f
  #define MAX_ALLOWED_WATER_DAMAGE_HMM	1e4f
+@@ -595,6 +596,19 @@ void CTerrainData::AnalyzeMap(CCircuitAI* circuit)
+ 	if (rmt != nullptr) {
+ 		const int convertStoSM = GetConvertStoSM();  // * for conversion, / for reverse conversion
+ 		cfg.tileSize = int2(sectorXSize * convertStoSM, sectorZSize * convertStoSM);
++		// Anarva: region thresholds from the largest factory (no config lake/area/merge sizes): a region is worth its
++		// own name when a factory fits in it, a water patch is a lake (not a divider) when it is no bigger than that,
++		// and two regions merge when the smaller one couldn't hold a factory
++		const float tileElmos = float(SQUARE_SIZE * circuit->GetMap()->GetWidth()) / std::max(1, cfg.tileSize.x);
++		float facSide = 0.f;
++		for (CCircuitDef& d : circuit->GetCircuitDefs()) {
++			if (!d.IsMobile() && !d.GetBuildOptions().empty() && (d.GetBuildSpeed() > 0.f)) {
++				facSide = std::max(facSide, float(std::max(d.GetDef()->GetXSize(), d.GetDef()->GetZSize()) * SQUARE_SIZE));
++			}
++		}
++		const int sideTiles = std::max(1, int(std::ceil(facSide / std::max(1.f, tileElmos))));
++		cfg.areaMinTiles = cfg.areasMergeSize = cfg.lakeMaxTiles = sideTiles * sideTiles;
++		cfg.lakeMaxWidthInTiles = cfg.areasMergeAltitude = sideTiles;
+ 		bwem::CGridAnalyzer(this, cfg).Analyze(circuit);
+ 	}
+ 
+@@ -676,11 +690,8 @@ bwem::CGridAnalyzer::SConfig CTerrainData::ReadConfig(CCircuitAI* circuit)
+ 	const Json::Value& terrain = root["terrain"];
+ 	bwem::CGridAnalyzer::SConfig outCfg;
+ 	outCfg.unitName = terrain.get("analyze", "").asString();
+-	outCfg.lakeMaxTiles = terrain.get("lake_tiles", 300).asInt();
+-	outCfg.lakeMaxWidthInTiles = terrain.get("lake_width_tiles", 32).asInt();
+-	outCfg.areaMinTiles = terrain.get("area_min_tiles", 64).asInt();
+-	outCfg.areasMergeSize = terrain.get("areas_merge_size", 80).asInt();
+-	outCfg.areasMergeAltitude = terrain.get("areas_merge_altitude", 80).asInt();
++	// Anarva: region thresholds are set from the largest factory where the analysis runs (no config sizes)
++	outCfg.lakeMaxTiles = outCfg.lakeMaxWidthInTiles = outCfg.areaMinTiles = outCfg.areasMergeSize = outCfg.areasMergeAltitude = 0;
+ 	return outCfg;
+ }
+ 
 diff --git a/src/circuit/terrain/TerrainManager.cpp b/src/circuit/terrain/TerrainManager.cpp
 index 64571199..03594015 100644
 --- a/src/circuit/terrain/TerrainManager.cpp
