@@ -84,7 +84,7 @@ index 0be6a835..ec2cfaf1 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..b8007a86 100644
+index c3aaefe5..b3ec0c44 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,11 @@
@@ -99,7 +99,15 @@ index c3aaefe5..b8007a86 100644
  #include "scheduler/Scheduler.h"
  #include "setup/SetupManager.h"
  #include "terrain/TerrainManager.h"
-@@ -30,7 +35,12 @@
+@@ -21,6 +26,7 @@
+ #include "util/MaskHandler.h"
+ #include "util/ExtAS.h"
+ #include "util/Utils.h"
++#include "util/AnarvaSwitches.h"
+ 
+ #include "angelscript/include/angelscript.h"
+ #include "angelscript/add_on/scriptarray/scriptarray.h"
+@@ -30,7 +36,12 @@
  //#include "asbind20/operators.hpp"  // _this, const_this, param<T>, ->return<T>()
  
  #include "spring/SpringMap.h"
@@ -112,7 +120,7 @@ index c3aaefe5..b8007a86 100644
  #include "Log.h"
  #include "Drawer.h"
  #include "Game.h"
-@@ -711,8 +721,10 @@ void CInitScript::RegisterCore()
+@@ -711,8 +722,10 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetAirThreat() const", asMETHOD(CCircuitDef, GetAirThreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetSurfThreat() const", asMETHOD(CCircuitDef, GetSurfThreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetWaterThreat() const", asMETHOD(CCircuitDef, GetWaterThreat), asCALL_THISCALL); ASSERT(r >= 0);
@@ -124,7 +132,7 @@ index c3aaefe5..b8007a86 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -738,6 +750,125 @@ void CInitScript::RegisterCore()
+@@ -738,6 +751,125 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitUnit", "string GetRulesParam(const string& in, const string& in) const", asFUNCTION(CCircuitUnit_GetRulesParamString), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
  }
  
@@ -250,7 +258,7 @@ index c3aaefe5..b8007a86 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +898,21 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +899,22 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -260,6 +268,7 @@ index c3aaefe5..b8007a86 100644
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemies(array<AIFloat3>@+, array<AIFloat3>@+, array<CCircuitDef@>@+, array<float>@+, array<int>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemies), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyGroups(array<AIFloat3>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemyGroups), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetWrecks(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetWrecks), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterGlobalProperty("bool aiSwitchHighGroundArty", &anarva::switches.highGroundArty); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiIsInLOS(const AIFloat3& in)", asFUNCTION(Bridge_IsInLOS), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("array<CCircuitUnit@>@ AiGetTeamUnits()", asFUNCTION(Bridge_GetTeamUnits), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiGetElevation(float, float)", asFUNCTION(Bridge_GetElevation), asCALL_CDECL); ASSERT(r >= 0);
@@ -300,10 +309,16 @@ index b468c2e1..2a99e191 100644
  	int GetHeight() const { return map->GetHeight(); }
  	const char* GetName() const { return map->GetName(); }
 diff --git a/src/circuit/task/fighter/ArtilleryTask.cpp b/src/circuit/task/fighter/ArtilleryTask.cpp
-index e45235d9..120d8ee9 100644
+index e45235d9..15304d54 100644
 --- a/src/circuit/task/fighter/ArtilleryTask.cpp
 +++ b/src/circuit/task/fighter/ArtilleryTask.cpp
-@@ -23,6 +23,10 @@
+@@ -18,11 +18,16 @@
+ #include "unit/CircuitUnit.h"
+ #include "CircuitAI.h"
+ #include "util/Utils.h"
++#include "util/AnarvaSwitches.h"
+ 
+ #include "spring/SpringMap.h"
  
  #include "AISCommands.h"
  
@@ -314,18 +329,18 @@ index e45235d9..120d8ee9 100644
  namespace circuit {
  
  using namespace springai;
-@@ -130,7 +134,9 @@ void CArtilleryTask::Execute(CCircuitUnit* unit)
+@@ -130,7 +135,9 @@ void CArtilleryTask::Execute(CCircuitUnit* unit)
  
  	CCircuitDef* cdef = unit->GetCircuitDef();
  	CThreatMap* threatMap = circuit->GetThreatMap();
 -	const float range = std::max(cdef->GetMaxRange()/* - threatMap->GetSquareSize()*/, (float)threatMap->GetSquareSize());
-+	isSpot = ToFiringSpot(unit, pos);
++	isSpot = anarva::switches.highGroundArty && ToFiringSpot(unit, pos);
 +	const float range = isSpot ? (float)threatMap->GetSquareSize()
 +		: std::max(cdef->GetMaxRange()/* - threatMap->GetSquareSize()*/, (float)threatMap->GetSquareSize());
  
  	CPathFinder* pathfinder = circuit->GetPathfinder();
  	std::shared_ptr<IPathQuery> query = pathfinder->CreatePathMultiQuery(
-@@ -160,7 +166,7 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
+@@ -160,7 +167,7 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
  	const int canTargetCat = cdef->GetTargetCategory();
  	const int noChaseCat = cdef->GetNoChaseCategory();
  	float range = cdef->GetMaxRange();
@@ -334,46 +349,37 @@ index e45235d9..120d8ee9 100644
  
  	enemyPositions.clear();
  	threatMap->SetThreatType(unit);
-@@ -168,7 +174,7 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
- 
- 	const CCircuitAI::EnemyInfos& enemies = circuit->GetEnemyInfos();
- 	if (isPosSafe) {
--		// Трубка 15, прицел 120, бац, бац …и мимо!
-+		// Ð¢Ñ€ÑƒÐ±ÐºÐ° 15, Ð¿Ñ€Ð¸Ñ†ÐµÐ» 120, Ð±Ð°Ñ†, Ð±Ð°Ñ† â€¦Ð¸ Ð¼Ð¸Ð¼Ð¾!
- 		float maxThreat = .0f;
- 		CEnemyInfo* bestTarget = nullptr;
- 		CEnemyInfo* mediumTarget = nullptr;
-@@ -194,7 +200,9 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
+@@ -194,7 +201,9 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
  			}
  
  			const float sqDist = pos.SqDistance2D(enemy->GetPos());
 -			if (sqDist < minSqDist) {
 +			// Anarva: range from where we stand, height included (high ground reaches further)
-+			const bool inRange = sqDist < SQUARE(cdef->GetRangeAt(enemy->GetPos().y - pos.y));
++			const bool inRange = sqDist < SQUARE(anarva::switches.highGroundArty ? cdef->GetRangeAt(enemy->GetPos().y - pos.y) : range);
 +			if (inRange && (sqDist < minSqDist)) {
  				if (edef->IsEnemyRoleAny(CCircuitDef::RoleMask::BUILDER)) {
  					bestTarget = enemy;
  					minSqDist = sqDist;
-@@ -212,6 +220,9 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
+@@ -212,6 +221,9 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
  				}
  				continue;
  			}
-+			if (inRange) {
-+				continue;
++			if (inRange && anarva::switches.highGroundArty) {
++				continue;  // (original BARb lets an in-range but farther target fall through as a move goal)
 +			}
  
  			if ((targetCat & noChaseCat) != 0) {
  				continue;
-@@ -252,7 +263,7 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
+@@ -252,7 +264,7 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
  			}
  
  			const float sqDist = pos.SqDistance2D(enemy->GetPos());
 -			if (sqDist < minSqDist) {
-+			if (sqDist < SQUARE(cdef->GetRangeAt(enemy->GetPos().y - pos.y))) {
++			if (sqDist < SQUARE(anarva::switches.highGroundArty ? cdef->GetRangeAt(enemy->GetPos().y - pos.y) : range)) {
  				continue;
  			}
  
-@@ -270,6 +281,74 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
+@@ -270,6 +282,74 @@ CEnemyInfo* CArtilleryTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
  	// Return: <target>, startPos=pos, enemyPositions
  }
  
@@ -629,3 +635,32 @@ index 0247bcb8..80d6a508 100644
  	std::array<int, static_cast<ThreatT>(ThreatType::_SIZE_)> threatRange;
  	float shieldRadius;
  	float maxShield;
+diff --git a/src/circuit/util/AnarvaSwitches.h b/src/circuit/util/AnarvaSwitches.h
+new file mode 100644
+index 00000000..1eb17663
+--- /dev/null
++++ b/src/circuit/util/AnarvaSwitches.h
+@@ -0,0 +1,23 @@
++/*
++ * AnarvaSwitches.h
++ *
++ * Every behaviour change Anarva makes in the core is a switch, off by default, set from script
++ * (AiSwitch_*). With all switches off the core behaves exactly like BARb's; the script bridge only
++ * adds read access. That keeps each change measurable on its own.
++ */
++
++#ifndef SRC_CIRCUIT_UTIL_ANARVASWITCHES_H_
++#define SRC_CIRCUIT_UTIL_ANARVASWITCHES_H_
++
++namespace circuit {
++namespace anarva {
++
++struct SSwitches {
++	bool highGroundArty = false;  // artillery: height-aware range, firing spot reached soonest
++};
++inline SSwitches switches;
++
++} // namespace anarva
++} // namespace circuit
++
++#endif // SRC_CIRCUIT_UTIL_ANARVASWITCHES_H_
