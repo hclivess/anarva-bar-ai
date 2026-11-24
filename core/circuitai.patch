@@ -554,6 +554,18 @@ index 6e5da8b6..312eca68 100644
  		buildPos = (bestDef->GetCostM() < 1000.0f) ? setupMgr->GetEnergyBase() : setupMgr->GetEnergyBase2();
  		CCircuitDef* bdef = (unit == nullptr) ? bestDef : unit->GetCircuitDef();
  		buildPos = circuit->GetTerrainManager()->GetBuildPosition(bdef, buildPos);
+diff --git a/src/circuit/module/EconomyManager.h b/src/circuit/module/EconomyManager.h
+index 733f7a43..355ad0c1 100644
+--- a/src/circuit/module/EconomyManager.h
++++ b/src/circuit/module/EconomyManager.h
+@@ -67,6 +67,7 @@ public:
+ 
+ 	springai::Resource* GetMetalRes() const { return metalRes; }
+ 	springai::Resource* GetEnergyRes() const { return energyRes; }
++	float GetMetalStorage() { return GetStorage(metalRes); }  // Anarva
+ 	CEnergyGrid* GetEnergyGrid() const { return energyGrid; }
+ 	float GetClusterRange() const { return clusterRange; }
+ 	float GetPylonRange() const { return pylonRange; }
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
 index 54fef916..5f2ceeb7 100644
 --- a/src/circuit/module/FactoryManager.cpp
@@ -1330,7 +1342,7 @@ index f210b3a1..7a8b88d7 100644
  		if (task != nullptr) {
  			task->AssignTo(unit);
 diff --git a/src/circuit/task/RetreatTask.cpp b/src/circuit/task/RetreatTask.cpp
-index fcc4c984..f4cec620 100644
+index fcc4c984..d14c4505 100644
 --- a/src/circuit/task/RetreatTask.cpp
 +++ b/src/circuit/task/RetreatTask.cpp
 @@ -6,6 +6,8 @@
@@ -1342,6 +1354,26 @@ index fcc4c984..f4cec620 100644
  #include "map/ThreatMap.h"
  #include "map/InfluenceMap.h"
  #include "module/BuilderManager.h"
+@@ -148,7 +150,7 @@ void CRetreatTask::Start(CCircuitUnit* unit)
+ 				endPos = circuit->GetSetupManager()->GetBasePos();
+ 			}
+ 		}
+-		range = factoryMgr->GetAssistRange() * 0.6f + pathfinder->GetSquareSize();
++		range = factoryMgr->GetAssistRange();  // Anarva: inside the caretakers' assist range (no 0.6)
+ 	}
+ 
+ //	const float minThreat = circuit->GetThreatMap()->GetUnitThreat(unit) * 0.125f;
+@@ -171,8 +173,8 @@ void CRetreatTask::Update()
+ 	for (CCircuitUnit* unit : assignees) {
+ 		const float healthPerc = unit->GetHealthPercent();
+ 		bool isRepaired = unit->HasShield()
+-				? (healthPerc > 0.98f) && unit->IsShieldCharged(circuit->GetSetupManager()->GetFullShield())
+-				: healthPerc > 0.98f;
++				? (healthPerc >= 1.f) && unit->IsShieldCharged(circuit->GetSetupManager()->GetFullShield())
++				: healthPerc >= 1.f;  // Anarva: repaired = full (repair stops at max)
+ 
+ 		CCircuitDef* cdef = unit->GetCircuitDef();
+ 		if (isRepaired && !unit->IsDisarmed(frame)) {
 @@ -180,7 +182,7 @@ void CRetreatTask::Update()
  		} else if (unit->IsForceUpdate(frame) || isExecute) {
  			Start(unit);
@@ -1351,8 +1383,30 @@ index fcc4c984..f4cec620 100644
  			&& (circuit->GetInflMap()->GetEnemyInflAt(unit->GetPos(frame)) < INFL_EPS))
  		{
  			Recovered(unit);
+@@ -240,12 +242,6 @@ void CRetreatTask::OnUnitIdle(CCircuitUnit* unit)
+ 		)
+ 		// TODO: Add fail counter?
+ 	} else {
+-		if ((circuit->GetBindedRole(cdef->GetMainRole()) == ROLE_TYPE(BUILDER))
+-			&& (circuit->GetBuilderManager()->GetWorkerCount() <= 2))
+-		{
+-			Recovered(unit);
+-			return;
+-		}
+ 
+ 		// TODO: push WaitAction into unit
+ 		if (/*cdef->GetDef()->IsAbleToAssist() || */cdef->IsAbleToRepair()) {
+@@ -410,7 +406,7 @@ void CRetreatTask::ApplyCostMap(const CQueryCostMap* query, CCircuitUnit* newRep
+ 		if (!geom::is_valid(endPos)) {
+ 			endPos = circuit->GetSetupManager()->GetBasePos();
+ 		}
+-		range = factoryMgr->GetAssistRange() * 0.6f + pathfinder->GetSquareSize();
++		range = factoryMgr->GetAssistRange();  // Anarva: inside the caretakers' assist range (no 0.6)
+ 	}
+ 
+ 	float prevCost = query->GetCostAt(endPos, range);
 diff --git a/src/circuit/task/builder/BuilderTask.cpp b/src/circuit/task/builder/BuilderTask.cpp
-index 172d4c26..299c95d1 100644
+index 172d4c26..0f9b0a6f 100644
 --- a/src/circuit/task/builder/BuilderTask.cpp
 +++ b/src/circuit/task/builder/BuilderTask.cpp
 @@ -6,6 +6,8 @@
@@ -1364,6 +1418,27 @@ index 172d4c26..299c95d1 100644
  #include "task/builder/BuildChain.h"
  #include "task/builder/DefenceTask.h"  // Only for static_cast<CBDefenceTask*>
  #include "task/RetreatTask.h"
+@@ -115,7 +117,7 @@ bool IBuilderTask::CanAssignTo(CCircuitUnit* unit) const
+ 		return false;
+ 	}
+ 	// energy income check
+-	if ((target == nullptr) && economyMgr->IsEnergyStalling() && !economyMgr->IsEnoughEnergy(this, cdef, 0.8f)) {  // lower energy bound
++	if ((target == nullptr) && economyMgr->IsEnergyStalling() && !economyMgr->IsEnoughEnergy(this, cdef, 1.f)) {  // lower energy bound
+ 		return false;
+ 	}
+ 	// solo/initiator check
+@@ -273,9 +275,9 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+ 	// FIXME: Move to Reevaluate
+ 	circuit->GetThreatMap()->SetThreatType(unit);
+ 	// FIXME: Replace const 1000.f with build time?
+-	if (circuit->IsAllyAware() && (cost.metal > 1000.f)) {
++	if (circuit->IsAllyAware() && (cost.metal > circuit->GetEconomyManager()->GetMetalStorage())) {  // Anarva: big = beyond our storage
+ 		circuit->UpdateFriendlyUnits();
+-		const float dist = std::min(cost.metal, 1000.f);
++		const float dist = unit->GetCircuitDef()->GetBuildDistance() + SQUARE_SIZE * 2;  // Anarva: an ally building the same thing within our reach
+ 		auto& friendlies = circuit->GetCallback()->GetFriendlyUnitsIn(position, dist);
+ 		CAllyUnit* alu = FindSameAlly(unit, friendlies);
+ 		utils::free(friendlies);
 @@ -328,7 +330,7 @@ void IBuilderTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
  	const int frame = circuit->GetLastFrame();
  	CCircuitDef* cdef = unit->GetCircuitDef();
@@ -1373,7 +1448,26 @@ index 172d4c26..299c95d1 100644
  		if (healthPerc < cdef->GetSelfDHP()) {
  			unit->CmdSelfD(true);
  		}
-@@ -828,7 +830,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
+@@ -448,14 +450,13 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+ {
+ 	CCircuitAI* circuit = manager->GetCircuit();
+ 
+-	// FIXME: Replace const 1000.0f with build time?
++	// Anarva: a project bigger than our metal storage can't be paid from stock; drop it only while metal is empty and
++	// spending exceeds income (it starves everything else). No 1000-metal / 60% / 2x rule.
+ 	CEconomyManager* ecoMgr = circuit->GetEconomyManager();
+ 	if (canAutoAbort
+ 		&& (target == nullptr)
+-		&& (cost.metal > 1000.f)
+-		&& (((ecoMgr->GetAvgMetalIncome() < savedIncome.metal * 0.6f) && (ecoMgr->GetAvgMetalIncome() * 2.0f < ecoMgr->GetMetalPull()))
+-			|| ((ecoMgr->GetAvgEnergyIncome() < savedIncome.energy * 0.6f) && (ecoMgr->GetAvgEnergyIncome() * 2.0f < ecoMgr->GetEnergyPull())))
+-		)
++		&& (cost.metal > ecoMgr->GetMetalStorage())
++		&& ecoMgr->IsMetalEmpty() && (ecoMgr->GetAvgMetalIncome() < ecoMgr->GetMetalPull()))
+ 	{
+ 		manager->AbortTask(this);
+ 		return false;
+@@ -828,7 +829,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
  						}
  					} break;
  					case SBuildInfo::Condition::CHANCE: {
@@ -1385,8 +1479,21 @@ index 172d4c26..299c95d1 100644
  					} break;
  					case SBuildInfo::Condition::ALWAYS:
  					default: break;
+diff --git a/src/circuit/task/builder/MexTask.cpp b/src/circuit/task/builder/MexTask.cpp
+index 602724e9..7c1ba7ea 100644
+--- a/src/circuit/task/builder/MexTask.cpp
++++ b/src/circuit/task/builder/MexTask.cpp
+@@ -60,7 +60,7 @@ bool CBMexTask::CanAssignTo(CCircuitUnit* unit) const
+ 	}
+ 	// energy income check
+ 	if ((target == nullptr) && !economyMgr->IsEnoughEnergyIncome(buildDef, cdef)
+-		&& !economyMgr->IsEnoughEnergy(this, cdef, 0.8f))  // lower energy bound
++		&& !economyMgr->IsEnoughEnergy(this, cdef, 1.f))  // lower energy bound
+ 	{
+ 		return false;
+ 	}
 diff --git a/src/circuit/task/builder/RepairTask.cpp b/src/circuit/task/builder/RepairTask.cpp
-index 77c22dd9..0369ef0e 100644
+index 77c22dd9..352fd9ef 100644
 --- a/src/circuit/task/builder/RepairTask.cpp
 +++ b/src/circuit/task/builder/RepairTask.cpp
 @@ -6,6 +6,8 @@
@@ -1407,6 +1514,23 @@ index 77c22dd9..0369ef0e 100644
  		if (healthPerc < cdef->GetSelfDHP()) {
  			unit->CmdSelfD(true);
  		}
+@@ -80,15 +82,7 @@ void CBRepairTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+ bool CBRepairTask::Reevaluate(CCircuitUnit* unit)
+ {
+ 	CCircuitAI* circuit = manager->GetCircuit();
+-	CEconomyManager* economyMgr = circuit->GetEconomyManager();
+-	// FIXME: Replace const 1000.0f with build time?
+-	if ((cost.metal > 1000.f)
+-		&& ((economyMgr->GetAvgMetalIncome() < savedIncome.metal * 0.6f)
+-			|| (economyMgr->GetAvgEnergyIncome() < savedIncome.energy * 0.6f)))
+-	{
+-		manager->AbortTask(this);
+-		return false;
+-	}
++	// Anarva: repairing costs no metal; never abort it for the economy
+ 
+ 	CAllyUnit* repTarget = (target != nullptr) ? target : circuit->GetFriendlyUnit(targetId);
+ 	if ((repTarget != nullptr) && (repTarget->GetUnit()->GetHealth() < repTarget->GetUnit()->GetMaxHealth())) {
 diff --git a/src/circuit/task/builder/WaitTask.cpp b/src/circuit/task/builder/WaitTask.cpp
 index 7934b918..f180dd3f 100644
 --- a/src/circuit/task/builder/WaitTask.cpp
