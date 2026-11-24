@@ -44,6 +44,20 @@ index 40517444..366cae1e 100644
  		}
  		allyTeam->RegisterEnemyFake(defId, enemyPos, timeout);
  	} else if (enemy->IsBeingBuilt()) {
+diff --git a/src/circuit/map/GridAnalyzer.cpp b/src/circuit/map/GridAnalyzer.cpp
+index 3ab32b02..2660e7d5 100644
+--- a/src/circuit/map/GridAnalyzer.cpp
++++ b/src/circuit/map/GridAnalyzer.cpp
+@@ -763,8 +763,7 @@ std::vector<CTempAreaInfo> CGridAnalyzer::ComputeTempAreas(const std::vector<std
+ 			// Condition for the neighboring areas to merge:
+ 			if ((tempAreaList[smaller].Size() < config.areasMergeSize)
+ 				|| (tempAreaList[smaller].HighestAltitude() < config.areasMergeAltitude)
+-				|| (cur->GetAltitude() / (float)tempAreaList[bigger].HighestAltitude() >= 0.90f)
+-				|| (cur->GetAltitude() / (float)tempAreaList[smaller].HighestAltitude() >= 0.90f)
++				|| (cur->GetAltitude() >= config.areasMergeAltitude)  // Anarva: a passage a factory wide is no choke (no 90% ratios)
+ //				|| any_of(StartingLocations().begin(), StartingLocations().end(), [&pos](const TilePosition & startingLoc)
+ //					{ return dist(TilePosition(pos), startingLoc + TilePosition(2, 1)) <= 3;})
+ 				|| false)
 diff --git a/src/circuit/map/InfluenceMap.cpp b/src/circuit/map/InfluenceMap.cpp
 index 41276633..e4695d35 100644
 --- a/src/circuit/map/InfluenceMap.cpp
@@ -5297,10 +5311,32 @@ index 64571199..03594015 100644
  	AIFloat3 pos(x, circuit->GetMap()->GetElevationAt(x, z), z);
  	return GetMovePosition(unit->GetArea(), pos);
  }
+diff --git a/src/circuit/terrain/path/MicroPather.cpp b/src/circuit/terrain/path/MicroPather.cpp
+index 368b6f1d..cf83bf82 100644
+--- a/src/circuit/terrain/path/MicroPather.cpp
++++ b/src/circuit/terrain/path/MicroPather.cpp
+@@ -371,7 +371,7 @@ inline float CMicroPather::DiagonalDistance(int xStart, int yStart, int xEnd, in
+ 	 * constexpr float D2 = 1.4142f;  // sqrt(2)
+ 	 * heuristic = D * (dx + dy) + (D2 - 2 * D) * min(dx, dy);
+ 	 */
+-	return (dx + dy) - 0.5858f * std::min(dx, dy);
++	return (dx + dy) - (2.f - std::sqrt(2.f)) * std::min(dx, dy);  // octile distance (exact)
+ }
+ 
+ inline float CMicroPather::AxisCostEstimate(int nodeStartIndex)
 diff --git a/src/circuit/terrain/path/PathFinder.cpp b/src/circuit/terrain/path/PathFinder.cpp
-index 5f061310..46525b2d 100644
+index 5f061310..bae1c185 100644
 --- a/src/circuit/terrain/path/PathFinder.cpp
 +++ b/src/circuit/terrain/path/PathFinder.cpp
+@@ -33,7 +33,7 @@ using namespace springai;
+ using namespace terrain;
+ using namespace NSMicroPather;
+ 
+-#define SPIDER_SLOPE		0.99f
++#define SPIDER_SLOPE		1.f  // Anarva: all-terrain units climb any slope
+ 
+ std::vector<CPathFinder::SBlockCount> CPathFinder::blockArray;
+ 
 @@ -931,7 +931,7 @@ void CPathFinder::UpdateVis(const IndexVec& path)
  		e.y = map->GetElevationAt(e.x, e.z);
  		fig->DrawLine(s, e, 16.0f, true, FRAMES_PER_SEC * 20, figId);
