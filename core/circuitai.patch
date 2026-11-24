@@ -1,5 +1,18 @@
+diff --git a/src/circuit/map/InfluenceMap.h b/src/circuit/map/InfluenceMap.h
+index c054168d..071468d1 100644
+--- a/src/circuit/map/InfluenceMap.h
++++ b/src/circuit/map/InfluenceMap.h
+@@ -24,7 +24,7 @@ namespace circuit {
+ 
+ #define INFL_BASE		0.f
+ #define INFL_EPS		0.01f
+-#define INFL_SAFE		2.f
++#define INFL_SAFE		INFL_EPS  // Anarva: safe = our influence beats theirs (no margin of 2)
+ 
+ class CEnemyManager;
+ class CMapManager;
 diff --git a/src/circuit/map/ThreatMap.cpp b/src/circuit/map/ThreatMap.cpp
-index 0319762c..5917bfc9 100644
+index 0319762c..845afac0 100644
 --- a/src/circuit/map/ThreatMap.cpp
 +++ b/src/circuit/map/ThreatMap.cpp
 @@ -6,6 +6,7 @@
@@ -59,6 +72,55 @@ index 0319762c..5917bfc9 100644
  			drawCloakThreat[index] += heat;
  		}
  	}
+@@ -609,9 +615,21 @@ std::shared_ptr<IMainJob> CThreatMap::AirDrawer(CCircuitDef::RoleT role)
+ 	std::fill(roleThreat.airThreat.begin(), roleThreat.airThreat.end(), THREAT_BASE);
+ 	float* drawAirThreat = roleThreat.airThreat.data();
+ 
++	// Anarva: an unidentified enemy counts as the mean threat of the ones we can identify (its expected value), not 0.1
++	float meanAir = 0.f;
++	{
++		int k = 0;
++		for (const SEnemyData* e : airDraws) {
++			if (e->cdef != nullptr) {
++				meanAir += e->GetAirDamage(role) * e->thrHealth;
++				++k;
++			}
++		}
++		meanAir = (k > 0) ? meanAir / k : 0.f;
++	}
+ 	for (const SEnemyData* e : airDraws) {
+ 		if (e->cdef == nullptr) {
+-			AddEnemyAir(0.1f, drawAirThreat, *e);  // unknown enemy is a threat
++			AddEnemyAir(meanAir, drawAirThreat, *e);  // unknown enemy: expected threat
+ 		} else {
+ 			const float threat = e->GetAirDamage(role) * e->thrHealth;
+ 			const int vsl = std::min(int(e->vel.Length2D() * slackMod.speedMod), slackMod.speedModMax);
+@@ -634,9 +652,24 @@ std::shared_ptr<IMainJob> CThreatMap::AmphDrawer(CCircuitDef::RoleT role)
+ 	float* drawAmphThreat = roleThreat.amphThreat.data();
+ 	float* drawSwimThreat = roleThreat.swimThreat.data();
+ 
++	float meanSurf = 0.f, meanWater = 0.f;  // Anarva: unidentified enemy = mean of the identified ones
++	{
++		int k = 0;
++		for (const SEnemyData* e : amphDraws) {
++			if (e->cdef != nullptr) {
++				meanSurf += e->GetSurfDamage(role) * e->thrHealth;
++				meanWater += e->GetWaterDamage(role) * e->thrHealth;
++				++k;
++			}
++		}
++		if (k > 0) {
++			meanSurf /= k;
++			meanWater /= k;
++		}
++	}
+ 	for (const SEnemyData* e : amphDraws) {
+ 		if (e->cdef == nullptr) {
+-			AddEnemyAmphGradient(0.1f, 0.1f, drawSurfThreat, drawAmphThreat, drawSwimThreat, *e);  // unknown enemy is a threat
++			AddEnemyAmphGradient(meanSurf, meanWater, drawSurfThreat, drawAmphThreat, drawSwimThreat, *e);  // unknown enemy: expected threat
+ 		} else {
+ 			const float threatSurf = e->GetSurfDamage(role) * e->thrHealth;
+ 			const float threatWater = e->GetWaterDamage(role) * e->thrHealth;
 diff --git a/src/circuit/map/ThreatMap.h b/src/circuit/map/ThreatMap.h
 index ebe35302..aadcb18f 100644
 --- a/src/circuit/map/ThreatMap.h
@@ -72,7 +134,7 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
-index e4c1d126..b9c4a413 100644
+index e4c1d126..b053a252 100644
 --- a/src/circuit/module/BuilderManager.cpp
 +++ b/src/circuit/module/BuilderManager.cpp
 @@ -6,6 +6,7 @@
@@ -92,7 +154,15 @@ index e4c1d126..b9c4a413 100644
  	const float retMod = retreat.get((unsigned)2, 1.0f).asFloat();
  	const float goalBuildMod = root["economy"].get("build_mod", 320.f).asFloat();
  
-@@ -1047,7 +1048,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1020,7 +1021,6 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+ 	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
+ 	const float buildSqDistance = SQUARE(buildDistance);
+ 	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
+-	const float maxSqBaseDist = pos.SqDistance2D(basePos);
+ 	float metric = std::numeric_limits<float>::max();
+ 
+ 	constexpr std::array<std::pair<IBuilderTask::BuildType, float>, (int)IBuilderTask::BuildType::_SIZE_> prioTasks = {
+@@ -1047,7 +1047,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	};
  
  	for (const std::pair<IBuilderTask::BuildType, float>& pair : prioTasks) {
@@ -101,7 +171,7 @@ index e4c1d126..b9c4a413 100644
  		for (const IBuilderTask* candidate : GetTasks(pair.first)) {
  			if (!candidate->CanAssignTo(unit)) {
  				continue;
-@@ -1090,32 +1091,23 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1090,32 +1090,23 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -146,7 +216,7 @@ index e4c1d126..b9c4a413 100644
  	}
  
  	if ((task == nullptr) &&
-@@ -1164,20 +1156,6 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1164,20 +1155,6 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
  	float metric = std::numeric_limits<float>::max();
  
@@ -167,7 +237,7 @@ index e4c1d126..b9c4a413 100644
  
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
-@@ -1234,27 +1212,20 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1234,27 +1211,20 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -207,7 +277,15 @@ index e4c1d126..b9c4a413 100644
  		}
  	}
  
-@@ -1364,28 +1335,20 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1352,7 +1322,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+ 
+ 			float distCost;
+ 			const float rawSqDist = pos.SqDistance2D(buildPos);  // TODO: add target's radius to rawSqDist
+-			const bool isClose = rawSqDist < buildSqDistance;
+ 			if (rawSqDist < buildSqDistance) {
+ 				distCost = sqrtf(rawSqDist) / pathfinder->GetSquareSize() * COST_BASE * 0.5f;
+ 			} else {
+@@ -1364,28 +1333,20 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -249,7 +327,7 @@ index e4c1d126..b9c4a413 100644
  	}
  
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..728062d6 100644
+index 6e5da8b6..312eca68 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,8 @@
@@ -270,7 +348,20 @@ index 6e5da8b6..728062d6 100644
  		cond.metalIncome = surfEngy.get(2, -1.f).asFloat();
  		cond.energyIncome = surfEngy.get(3, -1.f).asFloat();
  		cond.score = surfEngy.get(4, -1.f).asFloat();
-@@ -1328,44 +1330,51 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1300,12 +1302,10 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+ 	CCircuitDef* bestDef = nullptr;
+ 	CCircuitDef* hopeDef = nullptr;
+ 	metalIncome = std::min(metalIncome, energyIncome) * energyFactor;
+-	const float buildPower = std::min(builderMgr->GetBuildPower(), metalIncome);
+ 	energyIncome *= isEnergyStalling ? 0.5f : 1.f;
+ 	isEnergyStalling |= isEnergyRequired;
+ 	bool isLastHope = isEnergyStalling;
+ 	const int frame = circuit->GetLastFrame();
+-	float bestResDist = std::numeric_limits<float>::max();
+ 
+ 	std::map<CCircuitDef::Id, int> defCounts;
+ 	for (IBuilderTask* task : builderMgr->GetTasks(IBuilderTask::BuildType::ENERGY)) {
+@@ -1328,44 +1328,51 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  		return (lowerIdx < 0) || (SQUARE(curWind) / SQUARE(infos[i].data.make) * infos[i].score > infos[lowerIdx].score);
  	};
  
@@ -353,7 +444,7 @@ index 6e5da8b6..728062d6 100644
  	}
  
  	if (isLastHope) {
-@@ -1384,6 +1393,47 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1384,6 +1391,47 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  	CSetupManager* setupMgr = circuit->GetSetupManager();
  	AIFloat3 buildPos = -RgtVector;
  	if (bestDef->IsAttrBase()) {
@@ -1486,7 +1577,7 @@ index a36c4e1b..cc6b7ef6 100644
  	void ApplySafePos(const CQueryPathMulti* query);
  	void Fallback(CCircuitUnit* unit, bool proceed);
 diff --git a/src/circuit/task/fighter/AttackTask.cpp b/src/circuit/task/fighter/AttackTask.cpp
-index 2f556d6d..2ea4e285 100644
+index 2f556d6d..0062d10b 100644
 --- a/src/circuit/task/fighter/AttackTask.cpp
 +++ b/src/circuit/task/fighter/AttackTask.cpp
 @@ -6,6 +6,8 @@
@@ -1510,7 +1601,7 @@ index 2f556d6d..2ea4e285 100644
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
-@@ -241,7 +244,6 @@ void CAttackTask::FindTarget()
+@@ -241,36 +244,49 @@ void CAttackTask::FindTarget()
  	CMap* map = circuit->GetMap();
  	CInfluenceMap* inflMap = circuit->GetInflMap();
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
@@ -1518,7 +1609,12 @@ index 2f556d6d..2ea4e285 100644
  	const AIFloat3& pos = leader->GetPos(circuit->GetLastFrame());
  	SArea* area = leader->GetArea();
  	CCircuitDef* cdef = leader->GetCircuitDef();
-@@ -253,24 +255,38 @@ void CAttackTask::FindTarget()
+ 	const bool isAntiStatic = cdef->IsAttrAntiStat();
+ 	const float maxSpeed = SQUARE(highestSpeed * 1.01f / FRAMES_PER_SEC);
+ 	const float maxPower = attackPower * powerMod;
+-	const float weaponRange = cdef->GetMaxRange() * 0.9f;
++	const float weaponRange = cdef->GetMaxRange();  // Anarva: the reach itself (no 0.9)
+ 	const int canTargetCat = cdef->GetTargetCategory();
  	const int noChaseCat = cdef->GetNoChaseCategory();
  
  	CEnemyInfo* bestTarget = nullptr;
@@ -1578,7 +1674,7 @@ index 2f556d6d..2ea4e285 100644
  				minSqDist = sqOEDist;
  				bestTarget = enemy;
 diff --git a/src/circuit/task/fighter/DefendTask.cpp b/src/circuit/task/fighter/DefendTask.cpp
-index af382ba3..0331d8d8 100644
+index af382ba3..3771d040 100644
 --- a/src/circuit/task/fighter/DefendTask.cpp
 +++ b/src/circuit/task/fighter/DefendTask.cpp
 @@ -21,6 +21,7 @@
@@ -1620,7 +1716,12 @@ index af382ba3..0331d8d8 100644
  		return;
  	}
  
-@@ -230,9 +235,6 @@ bool CDefendTask::FindTarget()
+@@ -226,13 +231,10 @@ bool CDefendTask::FindTarget()
+ 	SArea* area = leader->GetArea();
+ 	CCircuitDef* cdef = leader->GetCircuitDef();
+ 	const float maxPower = attackPower * powerMod;
+-	const float weaponRange = cdef->GetMaxRange() * 0.9f;
++	const float weaponRange = cdef->GetMaxRange();  // Anarva: the reach itself (no 0.9)
  	const int canTargetCat = cdef->GetTargetCategory();
  	const int noChaseCat = cdef->GetNoChaseCategory();
  
@@ -1684,7 +1785,7 @@ index 981b94f9..16b5c6df 100644
  
  } // namespace circuit
 diff --git a/src/circuit/task/fighter/FighterTask.cpp b/src/circuit/task/fighter/FighterTask.cpp
-index 0400f8d6..16934fa7 100644
+index 0400f8d6..4782d296 100644
 --- a/src/circuit/task/fighter/FighterTask.cpp
 +++ b/src/circuit/task/fighter/FighterTask.cpp
 @@ -6,6 +6,8 @@
@@ -1696,24 +1797,79 @@ index 0400f8d6..16934fa7 100644
  #include "task/RetreatTask.h"
  #include "map/InfluenceMap.h"
  #include "map/ThreatMap.h"
-@@ -116,13 +118,13 @@ void IFighterTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+@@ -116,42 +118,28 @@ void IFighterTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
  
  	if (unit->HasShield()) {
  		const float minShield = circuit->GetSetupManager()->GetEmptyShield();
 -		if ((healthPerc > cdef->GetRetreat()) && unit->IsShieldCharged(minShield)) {
+-			if (cdef->IsRoleHeavy() && (healthPerc < 0.9f) && !unit->IsAttrNoRepair()) {
 +		if ((!anarva::ShouldRetreat(circuit, unit)) && unit->IsShieldCharged(minShield)) {
- 			if (cdef->IsRoleHeavy() && (healthPerc < 0.9f) && !unit->IsAttrNoRepair()) {
++			if (cdef->IsRoleHeavy() && (healthPerc < 1.f) && !unit->IsAttrNoRepair()  /* Anarva: repair costs no metal; any damage */) {
  				circuit->GetBuilderManager()->Enqueue(TaskB::Repair(IBuilderTask::Priority::NOW, unit));
  			}
  			return;
  		}
 -	} else if ((healthPerc > cdef->GetRetreat()) && !unit->IsDisarmed(frame)) {
+-		if (cdef->IsRoleHeavy() && (healthPerc < 0.9f) && !unit->IsAttrNoRepair()) {
 +	} else if ((!anarva::ShouldRetreat(circuit, unit)) && !unit->IsDisarmed(frame)) {
- 		if (cdef->IsRoleHeavy() && (healthPerc < 0.9f) && !unit->IsAttrNoRepair()) {
++		if (cdef->IsRoleHeavy() && (healthPerc < 1.f) && !unit->IsAttrNoRepair()  /* Anarva: repair costs no metal; any damage */) {
  			circuit->GetBuilderManager()->Enqueue(TaskB::Repair(IBuilderTask::Priority::NOW, unit));
  		}
+ 		if (healthPerc < cdef->GetSelfDHP()) {
+ 			unit->CmdSelfD(true);
+ 		}
+ 		return;
+-	} else if (healthPerc < 0.2f) {  // stuck units workaround: they don't shoot and don't see distant threat
+-		CRetreatTask* task = manager->EnqueueRetreat();
+-		manager->AssignTask(unit, task);
+-		return;
+ 	}
+ 
+-	CThreatMap* threatMap = circuit->GetThreatMap();
+-	const float range = cdef->GetMaxRange();
+-	if ((target == nullptr) || !target->IsInLOS()) {
+-		CRetreatTask* task = manager->EnqueueRetreat();
+-		manager->AssignTask(unit, task);
+-		return;
+-	}
+-	const AIFloat3& pos = unit->GetPos(frame);
+-	if ((target->GetPos().SqDistance2D(pos) > SQUARE(range)) ||
+-		(threatMap->GetThreatAt(unit, pos) * 2 > threatMap->GetUnitPower(unit)))
++	// Anarva: ShouldRetreat said this unit loses here and is slower to kill than to get home: retreat (no 20% health
++	// trigger, no "threat x2 > power" test)
+ 	{
+ 		CRetreatTask* task = manager->EnqueueRetreat();
+ 		manager->AssignTask(unit, task);
+-		return;
+ 	}
+-	cowards.insert(unit);
+ }
+ 
+ void IFighterTask::OnUnitDestroyed(CCircuitUnit* unit, CEnemyInfo* attacker)
+@@ -203,7 +191,7 @@ void IFighterTask::Attack(CCircuitUnit* unit, const int frame)
+ 	CCircuitDef* edef = GetTarget()->GetCircuitDef();
+ 	const bool isStatic = (edef != nullptr) && !edef->IsMobile();
+ 
+-	const float range = std::min(cdef->GetMinRange(), cdef->GetLosRadius()) * RANGE_MOD;
++	const float range = anarva::Standoff(cdef, edef, std::min(cdef->GetMinRange(), cdef->GetLosRadius()));
+ 	AIFloat3 newPos(tPos.x + range * dir.x, tPos.y, tPos.z + range * dir.z);
+ 	CTerrainManager::CorrectPosition(newPos);
+ 	unit->Attack(newPos, GetTarget(), targetTile, GetTarget()->GetUnit()->IsCloaked(), isStatic, frame + FRAMES_PER_SEC * 60);
+diff --git a/src/circuit/task/fighter/FighterTask.h b/src/circuit/task/fighter/FighterTask.h
+index e1d90c4f..c8878697 100644
+--- a/src/circuit/task/fighter/FighterTask.h
++++ b/src/circuit/task/fighter/FighterTask.h
+@@ -13,7 +13,7 @@
+ 
+ namespace circuit {
+ 
+-#define RANGE_MOD	0.8f
++// Anarva: no RANGE_MOD. Units stand inside their reach by what the target covers during one reload (anarva::Standoff)
+ 
+ class CEnemyInfo;
+ 
 diff --git a/src/circuit/task/fighter/RaidTask.cpp b/src/circuit/task/fighter/RaidTask.cpp
-index b62de532..2c45b1ec 100644
+index b62de532..87e43f48 100644
 --- a/src/circuit/task/fighter/RaidTask.cpp
 +++ b/src/circuit/task/fighter/RaidTask.cpp
 @@ -6,6 +6,8 @@
@@ -1737,6 +1893,15 @@ index b62de532..2c45b1ec 100644
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
+@@ -257,7 +260,7 @@ bool CRaidTask::FindTarget()
+ 	const bool hadTarget = GetTarget() != nullptr;
+ 	const float maxSpeed = SQUARE(highestSpeed * 0.8f / FRAMES_PER_SEC);
+ 	const float maxPower = attackPower * powerMod * (hadTarget ? 1.f / 0.75f : 1.f);
+-	const float weaponRange = cdef->GetMaxRange() * 0.9f;
++	const float weaponRange = cdef->GetMaxRange();  // Anarva: the reach itself (no 0.9)
+ 	const int canTargetCat = cdef->GetTargetCategory();
+ 	const int noChaseCat = cdef->GetNoChaseCategory();
+ 	const float range = std::max(leader->GetUnit()->GetMaxRange(), cdef->GetLosRadius()) + 200.f;
 @@ -291,13 +294,9 @@ bool CRaidTask::FindTarget()
  			continue;
  		}
@@ -1772,8 +1937,21 @@ index b62de532..2c45b1ec 100644
  		if ((minPower > power) && (minSqDist > sqDist)) {
  			if (enemy->IsInRadarOrLOS()) {
  				if (((targetCat & noChaseCat) == 0) && !enemy->IsBeingBuilt()) {
+diff --git a/src/circuit/task/fighter/ScoutTask.cpp b/src/circuit/task/fighter/ScoutTask.cpp
+index 9aee3cb8..ec27084f 100644
+--- a/src/circuit/task/fighter/ScoutTask.cpp
++++ b/src/circuit/task/fighter/ScoutTask.cpp
+@@ -164,7 +164,7 @@ bool CScoutTask::FindTarget(CCircuitUnit* unit, const AIFloat3& pos)
+ 	const bool isAntiStatic = cdef->IsAttrAntiStat();
+ 	const float speed = SQUARE(cdef->GetSpeed() * 0.8f / FRAMES_PER_SEC);
+ 	const float maxPower = threatMap->GetUnitPower(unit) * powerMod;
+-	const float weaponRange = cdef->GetMaxRange() * 0.9f;
++	const float weaponRange = cdef->GetMaxRange();  // Anarva: the reach itself (no 0.9)
+ 	const int canTargetCat = cdef->GetTargetCategory();
+ 	const int noChaseCat = cdef->GetNoChaseCategory();
+ 	const float range = std::max(unit->GetUnit()->GetMaxRange() + threatMap->GetSquareSize() * 2,
 diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
-index 154ce4bf..7213603f 100644
+index 154ce4bf..ef703e97 100644
 --- a/src/circuit/task/fighter/SquadTask.cpp
 +++ b/src/circuit/task/fighter/SquadTask.cpp
 @@ -6,6 +6,7 @@
@@ -1784,11 +1962,12 @@ index 154ce4bf..7213603f 100644
  #include "map/InfluenceMap.h"
  #include "map/ThreatMap.h"
  #include "module/BuilderManager.h"
-@@ -16,6 +17,12 @@
+@@ -16,6 +17,13 @@
  #include "unit/action/TravelAction.h"
  #include "CircuitAI.h"
  #include "util/Utils.h"
 +#include "util/AnarvaSwitches.h"
++#include "util/AnarvaDecide.h"
 +#include "Mod.h"
 +#include "spring/SpringCallback.h"
 +#include <unordered_map>
@@ -1797,7 +1976,7 @@ index 154ce4bf..7213603f 100644
  
  #include <cmath>
  
-@@ -387,10 +394,129 @@ void ISquadTask::Attack(const int frame)
+@@ -387,10 +395,129 @@ void ISquadTask::Attack(const int frame)
  	Attack(frame, GetTarget()->GetUnit()->IsCloaked());
  }
  
@@ -1928,14 +2107,19 @@ index 154ce4bf..7213603f 100644
  	attackFrame = isRepeatAttack ? frame : attackFrame;
  
  	auto it = rangeUnits.begin()->second.begin();
-@@ -428,10 +554,22 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+@@ -421,17 +548,29 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+ 	int row = 0;
+ 	for (const auto& kv : rangeUnits) {
+ 		CCircuitDef* rowDef = (*kv.second.begin())->GetCircuitDef();
+-		const float range = kv.first * RANGE_MOD;
++		const float range = anarva::Standoff(rowDef, edef, kv.first);
+ 		// NOTE: 1st unit in 1st row will scout, ignoring GetTarget()->IsInRadarOrLOS()
+ 		//       as unit may wobble back and forth without firing if turret turn is slow.
+ 		float range0 = range;
  		if ((row++ == 0) && (isStatic || !GetTarget()->IsInRadarOrLOS())) {
- 			range0 = std::min(kv.first, rowDef->GetLosRadius()) * RANGE_MOD;
- 		}
--		const float maxDelta = (M_PI * 0.9f) / kv.second.size();
--		// NOTE: float delta = asinf(cdef->GetRadius() / range);
--		//       but sin of a small angle is similar to that angle, omit asinf() call
--		float delta = (3.0f * (rowDef->GetRadius() + aoe)) / (range + DIV0_SLACK);
+-			range0 = std::min(kv.first, rowDef->GetLosRadius()) * RANGE_MOD;
++			range0 = anarva::Standoff(rowDef, edef, std::min(kv.first, rowDef->GetLosRadius()));
++		}
 +		float maxDelta, delta;
 +		{
 +			// Anarva (#46): one splash hits two of ours only when they stand closer than 2 x (our radius + its blast);
@@ -1951,11 +2135,15 @@ index 154ce4bf..7213603f 100644
 +			const float arc = (flankMode > 0) ? 2.f * M_PI : M_PI;
 +			maxDelta = arc / kv.second.size();
 +			delta = (2.0f * (rowDef->GetRadius() + aoe)) / (range + DIV0_SLACK);
-+		}
+ 		}
+-		const float maxDelta = (M_PI * 0.9f) / kv.second.size();
+-		// NOTE: float delta = asinf(cdef->GetRadius() / range);
+-		//       but sin of a small angle is similar to that angle, omit asinf() call
+-		float delta = (3.0f * (rowDef->GetRadius() + aoe)) / (range + DIV0_SLACK);
  		if (delta > maxDelta) {
  			delta = maxDelta;
  		}
-@@ -459,9 +597,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
+@@ -459,9 +598,28 @@ void ISquadTask::Attack(const int frame, const bool isGround)
  				|| (unit->GetTargetTile() != targetTile))
  			{
  				const float angle = alpha + beta;
@@ -2426,10 +2614,10 @@ index 834905fe..591df5f1 100644
  } // namespace circuit
 diff --git a/src/circuit/util/AnarvaDecide.h b/src/circuit/util/AnarvaDecide.h
 new file mode 100644
-index 00000000..cd486c43
+index 00000000..f86a776f
 --- /dev/null
 +++ b/src/circuit/util/AnarvaDecide.h
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,104 @@
 +/*
 + * AnarvaDecide.h
 + *
@@ -2511,6 +2699,15 @@ index 00000000..cd486c43
 +}
 +
 +
++// Where a shooter stands: inside its reach by the distance the target can cover during one reload, so the target
++// can't step out of range between shots (a static target: the full reach).
++inline float Standoff(const CCircuitDef* shooter, const CCircuitDef* target, float reach)
++{
++	const float v = ((target != nullptr) && target->IsMobile()) ? target->GetSpeed() : 0.f;
++	const float slip = v * float(shooter->GetReloadTime()) / FRAMES_PER_SEC;
++	return std::max(0.f, reach - slip);
++}
++
 +// Value of a unit per metal: a constructor by its build power, anything else by its fighting strength (Lanchester power).
 +inline float ValuePerMetal(const CCircuitDef* d)
 +{
@@ -2561,12 +2758,15 @@ index 00000000..532edfad
 +
 +#endif // SRC_CIRCUIT_UTIL_ANARVASWITCHES_H_
 diff --git a/src/circuit/util/Defines.h b/src/circuit/util/Defines.h
-index 9a1beba7..b48ccfc0 100644
+index 9a1beba7..74c2acaf 100644
 --- a/src/circuit/util/Defines.h
 +++ b/src/circuit/util/Defines.h
-@@ -54,7 +54,7 @@ template<typename T> static inline constexpr T SQUARE(T x) { return x * x; }
+@@ -52,9 +52,9 @@ template<typename T> static inline constexpr T SQUARE(T x) { return x * x; }
+ #define ASSIGN_TIMEOUT	(FRAMES_PER_SEC * 300)
+ 
  #define THREAT_BASE		0.f
- #define THREAT_MIN		1.0f
+-#define THREAT_MIN		1.0f
++#define THREAT_MIN		1e-3f  // Anarva: "no threat" = nothing can shoot here (baseline THREAT_BASE 0); numeric guard only
  #define DEFAULT_SLACK	(SQUARE_SIZE * 8)
 -#define SHIELD_MOD		1.5f
 +#define SHIELD_MOD		1.0f  // Anarva: a shield point absorbs one point of damage (was a hand-picked 1.5)
