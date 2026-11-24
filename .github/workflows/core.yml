@@ -8,6 +8,11 @@ on:
   push:
     paths: ["core/**", ".github/workflows/core.yml"]
   workflow_dispatch:
+    inputs:
+      patch:
+        description: "Apply core/circuitai.patch (off = pure BARb, for A/B controls)"
+        type: boolean
+        default: true
   workflow_call:
 
 env:
@@ -45,8 +50,12 @@ jobs:
           git clone https://github.com/rlcevg/CircuitAI.git recoil/AI/Skirmish/BARb
           cd recoil/AI/Skirmish/BARb
           git checkout -q "$CIRCUITAI_COMMIT"
-          git apply --whitespace=nowarn "$GITHUB_WORKSPACE/core/circuitai.patch"
-          git -c user.name=ci -c user.email=ci@localhost commit -qam "Anarva patch"
+          if [ "${{ inputs.patch }}" != "false" ]; then
+            git apply --whitespace=nowarn "$GITHUB_WORKSPACE/core/circuitai.patch"
+            git add -A && git -c user.name=ci -c user.email=ci@localhost commit -qm "Anarva patch"
+          else
+            echo "control build: no patch"
+          fi
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -77,7 +86,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: core-${{ matrix.platform }}
+          name: core-${{ matrix.platform }}${{ inputs.patch == false && '-unpatched' || '' }}
           path: |
             out/${{ matrix.lib }}
             out/${{ matrix.lib }}.sha256
