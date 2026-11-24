@@ -55,11 +55,14 @@ def play(args, demo):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
-    ap.add_argument("demos", nargs="+")
+    ap.add_argument("demos", nargs="*")
+    ap.add_argument("--list", help="file with one replay path per line (avoids xargs batching into several runners)")
     ap.add_argument("--par", type=int, default=4)
     ap.add_argument("--minutes", type=float, default=12.0)
     args = ap.parse_args()
-    args.out = os.path.abspath(args.out)  # the engine resolves --write-dir against its own cwd
+    args.out = os.path.abspath(args.out)
+    if args.list:
+        args.demos += [l.strip() for l in open(args.list, encoding="utf-8") if l.strip()]  # the engine resolves --write-dir against its own cwd
     os.makedirs(args.out, exist_ok=True)
     with ThreadPoolExecutor(args.par) as ex:
         for out in ex.map(lambda d: play(args, d), args.demos):
