@@ -62,9 +62,10 @@ function widget:Initialize()
 	Spring.Echo("[REPLAY] MAP " .. tostring(Game.mapName) .. " " .. Game.mapSizeX .. "x" .. Game.mapSizeZ)
 end
 
-local MAXF = 25 * 1800  -- the library needs early/mid-game features; winners and length come from the index
+local MAXF = 1e9  -- play to the end: late units (T3, Behemoth) matter for the counter matrix
 function widget:GameFrame(n)
 	if n >= MAXF then
+		dumpMatrix()
 		Spring.Echo("[REPLAY] CAP f=" .. n)
 		Spring.SendCommands("quitforce")
 		return
@@ -104,7 +105,7 @@ function widget:GameFrame(n)
 		Spring.SendCommands("setmaxspeed " .. SPEED, "setminspeed " .. SPEED, "setspeed " .. SPEED)
 	end
 	if n == 31 then  -- demos ignore speed commands: skip simulates ahead at full speed, callins still run
-		Spring.SendCommands("skip " .. math.floor(MAXF / 30 + 5))
+		Spring.SendCommands("skip 36000")  -- simulate ahead at full speed; the game ends first
 	end
 	if n % 1800 == 0 and n > 0 then
 		local teams = Spring.GetTeamList()
@@ -143,7 +144,25 @@ function widget:UnitCreated(unitID, unitDefID, teamID, builderID)
 	end
 end
 
-function widget:UnitDestroyed(unitID, unitDefID, teamID, attackerID)
+local function dumpMatrix()
+	for a, row in pairs(dmgM) do
+		for v, d in pairs(row) do
+			local ad, vd = UnitDefs[a], UnitDefs[v]
+			if ad and vd then
+				Spring.Echo(string.format("[REPLAY] DMG att=%s vic=%s dmg=%d killM=%d", ad.name, vd.name, d, (killM[a] and killM[a][v]) or 0))
+			end
+		end
+	end
+end
+
+function widget:UnitDestroyed(unitID, unitDefID, teamID, attackerID, attackerDefID, attackerTeam)
+	if attackerDefID and unitDefID and enemies(attackerTeam, teamID) then
+		local vd = UnitDefs[unitDefID]
+		killM[attackerDefID] = killM[attackerDefID] or {}
+		killM[attackerDefID][unitDefID] = (killM[attackerDefID][unitDefID] or 0) + (vd and vd.metalCost or 0)
+		dmgM[attackerDefID] = dmgM[attackerDefID] or {}
+		dmgM[attackerDefID][unitDefID] = dmgM[attackerDefID][unitDefID] or 0
+	end
 	local c = comms[unitID]
 	if c then
 		local x, _, z = Spring.GetUnitPosition(unitID)
@@ -213,8 +232,17 @@ local function sampleMotion(n)
 	end
 end
 
+local dmgM, killM = {}, {}  -- [attackerDefID][victimDefID] = damage / metal killed (enemy pairs only)
+local function enemies(t1, t2)
+	if not t1 or not t2 or t1 == gaia or t2 == gaia then return false end
+	return select(6, Spring.GetTeamInfo(t1, false)) ~= select(6, Spring.GetTeamInfo(t2, false))
+end
 function widget:UnitDamaged(unitID, unitDefID, unitTeam, damage, paralyzer, weaponDefID, projectileID, attackerID, attackerDefID, attackerTeam)
 	local fr = Spring.GetGameFrame()
+	if attackerDefID and unitDefID and not paralyzer and damage > 0 and enemies(attackerTeam, unitTeam) then
+		dmgM[attackerDefID] = dmgM[attackerDefID] or {}
+		dmgM[attackerDefID][unitDefID] = (dmgM[attackerDefID][unitDefID] or 0) + damage
+	end
 	lastCombat[unitID] = fr
 	if attackerID then lastCombat[attackerID] = fr end
 	if attackerTeam and unitTeam and attackerTeam ~= unitTeam and attackerTeam ~= gaia and unitTeam ~= gaia and not firstHit[attackerTeam] then
@@ -228,6 +256,7 @@ function widget:UnitDamaged(unitID, unitDefID, unitTeam, damage, paralyzer, weap
 end
 
 function widget:GameOver(winners)
+	dumpMatrix()
 	Spring.Echo("[REPLAY] WINNERS ally=" .. table.concat(winners or {}, ",") .. " f=" .. Spring.GetGameFrame())
 	Spring.SendCommands("quitforce")
 end
