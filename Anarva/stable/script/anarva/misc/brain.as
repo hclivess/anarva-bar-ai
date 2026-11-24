@@ -92,9 +92,13 @@ float MoveTime(const CCircuitDef@ d, float dist)
 // Systematic choices (no dice): assisting adds the same build power to any factory, so the difference is the walk.
 CCircuitUnit@ FactoryReachedSoonest(const AIFloat3& in from, const CCircuitDef@ mover)
 {
+	return FactoryReachedSoonestIn(Brain::Intel::allFactories, from, mover);
+}
+CCircuitUnit@ FactoryReachedSoonestIn(const array<CCircuitUnit@>@ facs, const AIFloat3& in from, const CCircuitDef@ mover)
+{
 	CCircuitUnit@ best = null; float bt = 1e30f;
-	for (uint i = 0; i < Brain::Intel::allFactories.length(); ++i) {
-		CCircuitUnit@ f = Brain::Intel::allFactories[i];
+	for (uint i = 0; i < facs.length(); ++i) {
+		CCircuitUnit@ f = facs[i];
 		const float t = (mover is null) ? f.GetPos(ai.frame).distance2D(from) : MoveTime(mover, f.GetPos(ai.frame).distance2D(from));
 		if (t < bt) { bt = t; @best = f; }
 	}
@@ -1208,7 +1212,7 @@ void Update()
 	if (ai.frame - lastScoutFrame > interval && Brain::Army::scouts.length() < uint((jamAlert || blind) ? 4 : 2)) {
 		array<CCircuitUnit@>@ facs = airFactories.length() > 0 ? airFactories : allFactories;
 		if (facs.length() > 0) {
-			CCircuitUnit@ fac = FactoryReachedSoonest(basePos, null);
+			CCircuitUnit@ fac = FactoryReachedSoonestIn(facs, basePos, null);
 			CCircuitDef@ scout = aiFactoryMgr.GetRoleDef(fac.circuitDef, RT::SCOUT);
 			if (scout !is null && scout.IsAvailable(ai.frame)) {
 				aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::FIREPOWER, Task::Priority::HIGH,
@@ -2526,7 +2530,7 @@ void Update()
 	const float deficit = AiMax(0.f, 1.f - Brain::Director::ratio);
 	const int want = int(float(aiBuilderMgr.GetWorkerCount()) * deficit + 0.5f);
 	while (int(guards.length()) < want) {
-		CCircuitUnit@ fac = FactoryReachedSoonest(basePos, null);
+		CCircuitUnit@ fac = facs[issued % int(facs.length())];  // spread assist over the factories in turn (deterministic)
 		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, GUARD_SPAN));
 		if (g is null)
 			break;
