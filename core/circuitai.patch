@@ -85,7 +85,7 @@ index 0be6a835..b91cfe6e 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..cb0b7bdf 100644
+index c3aaefe5..1208e82f 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -122,17 +122,18 @@ index c3aaefe5..cb0b7bdf 100644
  #include "Log.h"
  #include "Drawer.h"
  #include "Game.h"
-@@ -702,6 +714,9 @@ void CInitScript::RegisterCore()
+@@ -702,6 +714,10 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float pwrDmg", asOFFSET(CCircuitDef, pwrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float airThrDmg", asOFFSET(CCircuitDef, airThrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float surfThrDmg", asOFFSET(CCircuitDef, surfThrDmg)); ASSERT(r >= 0);
 +	r = engine->RegisterObjectProperty("CCircuitDef", "const float deathAoe", asOFFSET(CCircuitDef, deathAoe)); ASSERT(r >= 0);
 +	r = engine->RegisterObjectProperty("CCircuitDef", "const float buildSpeed", asOFFSET(CCircuitDef, buildSpeed)); ASSERT(r >= 0);
++	r = engine->RegisterObjectProperty("CCircuitDef", "const float buildTime", asOFFSET(CCircuitDef, buildTime)); ASSERT(r >= 0);
 +	r = engine->RegisterObjectProperty("CCircuitDef", "const float deathDamage", asOFFSET(CCircuitDef, deathDamage)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float waterThrDmg", asOFFSET(CCircuitDef, waterThrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float minRange", asOFFSET(CCircuitDef, minRange)); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetMaxRange(Type) const", asMETHODPR(CCircuitDef, GetMaxRange, (CCircuitDef::RangeType) const, float), asCALL_THISCALL); ASSERT(r >= 0);
-@@ -711,8 +726,10 @@ void CInitScript::RegisterCore()
+@@ -711,8 +727,10 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetAirThreat() const", asMETHOD(CCircuitDef, GetAirThreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetSurfThreat() const", asMETHOD(CCircuitDef, GetSurfThreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetWaterThreat() const", asMETHOD(CCircuitDef, GetWaterThreat), asCALL_THISCALL); ASSERT(r >= 0);
@@ -144,7 +145,7 @@ index c3aaefe5..cb0b7bdf 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -738,6 +755,155 @@ void CInitScript::RegisterCore()
+@@ -738,6 +756,155 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitUnit", "string GetRulesParam(const string& in, const string& in) const", asFUNCTION(CCircuitUnit_GetRulesParamString), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
  }
  
@@ -300,7 +301,7 @@ index c3aaefe5..cb0b7bdf 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +933,25 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +934,25 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);

@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_MOHO = false;      // T2 lab builds T2 constructors while one more saves more on the extractor-upgrade queue than it costs
 const bool F_COMMFWD = false;   // (with F_COMMRISK) commander claims the free extractor spot with the best gain - risk, anywhere: the human front-builder pattern
 const bool F_COMMRISK = false;  // commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle
 const bool F_COMMSPOT = false;  // commander retreats to the safe spot where its death explosion would destroy least (not into the eco)
@@ -1646,6 +1647,49 @@ IUnitTask@ MineLayerTask(CCircuitUnit@ fac)
 		fac.GetPos(ai.frame), 64.f));
 }
 
+
+/*
+ * Extractor upgrades (1v2 curve: we match each bot until minute 15, then lose outer extractors and stall at
+ * ~55 m/s while each bot compounds to 150 on mohos). If we can't hold as many spots as two enemies, the
+ * spots we can hold must give 4x. Upgrades are queued on T2 constructors: with U safe T1 extractors and C
+ * constructors, the k-th upgrade waits ~k*tau/C, so one more constructor saves ~extra*tau*U^2/(2C(C+1))
+ * of metal (extra = income an upgrade adds, tau = one upgrade's build time). Build it while that beats its cost.
+ */
+array<string> T2_CONS = {"armack", "corack", "legack", "armacv", "coracv", "legacv", "armacsub", "coracsub", "legacsub"};
+int mohoCons = 0;
+string mohoWhy = "";
+IUnitTask@ MohoConTask(CCircuitUnit@ fac)
+{
+	if (!F_MOHO) return null;
+	CCircuitDef@ t2 = Brain::Economist::mexT2;
+	if (t2 is null || !t2.IsAvailable(ai.frame)) return null;
+	const array<string>@ opts = Facts::BuildOptions(fac.circuitDef.GetName());
+	CCircuitDef@ con = null;
+	for (uint i = 0; i < opts.length() && con is null; ++i)
+		if (T2_CONS.find(opts[i]) >= 0) { CCircuitDef@ d = ai.GetCircuitDef(opts[i]); if (d !is null && d.IsAvailable(ai.frame)) @con = d; }
+	if (con is null) return null;
+	// safe T1 extractors left to upgrade
+	uint U = 0;
+	const array<CCircuitUnit@>@ mx = Brain::Economist::mexes;
+	for (uint m = 0; m < mx.length(); ++m)
+		if (mx[m].circuitDef is Brain::Economist::mexT1 && aiThreat.GetThreatAt(con, mx[m].GetPos(ai.frame)) <= 0.f) ++U;
+	if (U == 0) { mohoWhy = "nothing safe to upgrade"; return null; }
+	uint C = 0;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) if (T2_CONS.find(all[i].circuitDef.GetName()) >= 0) ++C;
+	const float perMex = aiEconomyMgr.metal.income / float(AiMax(1, int(mx.length())));
+	const float extra = perMex * (Brain::Economist::MEX_T2_EXTRACT / Brain::Economist::MEX_T1_EXTRACT - 1.f)
+		- (Brain::Economist::MEX_T2_UPKEEP_E - Brain::Economist::MEX_T1_UPKEEP_E) / AiMax(1e-3f, Brain::Economist::energyPerMetal);
+	if (extra <= 0.f) { mohoWhy = "upgrade doesn't pay its upkeep"; return null; }
+	const float tau = t2.buildTime / AiMax(1.f, con.buildSpeed);
+	const float saving = (C == 0) ? 1e9f : extra * tau * float(U * U) / (2.f * float(C) * float(C + 1));
+	const float price = Brain::Economist::MetalValue(con);
+	mohoWhy = "U=" + U + " C=" + C + " saving=" + int(AiMin(saving, 1e6f)) + " vs " + int(price);
+	if (saving <= price) return null;
+	++mohoCons;
+	return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, con, fac.GetPos(ai.frame), 64.f));
+}
+
 IUnitTask@ MakeTask(CCircuitUnit@ fac)
 {
 	if (F_REZ && !F_PROD && !fac.circuitDef.IsMobile()) {
@@ -1660,6 +1704,9 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	IUnitTask@ ml = MineLayerTask(fac);
 	if (ml !is null)
 		return ml;
+	IUnitTask@ mc = MohoConTask(fac);
+	if (mc !is null)
+		return mc;
 	IUnitTask@ ex = ExpandTask(fac);
 	if (ex !is null)
 		return ex;
@@ -1745,7 +1792,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		fac.GetPos(ai.frame), 64.f));
 }
 
-string Status() { return "prod=" + choices + "/b" + builders + " rez=" + rezBots.length() + "/" + rezOrders + " last=" + last; }
+string Status() { return "moho=" + mohoCons + "(" + mohoWhy + ") prod=" + choices + "/b" + builders + " rez=" + rezBots.length() + "/" + rezOrders + " last=" + last; }
 
 }  // namespace Production
 
@@ -2942,10 +2989,15 @@ float EscapeTime(const AIFloat3& in p)
 }
 // A build job is worth what it builds. Any other job (assist, reclaim, repair) is worth the commander's
 // share of our build power applied to our income over the job's span: that's the spending it carries.
+// The commander's worth on a job is its marginal value: what would NOT get done without it. Early it is most
+// of our build power (it is the expander and the porc); once constructors and an army exist, others would do
+// the same job anyway and its share, and with it the gain from risking it, collapses (Vritrasura108, #48:
+// "as soon as we have army and constructors available we should stop putting our commander into risk").
+float CommShare() { return AiMin(1.f, commander.circuitDef.buildSpeed / AiMax(1.f, aiBuilderMgr.GetBuildPower())); }
 float JobValue(IBuilderTask@ bt)
 {
-	if (bt !is null && bt.buildDef !is null) return Brain::Economist::MetalValue(bt.buildDef);
-	const float share = commander.circuitDef.buildSpeed / AiMax(1.f, aiBuilderMgr.GetBuildPower());
+	const float share = CommShare();
+	if (bt !is null && bt.buildDef !is null) return Brain::Economist::MetalValue(bt.buildDef) * share;
 	return share * aiEconomyMgr.metal.income * 20.f;  // 20 s: the span of the jobs we hand out (Guard/Reclaim timeouts)
 }
 // Best job by gain - risk among: assisting a factory, reclaiming a wreck field (the frontline reclaim
@@ -3023,7 +3075,7 @@ IUnitTask@ CommForward(const AIFloat3& in from, float curScore)
 		const float dE = ec0.distance2D(sp[k]);
 		const float hold = dE / AiMax(1.f, dU + dE);
 		const float t = from.distance2D(sp[k]) / AiMax(1.f, commander.circuitDef.speed);
-		const float gain = perMex * si[k] / avg * AiMax(0.f, H - t) * hold - cost - rate * t;
+		const float gain = (perMex * si[k] / avg * AiMax(0.f, H - t) * hold - cost) * CommShare() - rate * t;  // marginal: the share only it would do
 		if (gain <= bestScore) continue;
 		const float sc = gain - CommPDeath(sp[k], EscapeTime(sp[k])) * V;
 		topSeen = AiMax(topSeen, sc);

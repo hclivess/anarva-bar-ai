@@ -313,6 +313,33 @@
     }
    },
    "decision": "kept off: twice the commander deaths; the escape term makes it too bold, and P(death) only counts seen enemies (F_COMMFOG next)"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "F_COMMFOG (commander danger counts unseen enemy strength from their centre) on vs off, 2 concurrent rounds x 8, 1v2",
+   "results": {
+    "on": {
+     "share": [
+      0.25,
+      0.25
+     ],
+     "outright": [
+      3,
+      2
+     ]
+    },
+    "off": {
+     "share": [
+      0.24,
+      0.45
+     ],
+     "outright": [
+      1,
+      1
+     ]
+    }
+   },
+   "decision": "kept off"
   }
  ],
  "install": {
@@ -705,7 +732,9 @@
   "Refrog (1 human vs 2 allied BARbs, Center Command, 139 min): the factory cycles constructor, rez bot (cornecro), raiders, assault every round from minute 5; income passes the bots by minute 10 (45 vs 35 each) and reaches 2x by minute 15. Rez bots as a steady metal source alongside the army.",
   "All-in at 12 min in a 1v2 (lost ~3000 metal far from home): trade estimate from ~85 s of kills swung 0.7 -> 5.1 on a few cheap kills, needed power fell 130 -> 21. Fix candidate F_STAKE: weight evidence by the army at stake.",
   "Against two allied BARb-hard, Anarva is overrun by 26-36 min on every map type. 1v1 (2.25 vs BARb) does not carry over: the combined bots out-earn us ~3x and the script layer can't do the human counters (just-in-time army needs enemy positions; kill zones, transports, micro need unit commands).",
-  "1v2 income curve (Comet Catcher): Anarva matches each BARb until ~12 min (29.5 vs 26-40 M/s), then stalls at ~30 while the bots compound to 110 by 24 min and 240 by 36. Our outer extractors fall (13 -> 6) and T2/fusion only appears ~20-24 min."
+  "1v2 income curve (Comet Catcher): Anarva matches each BARb until ~12 min (29.5 vs 26-40 M/s), then stalls at ~30 while the bots compound to 110 by 24 min and 240 by 36. Our outer extractors fall (13 -> 6) and T2/fusion only appears ~20-24 min.",
+  "Commander deaths in 1v2 (20 across today's A/Bs): almost all at minutes 26-29 in TURTLE, at the base (200-700 from it) or a near outpost, when two bots overrun us. Not commander adventures: the outright losses are a strength problem. Commander-caution switches (F_COMMRISK, F_COMMFOG) did not help.",
+  "1v2 economy curve (median, baseline, 32 games): we match each bot until minute 12-15 (income 33-38, 14-18 T1 mex, 12-14 constructors). Then our T1 extractors fall 18->6 and mohos reach only 5 by minute 30, constructors stay 13-14; each bot goes to 23 T1 + 12 mohos, 28 constructors, 150 m/s vs our 60. Lever: F_MOHO (T2 constructors sized by the upgrade queue)."
  ],
  "replay_analysis": {
   "local_index": "ref/replays.csv (1054 replays)",
