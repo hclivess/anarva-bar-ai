@@ -51,6 +51,7 @@ const bool F_ARTYHIGH = true;   // core switch: artillery fires from the spot it
 const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their range from the height of their spot (C++)
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
+const bool F_JIT = false;       // build-power scale from the ratio at each enemy arrival time (just in time), not from everything at once
 const bool F_POWERALL = false;  // our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool
 
 CCircuitDef@ Def(const string& in name)
@@ -2476,23 +2477,85 @@ string reason = "start";
 float PoolPower() { return Brain::Army::groundPower + Brain::Army::raiderPoolPower; }
 // Everything of ours that fights on the surface. The gather pool alone drops every unit with a support,
 // artillery or AA secondary role, which is most of a mixed army: measured 48 vs ~11k metal fielded.
-float allPower = 0.f;
+float allPower = 0.f, allCost = 0.f, allSpeed = 0.f;
 int allPowerFrame = -1;
 float MeasuredPower()
 {
 	if (allPowerFrame == ai.frame) return allPower;
 	allPowerFrame = ai.frame;
-	allPower = 0.f;
+	allPower = 0.f; allCost = 0.f; allSpeed = 0.f; uint cnt = 0;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	for (uint i = 0; i < all.length(); ++i) {
 		const CCircuitDef@ d = all[i].circuitDef;
 		if (!d.IsMobile() || d.power <= 0.f || d.surfThrDmg <= 0.f || all[i] is commander) continue;
 		if (d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
 		allPower += d.power;
+		allCost += d.costM;
+		allSpeed += d.speed; ++cnt;
 	}
+	if (cnt > 0) allSpeed /= float(cnt);
 	return allPower;
 }
 float OurPower() { return F_POWERALL ? MeasuredPower() : PoolPower(); }
+
+/*
+ * Just in time (STRATEGY 29). An army that is far away is no threat yet: what matters is whether we can
+ * have the answer by the time it gets here. Each armed enemy reaches our nearest asset at
+ * t = (distance - its range) / its speed (worst case: it heads straight for us). Unseen strength arrives
+ * from the enemy's centre. At every arrival time we compare what we'll have (our power now plus what our
+ * income can still turn into army by then) with what has arrived (at our trade rate). The worst moment
+ * is the ratio that decides how much goes into the economy now.
+ */
+float jitRatio = 0.f, jitWorstT = 0.f;
+float JitRatio(float ours, float theirs, float trade)
+{
+	array<AIFloat3> assets;
+	if (HasBase()) assets.insertLast(basePos);
+	const array<CCircuitUnit@>@ mx = Brain::Economist::mexes;
+	for (uint m = 0; m < mx.length(); ++m) assets.insertLast(mx[m].GetPos(ai.frame));
+	const array<CCircuitUnit@>@ fa = Brain::Intel::allFactories;
+	for (uint f = 0; f < fa.length(); ++f) assets.insertLast(fa[f].GetPos(ai.frame));
+	if (assets.length() == 0) return ours / AiMax(1.f, theirs / trade);
+
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	array<float> ts, th;
+	float seen = 0.f, speedSum = 0.f; uint moving = 0;
+	for (uint i = 0; i < n; ++i) {
+		CCircuitDef@ d = ed[i];
+		if (d is null || !d.IsMobile() || d.threat <= 0.f || (ef[i] & 4) != 0) continue;
+		float dmin = 1e9f;
+		for (uint a = 0; a < assets.length(); ++a) dmin = AiMin(dmin, ep[i].distance2D(assets[a]));
+		const float t = AiMax(0.f, dmin - d.GetMaxRange()) / AiMax(1.f, d.speed);
+		uint k = 0; while (k < ts.length() && ts[k] < t) ++k;
+		ts.insertAt(k, t); th.insertAt(k, d.threat);
+		seen += d.threat; speedSum += d.speed; ++moving;
+	}
+	// what we believe exists but don't see: from their centre at their mean speed
+	const float hidden = AiMax(0.f, theirs - seen);
+	if (hidden > 0.f) {
+		const AIFloat3 ec0 = aiEnemyMgr.GetEnemyPos();
+		float dmin = 1e9f;
+		for (uint a = 0; a < assets.length(); ++a) dmin = AiMin(dmin, ec0.distance2D(assets[a]));
+		const float sp = moving > 0 ? speedSum / moving : AiMax(1.f, allSpeed);
+		const float t = dmin / AiMax(1.f, sp);
+		uint k = 0; while (k < ts.length() && ts[k] < t) ++k;
+		ts.insertAt(k, t); th.insertAt(k, hidden);
+	}
+	// how fast income turns into power: our own army's power per metal
+	MeasuredPower();
+	const float perMetal = allCost > 0.f ? allPower / allCost : 0.f;
+	const float rate = aiEconomyMgr.metal.income * perMetal;  // power per second at full army production
+	float worst = 1e9f, cum = 0.f;
+	jitWorstT = 0.f;
+	for (uint k = 0; k < ts.length(); ++k) {
+		cum += th[k];
+		const float r = (ours + rate * ts[k]) / AiMax(1.f, cum / trade);
+		if (r < worst) { worst = r; jitWorstT = ts[k]; }
+	}
+	return worst < 1e9f ? worst : ours / AiMax(1.f, theirs / trade);
+}
+
 
 float needPowerAway = 0.f;
 float needPower = 0.f;   // army power needed to win against what we know (and guess) is out there
@@ -2537,7 +2600,11 @@ void Update()
 		scale = AiMin(2.f, AiMax(1.f, ratio) * (1.f + (1.f - p)));
 		scaleWhy = "boom: home pressure " + int(p * 100.f) + "%";
 	} else {
-		scale = AiMin(2.f, AiMax(1.f, ratio));
+		if (F_JIT) {
+			jitRatio = JitRatio(ours, theirs, AiMax(0.25f, Brain::Assess::trade));
+			scale = AiMin(2.f, AiMax(1.f, jitRatio));
+		} else
+			scale = AiMin(2.f, AiMax(1.f, ratio));
 		scaleWhy = blind ? "blind: assume enemy kept pace" : (ratio >= 1.f ? "surplus power: scale" : "deficit away from home: keep the economy growing");
 	}
 	if (Brain::Waste::metalOverflow) {
@@ -2567,7 +2634,7 @@ void Update()
 		posture = want;
 	}
 }
-string Status() { return names[posture] + " r=" + F1(ratio) + " wave=" + F1(waveFrac) + " bp=" + F1(scale) + "(" + scaleWhy + ")"; }
+string Status() { return names[posture] + " r=" + F1(ratio) + (F_JIT ? " jit=" + F1(jitRatio) + "@" + int(jitWorstT) + "s" : "") + " wave=" + F1(waveFrac) + " bp=" + F1(scale) + "(" + scaleWhy + ")"; }
 
 }  // namespace Director
 
