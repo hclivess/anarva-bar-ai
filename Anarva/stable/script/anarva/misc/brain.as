@@ -402,13 +402,15 @@ void CheckSquads()
 		const float p = SquadPower(task);
 		if (p > squadPeak[i])
 			squadPeak[i] = p;
-		if (ai.frame - squadStart[i] < 20 * SECOND || squadPeak[i] <= 0.f)
+		if (squadPeak[i] <= 0.f || (!F_DECIDE && ai.frame - squadStart[i] < 20 * SECOND))
 			continue;
 		// Keep a squad that is still bigger than what we'd send out fresh.
 		const bool isRaid = task.GetFightType() == Task::FightType::RAID;
 		const float fresh = isRaid ? aiMilitaryMgr.quota.raid.min : aiMilitaryMgr.quota.attack;
 		// Recall once the squad has bled and is now weaker than what we'd send fresh, scaled by how well we trade.
-		const bool recall = F_NEWRECALL ? (p < squadPeak[i] && p < fresh * AiMin(1.f, Brain::Assess::trade))
+		// decide: it has bled and what is left, at our trade rate, no longer beats what a fresh squad is sized against
+		const bool recall = F_DECIDE ? (p < squadPeak[i] && p * Brain::Assess::trade < fresh)
+			: F_NEWRECALL ? (p < squadPeak[i] && p < fresh * AiMin(1.f, Brain::Assess::trade))
 			: (p < 0.4f * squadPeak[i] && p < fresh);  // first-gen rule
 		if (recall) {
 			++recalls;
