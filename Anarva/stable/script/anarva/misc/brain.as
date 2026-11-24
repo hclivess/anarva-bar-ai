@@ -2127,8 +2127,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		return ex;
 	if (!F_PROD || aiEconomyMgr.isEnergyStalling)
 		return null;  // energy stall: the core's first answer is energy; don't queue power-hungry units
-	if (ai.frame < 6 * MINUTE)
-		return null;  // let the opener run
+	// (no opener window: production decides from the first unit; the fixed opener lists aren't queued with F_PROD)
 	const CCircuitDef@ fdef = fac.circuitDef;
 	if (fdef.IsMobile())
 		return null;
@@ -2137,7 +2136,8 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// economy growing; we choose only the army picks. (Debt: replace with a measured marginal value of a
 	// constructor: income it adds now vs its cost and the horizon.)
 	// constructor share as a quota, not a dice roll: a constructor whenever builders so far are below their share
-	if (NeedBuilder() || 100 * builders < BuilderSharePercent() * (builders + choices + 1)) {
+	// A constructor while income goes unspent (we can't spend what we earn); otherwise the metal is worth more as army.
+	if (aiEconomyMgr.metal.pull < aiEconomyMgr.metal.income) {
 		++builders;
 		return null;
 	}

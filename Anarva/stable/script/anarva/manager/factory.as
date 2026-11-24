@@ -87,6 +87,8 @@ void AiUnitAdded(CCircuitUnit@ unit, Unit::UseAs usage)
 		}
 	}
 
+	if (Brain::F_PROD)
+		return;  // no fixed opener: production decides by value from the first unit
 	const array<Opener::SO>@ opener = Opener::GetOpener(facDef);
 	if (opener is null)
 		return;
