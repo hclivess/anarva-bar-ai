@@ -2166,6 +2166,49 @@ index 172d4c26..0f9b0a6f 100644
  					} break;
  					case SBuildInfo::Condition::ALWAYS:
  					default: break;
+diff --git a/src/circuit/task/builder/EnergyTask.cpp b/src/circuit/task/builder/EnergyTask.cpp
+index 294fb76f..660256bb 100644
+--- a/src/circuit/task/builder/EnergyTask.cpp
++++ b/src/circuit/task/builder/EnergyTask.cpp
+@@ -57,9 +57,15 @@ bool CBEnergyTask::CanAssignTo(CCircuitUnit* unit) const
+ 
+ 	// TODO: This check is to avoid commander marching back to base to build single solar. Re-evaluate it
+ 	const int frame = circuit->GetLastFrame();
+-	return (cost.metal > 200.0f) || !unit->GetCircuitDef()->IsRoleComm()
+-		|| (GetPosition().SqDistance2D(unit->GetPos(frame)) < SQUARE((unit->GetCircuitDef()->GetBuildDistance() + 128.f)))
+-		|| !geom::is_valid(GetBuildPos());
++	// Anarva: the commander takes an energy job only when walking there takes no longer than building it
++	// (no 200-metal / 128-elmo rule)
++	if (!unit->GetCircuitDef()->IsRoleComm() || !geom::is_valid(GetBuildPos())) {
++		return true;
++	}
++	const float walk = std::max(0.f, GetPosition().distance2D(unit->GetPos(frame)) - unit->GetCircuitDef()->GetBuildDistance())
++		/ std::max(1.f, unit->GetCircuitDef()->GetSpeed());
++	const float build = buildDef->GetBuildTime() / std::max(1.f, unit->GetCircuitDef()->GetWorkerTime());
++	return walk <= build;
+ }
+ 
+ void CBEnergyTask::Update()
+@@ -103,12 +109,14 @@ bool CBEnergyTask::Reevaluate(CCircuitUnit* unit)
+ {
+ 	CCircuitAI* circuit = manager->GetCircuit();
+ 	const int frame = circuit->GetLastFrame();
+-	if ((target == nullptr) && (cost.metal < 200.0f) && (units.size() == 1) && unit->GetCircuitDef()->IsRoleComm()) {
++	if ((target == nullptr) && (units.size() == 1) && unit->GetCircuitDef()->IsRoleComm()) {
+ 		const AIFloat3& newPos = unit->GetPos(frame);
+-		if (GetTaskPos().SqDistance2D(newPos) > SQUARE(unit->GetCircuitDef()->GetBuildDistance() + 128.f)) {
+-			const float buildTime = buildDef->GetBuildTime() / unit->GetCircuitDef()->GetWorkerTime();
+-//			const float miRequire = buildDef->GetCostM() / buildTime;
+-			if ((buildTime < 10)/* && (miRequire < circuit->GetEconomyManager()->GetAvgMetalIncome())*/) {
++		// Anarva: build it where the commander stands when the walk to the planned spot takes longer than the build
++		const float walk = std::max(0.f, GetTaskPos().distance2D(newPos) - unit->GetCircuitDef()->GetBuildDistance())
++			/ std::max(1.f, unit->GetCircuitDef()->GetSpeed());
++		const float buildTime = buildDef->GetBuildTime() / std::max(1.f, unit->GetCircuitDef()->GetWorkerTime());
++		{
++			if (walk > buildTime) {
+ 				if (circuit->GetTerrainManager()->CanBeBuiltAt(buildDef, newPos)) {
+ 					SetBuildPos(-RgtVector);
+ 					SetTaskPos(newPos);
 diff --git a/src/circuit/task/builder/MexTask.cpp b/src/circuit/task/builder/MexTask.cpp
 index 602724e9..7c1ba7ea 100644
 --- a/src/circuit/task/builder/MexTask.cpp
@@ -2266,7 +2309,7 @@ index 93297d2c..6f8e8b01 100644
  }
  
 diff --git a/src/circuit/task/fighter/AntiHeavyTask.cpp b/src/circuit/task/fighter/AntiHeavyTask.cpp
-index 698c60aa..d631075f 100644
+index 698c60aa..92cb66c8 100644
 --- a/src/circuit/task/fighter/AntiHeavyTask.cpp
 +++ b/src/circuit/task/fighter/AntiHeavyTask.cpp
 @@ -6,6 +6,8 @@
@@ -2290,6 +2333,17 @@ index 698c60aa..d631075f 100644
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
+@@ -179,8 +182,8 @@ void CAntiHeavyTask::Update()
+ 	 * Update target
+ 	 */
+ 	if (!leader->GetCircuitDef()->IsRoleMine()
+-		&& (leader->GetCircuitDef()->GetReloadTime() >= FRAMES_PER_SEC * 5)
+-		&& !leader->IsWeaponReady(frame))
++		&& !leader->IsWeaponReady(frame)  // Anarva: any unit that can't shoot yet stays out of fire (no 5 s reload line)
++		&& (manager->GetCircuit()->GetThreatMap()->GetThreatAt(leader, leader->GetPos(frame)) > THREAT_MIN))
+ 	{
+ 		if (IsQueryReady(leader)) {
+ 			FallbackAttackSafe();
 diff --git a/src/circuit/task/fighter/ArtilleryTask.cpp b/src/circuit/task/fighter/ArtilleryTask.cpp
 index e45235d9..15304d54 100644
 --- a/src/circuit/task/fighter/ArtilleryTask.cpp
