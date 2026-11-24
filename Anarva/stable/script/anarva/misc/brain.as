@@ -104,6 +104,28 @@ CCircuitUnit@ FactoryReachedSoonestIn(const array<CCircuitUnit@>@ facs, const AI
 	}
 	return best;
 }
+
+// Where an extra builder adds the most: the factory whose current production delivers the most value per second
+// of build time, divided by the build power already working on it (its own plus the assists we sent there).
+CCircuitUnit@ FactoryMostWorthAssisting(const array<IUnitTask@>@ sent)
+{
+	CCircuitUnit@ best = null; float bv = -1.f;
+	for (uint i = 0; i < Brain::Intel::allFactories.length(); ++i) {
+		CCircuitUnit@ f = Brain::Intel::allFactories[i];
+		IBuilderTask@ bt = cast<IBuilderTask>(f.task);
+		if (bt is null || bt.buildDef is null) continue;  // idle factory: nothing to speed up
+		float power = f.circuitDef.buildSpeed;
+		for (uint k = 0; k < sent.length(); ++k) {
+			if (sent[k] is null) continue;
+			const array<CCircuitUnit@>@ us = sent[k].GetUnits();
+			for (uint j = 0; j < us.length(); ++j) power += us[j].circuitDef.buildSpeed * (us[j].GetPos(ai.frame).distance2D(f.GetPos(ai.frame)) < us[j].circuitDef.losRadius ? 1.f : 0.f);
+		}
+		const float v = Brain::Economist::MetalValue(bt.buildDef) / AiMax(1.f, bt.buildDef.buildTime) / AiMax(1.f, power);
+		if (v > bv) { bv = v; @best = f; }
+	}
+	return best;
+}
+
 // The factory with the fewest caretakers, each caretaker counted for the factory nearest to it.
 CCircuitUnit@ FactoryWithFewestNanos(const CCircuitDef@ nanoDef)
 {
@@ -2530,7 +2552,8 @@ void Update()
 	const float deficit = AiMax(0.f, 1.f - Brain::Director::ratio);
 	const int want = int(float(aiBuilderMgr.GetWorkerCount()) * deficit + 0.5f);
 	while (int(guards.length()) < want) {
-		CCircuitUnit@ fac = facs[issued % int(facs.length())];  // spread assist over the factories in turn (deterministic)
+		CCircuitUnit@ fac = FactoryMostWorthAssisting(guards);
+		if (fac is null) break;  // nothing in production worth speeding up
 		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, GUARD_SPAN));
 		if (g is null)
 			break;
