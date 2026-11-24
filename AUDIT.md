@@ -47,14 +47,22 @@ the AI's own decision rhythm) and the script modules on the same tick; work task
 intercept, flight or update time; fake enemies are remembered while they could still be there; the heat grid cell is a
 camera's sight diameter; metal clusters are what one turret holds.
 
-**Still numbers, and why:**
-- Geometry, units and engine facts kept by name: `sqrt(0.5)` ballistics, `~sqrt(2)` diagonals, 30 frames per second,
-  the engine's capture formula (AntiCapAction), `EXPECTED_TURN = 90` (mean of a uniform 0-180 turn), numeric guards.
-- Algorithm internals that make no game decision: pathfinder (MicroPather) and map-analysis (GridAnalyzer) code,
-  the distance-matrix shortcut in metal clustering.
-- Zero-K-only code that never runs in BAR (pylon grid, jump range).
-- Log formatting and the once-a-minute status log line.
-- Config values that are still parsed but no longer reach any decision (left in the JSON for now).
+**Config numbers (third pass):** every number read from the BARb JSON configs that reached a decision was replaced
+by a fact or a decision, or its parse was deleted when it no longer reached one: response matrix, quotas, thr_mod
+ranges, retreat levels, base-defence timeline, superweapon weights and conditions, energy table and factor ramp,
+build delay, ms_pull, mex_max, eps_step, mex_up, excess, em_ratio (now measured from converter defs), goal_exec
+(now game time), escorts, base/commander radii, point_range and cluster_range (now turret reach), infl_rad (weapon
+reach), slack_mod, aa_threat, shields (any charge / full), hide, assist_fac, morph time, anti_cap, factory
+importance/select/no_air/air_map, caretaker count, min_land (majority), and the map-region thresholds (largest
+factory footprint; merge when a passage is a factory wide).
+
+**What still has digits, all inside CLAUDE.md section 2's allowed set or deciding nothing:**
+- Game, physics and math facts and unit conversions: 30 frames per second (`FRAMES_PER_SEC`, `SLOW_UPDATE` is the
+  engine's 30-frame slow update), 65536 angle units, `sqrt(0.5)` ballistics, the exact octile heuristic `2 - sqrt 2`,
+  `~sqrt(2)` diagonals, Euler's number, the engine's capture formula, a uniform turn's mean (`EXPECTED_TURN = 90`),
+  "half the map" for majority, numeric guards (`1e-3`, `INT_MAX` as "never").
+- Zero-K's pylon grid (`EnergyGrid`, `PYLON_RANGE`): BAR has no pylons, so it never acts.
+- Debug drawing colours and log formatting.
 
 ## Highest impact, on by default (fix order)
 
