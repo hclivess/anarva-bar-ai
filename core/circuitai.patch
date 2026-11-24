@@ -389,7 +389,7 @@ index 559a0abf..6a622fe5 100644
  	CCircuitDef* terraDef = nullptr;
  	std::unordered_map<IBuilderTask::BT, std::unordered_map<CCircuitDef*, SBuildChain*>> buildChains;  // owner
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..3c382060 100644
+index 6e5da8b6..2770fdff 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,8 @@
@@ -477,11 +477,13 @@ index 6e5da8b6..3c382060 100644
  		features = std::move(circuit->GetCallback()->GetFeaturesIn(position, distance));
  	} else {
  		features = std::move(circuit->GetCallback()->GetFeatures());
-@@ -1300,12 +1306,10 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1299,13 +1305,11 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+ 	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  	CCircuitDef* bestDef = nullptr;
  	CCircuitDef* hopeDef = nullptr;
- 	metalIncome = std::min(metalIncome, energyIncome) * energyFactor;
+-	metalIncome = std::min(metalIncome, energyIncome) * energyFactor;
 -	const float buildPower = std::min(builderMgr->GetBuildPower(), metalIncome);
++	metalIncome = std::min(metalIncome, energyIncome);  // Anarva: no clock-tied energy factor
  	energyIncome *= isEnergyStalling ? 0.5f : 1.f;
  	isEnergyStalling |= isEnergyRequired;
  	bool isLastHope = isEnergyStalling;
@@ -622,6 +624,15 @@ index 6e5da8b6..3c382060 100644
  	} else {
  		if (terrainMgr->IsZoneAlly(position)
  			|| ((circuit->GetFactoryManager()->GetFactoryCount() > 0) && (position.SqDistance2D(setupMgr->GetSmallEnergyPos()) < SQUARE(600.f))
+@@ -1446,7 +1494,7 @@ IBuilderTask* CEconomyManager::UpdateGeoTasks(const AIFloat3& position, CCircuit
+ 
+ 	float metalIncome = GetAvgMetalIncome();
+ 	const float energyIncome = GetAvgEnergyIncome();
+-	metalIncome = std::min(metalIncome, energyIncome) * energyFactor;
++	metalIncome = std::min(metalIncome, energyIncome);  // Anarva: no clock-tied energy factor
+ 	const float maxCostM = metalIncome * builderMgr->GetGoalExecTime();
+ 	const float maxCostE = energyIncome * builderMgr->GetGoalExecTime();
+ 
 @@ -1516,8 +1564,9 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	float eiRequire;
  	if (isStart && (unit != nullptr)) {
@@ -665,7 +676,7 @@ index 733f7a43..355ad0c1 100644
  	float GetClusterRange() const { return clusterRange; }
  	float GetPylonRange() const { return pylonRange; }
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
-index 54fef916..707fcfb2 100644
+index 54fef916..293717af 100644
 --- a/src/circuit/module/FactoryManager.cpp
 +++ b/src/circuit/module/FactoryManager.cpp
 @@ -6,6 +6,8 @@
@@ -720,6 +731,15 @@ index 54fef916..707fcfb2 100644
  							(metalPull * economyMgr->GetPullMtoS() > circuit->GetBuilderManager()->GetMetalPull());
  	const bool isNotReady = !economyMgr->IsExcessed() || isStalling;
  	if (isNotReady) {
+@@ -1625,7 +1629,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+ 
+ 	const int iS = terrainMgr->GetSectorIndex(pos);
+ 	auto isEnemyInArea = [&](CCircuitDef* bd) {
+-		if (isMetalFull || (frame < FRAMES_PER_SEC * 60 * 10)) {  // TODO: Change to minimum required army power
++		if (isMetalFull || circuit->GetEnemyInfos().empty()) {  // Anarva: until we know where the enemy is, assume it can be anywhere (no 10-minute clock)
+ 			return true;
+ 		}
+ 		SArea* area;
 @@ -1715,18 +1719,16 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  		return {buildDef->GetId(), getPriority(isResponse)};
  	}
@@ -2977,6 +2997,20 @@ index 834905fe..591df5f1 100644
  };
  
  } // namespace circuit
+diff --git a/src/circuit/unit/enemy/EnemyManager.h b/src/circuit/unit/enemy/EnemyManager.h
+index 372f9c9f..8c9bf7ea 100644
+--- a/src/circuit/unit/enemy/EnemyManager.h
++++ b/src/circuit/unit/enemy/EnemyManager.h
+@@ -88,7 +88,8 @@ public:
+ 	float GetMobileThreat() const { return mobileThreat; }
+ 	float GetStaticThreat() const { return staticThreat; }
+ 	float GetEnemyThreat() const { return mobileThreat + staticThreat; }
+-	bool IsAirValid() const { return GetEnemyThreat(ROLE_TYPE(AA)) <= maxAAThreat; }
++	// Anarva: air pays while the enemy's anti-air is no more than the rest of its army (no config aa_threat)
++	bool IsAirValid() const { return 2.f * GetEnemyThreat(ROLE_TYPE(AA)) <= GetMobileThreat(); }
+ 
+ 	const std::vector<SEnemyGroup>& GetEnemyGroups() const { return enemyGroups; }
+ 	const springai::AIFloat3& GetEnemyPos() const { return enemyPos; }
 diff --git a/src/circuit/util/AnarvaDecide.h b/src/circuit/util/AnarvaDecide.h
 new file mode 100644
 index 00000000..f86a776f
