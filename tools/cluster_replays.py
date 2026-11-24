@@ -75,21 +75,23 @@ def player_games(path):
                 f[f"def@{mi}"] = s[3] if s else math.nan
                 f[f"eco@{mi}"] = s[4] if s else math.nan
         b = built[t]
-        mob = [x for x in b if x[9] == 1 and x[7] == 0 and x[8] == 0]  # armed, mobile, not a builder
+        # tuple: (minute, name, metal, tl, air, sea, static, builder, armed, range, fac)
+        TL, AIR, SEA, STATIC, BUILDER, ARMED, RANGE, FAC = 3, 4, 5, 6, 7, 8, 9, 10
+        mob = [x for x in b if x[ARMED] == 1 and x[STATIC] == 0 and x[BUILDER] == 0]
         mm = sum(x[2] for x in mob) or math.nan
-        f["air_share"] = sum(x[2] for x in mob if x[5]) / mm if mob else math.nan
-        f["sea_share"] = sum(x[2] for x in mob if x[6]) / mm if mob else math.nan
-        f["t2_share"] = sum(x[2] for x in mob if x[4] >= 2) / mm if mob else math.nan
-        f["army_range"] = sum(x[2] * x[10] for x in mob) / mm if mob else math.nan
-        t2 = [x[0] for x in b if x[11] == 1 and x[4] >= 2]
-        t3 = [x[0] for x in b if x[11] == 1 and x[4] >= 3]
+        f["air_share"] = sum(x[2] for x in mob if x[AIR]) / mm if mob else math.nan
+        f["sea_share"] = sum(x[2] for x in mob if x[SEA]) / mm if mob else math.nan
+        f["t2_share"] = sum(x[2] for x in mob if x[TL] >= 2) / mm if mob else math.nan
+        f["army_range"] = sum(x[2] * x[RANGE] for x in mob) / mm if mob else math.nan
+        t2 = [x[0] for x in b if x[FAC] == 1 and x[TL] >= 2]
+        t3 = [x[0] for x in b if x[FAC] == 1 and x[TL] >= 3]
         f["t2_lab_min"] = min(t2) if t2 else 26.0  # not within the 25-minute window
         f["t3_lab_min"] = min(t3) if t3 else 26.0
         for mi in (6, 12, 20):
             f[f"mex_by@{mi}"] = sum(1 for x in b if x[0] <= mi and ("mex" in x[1] or "moho" in x[1]))
-        f["cons_by@10"] = sum(1 for x in b if x[0] <= 10 and x[8] == 1 and x[7] == 0)
-        statm = sum(x[2] for x in b if x[7] == 1 and x[9] == 1)
-        f["def_built_share"] = statm / (statm + (sum(x[2] for x in mob) or 0) or math.nan)
+        f["cons_by@10"] = sum(1 for x in b if x[0] <= 10 and x[BUILDER] == 1 and x[STATIC] == 0)
+        statm = sum(x[2] for x in b if x[STATIC] == 1 and x[ARMED] == 1)
+        f["def_built_share"] = statm / ((statm + sum(x[2] for x in mob)) or math.nan)
         c = comm[t]
         early = [d for (m_, d, _) in c if 3 <= m_ < 8]
         mid = [d for (m_, d, _) in c if 8 <= m_ < 14]
