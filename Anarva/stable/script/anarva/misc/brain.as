@@ -793,24 +793,40 @@ int lastSalvageFrame = 0;
 int salvaged = 0;
 array<CCircuitUnit@> salvagePending;
 
-array<CCircuitDef@> t1Units;  // cheap T1 lab/vehicle combat units that stop mattering late
-
+// Obsolete: a combat unit at home, out of fire, that fights worse per metal than the best unit our factories can build
+// now. Reclaiming returns its metal for a better unit (no hand-written T1 list, no 1200-elmo ring).
+float bestBuildablePerMetal = 0.f;
+void MeasureBestBuildable()
+{
+	bestBuildablePerMetal = 0.f;
+	const array<CCircuitUnit@>@ facs = Brain::Intel::allFactories;
+	for (uint i = 0; i < facs.length(); ++i) {
+		const array<string> opts = Facts::BuildOptions(facs[i].circuitDef.GetName());
+		for (uint k = 0; k < opts.length(); ++k) {
+			CCircuitDef@ d = ai.GetCircuitDef(opts[k]);
+			if (d is null || !d.IsMobile() || d.costM <= 0.f || !d.IsAvailable(ai.frame)) continue;
+			bestBuildablePerMetal = AiMax(bestBuildablePerMetal, d.power / d.costM);
+		}
+	}
+}
 bool IsObsoleteT1(CCircuitUnit@ u)
 {
-	if (t1Units.length() == 0)
-		t1Units = Defs({"armpw", "armflash", "armfav", "armflea", "armpincer", "armrock", "armjeth",
-			"corak", "corgator", "corfav", "corstorm", "corgarp", "corcrash",
-			"leggob", "legscout", "leglob", "legmrv", "legkark"});
-	if (!InList(t1Units, u.circuitDef))
+	const CCircuitDef@ d = u.circuitDef;
+	if (!d.IsMobile() || d.power <= 0.f || d.costM <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask) || u is commander)
 		return false;
-	return HasBase() && basePos.distance2D(u.GetPos(ai.frame)) < 1200.f;
+	const AIFloat3 p = u.GetPos(ai.frame);
+	if (!Brain::Assess::OnOurSide(p) || aiThreat.GetThreatAt(u, p) > 0.f)
+		return false;
+	return d.power / d.costM < bestBuildablePerMetal;
 }
 
 void Salvage()
 {
 	// obsolete once we have advanced labs; the metal must fit (Reclaim checks), no clock or income bar
-	if (advFactories <= 0 || salvagePending.length() >= 2 || ai.frame - lastSalvageFrame < 15 * SECOND)
+	// one salvage at a time (its reclaim must finish first); no clock, no tier gate
+	if (salvagePending.length() > 0)
 		return;
+	MeasureBestBuildable();
 	array<CCircuitUnit@>@ pools = Brain::Army::raiders;
 	CCircuitUnit@ cand = null;
 	for (uint i = 0; i < pools.length() && cand is null; ++i) {
@@ -823,7 +839,7 @@ void Salvage()
 	}
 	for (uint i = 0; i < Brain::Army::scouts.length() && cand is null; ++i) {
 		CCircuitUnit@ u = Brain::Army::scouts[i];
-		if (IsObsoleteT1(u) && pending.findByRef(u) < 0 && Brain::Army::scouts.length() > 2)
+		if (IsObsoleteT1(u) && pending.findByRef(u) < 0 && Brain::Army::scouts.length() > aiMilitaryMgr.quota.scout)
 			@cand = u;
 	}
 	if (cand is null)
@@ -989,14 +1005,10 @@ void Update()
 	const float income = e.income;
 	const float fill = (e.storage > 0.f) ? e.current / e.storage : 0.f;
 
-	// Safety valve: if energy collapses after losing fusions, allow cheap energy again.
-	if (aiEconomyMgr.isEnergyStalling && fill < 0.1f)
-		++stallTicks;
-	else
-		stallTicks = 0;
-	if (stallTicks >= 15 && bigMake < 0.5f * AiMax(income, 1.f)) {
+	// Safety valve: energy stalls and the big plants no longer cover what we consume -> allow cheap energy again
+	// (no 10% fill, 15 ticks or half-income lines)
+	if (aiEconomyMgr.isEnergyStalling && bigMake < e.pull) {
 		RestoreAll();
-		stallTicks = 0;
 		return;
 	}
 
@@ -1006,7 +1018,7 @@ void Update()
 	Salvage();
 
 	// --- T1 metal makers once T2 makers carry conversion ---
-	if (highMakers.length() >= 4 && fill > 0.7f) {
+	if (highMakers.length() > 0 && aiEconomyMgr.isEnergyFull) {  // T2 makers exist and energy still overflows: T1 makers add nothing
 		CCircuitUnit@ cand = PickCandidate(lowMakers);
 		if (cand !is null) {
 			Retire(cand.circuitDef);
