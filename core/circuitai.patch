@@ -117,18 +117,19 @@ index e4c1d126..fa61339a 100644
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..50b1ca8e 100644
+index 6e5da8b6..4411695c 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
-@@ -6,6 +6,7 @@
+@@ -6,6 +6,8 @@
   */
  
  #include "module/EconomyManager.h"
 +#include "util/AnarvaSwitches.h"
++#include "map/ThreatMap.h"
  #include "module/BuilderManager.h"
  #include "module/FactoryManager.h"
  #include "module/MilitaryManager.h"
-@@ -456,7 +457,7 @@ void CEconomyManager::ReadConfig(float& outMinEInc)
+@@ -456,7 +458,7 @@ void CEconomyManager::ReadConfig(float& outMinEInc)
  		const int min = surfEngy[0].asInt();
  		const int max = surfEngy.get(1, min).asInt();
  		SEnergyCond cond;
@@ -137,7 +138,7 @@ index 6e5da8b6..50b1ca8e 100644
  		cond.metalIncome = surfEngy.get(2, -1.f).asFloat();
  		cond.energyIncome = surfEngy.get(3, -1.f).asFloat();
  		cond.score = surfEngy.get(4, -1.f).asFloat();
-@@ -1328,6 +1329,52 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1328,6 +1330,52 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  		return (lowerIdx < 0) || (SQUARE(curWind) / SQUARE(infos[i].data.make) * infos[i].score > infos[lowerIdx].score);
  	};
  
@@ -190,6 +191,56 @@ index 6e5da8b6..50b1ca8e 100644
  	for (unsigned i = 0; i < infos.size(); ++i) {  // sorted by high-tech first
  		const auto& engy = infos[i];
  		if (engy.data.isOld || !engy.cdef->IsAvailable(frame)
+@@ -1383,7 +1431,48 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+ 	// 4) at production base
+ 	CSetupManager* setupMgr = circuit->GetSetupManager();
+ 	AIFloat3 buildPos = -RgtVector;
+-	if (bestDef->IsAttrBase()) {
++	if (bestDef->IsAttrBase() && anarva::switches.decide) {
++		// Anarva: place where it finishes soonest. Candidates: the energy bases and a spot beside every caretaker.
++		// Time = build time / build power reaching the spot (caretakers whose build range covers it + the builder),
++		// skipping spots the threat map shows as dangerous for the builder.
++		std::vector<AIFloat3> cands = {setupMgr->GetEnergyBase(), setupMgr->GetEnergyBase2()};
++		std::vector<std::pair<AIFloat3, float>> nanos;  // position, (build range, build speed) packed as range^2 later
++		std::vector<float> nanoRange, nanoSpeed;
++		for (auto& kv : circuit->GetTeamUnits()) {
++			CCircuitUnit* u = kv.second;
++			CCircuitDef* d = u->GetCircuitDef();
++			if (d->IsMobile() || !d->GetDef()->IsBuilder() || (d->GetBuildSpeed() <= 0.f) || !d->GetBuildOptions().empty()) {  // static builder without build options: a caretaker
++				continue;
++			}
++			const AIFloat3& p = u->GetPos(frame);
++			nanos.push_back(std::make_pair(p, 0.f));
++			nanoRange.push_back(d->GetBuildDistance());
++			nanoSpeed.push_back(d->GetBuildSpeed());
++			cands.push_back(p + (setupMgr->GetBasePos() - p).Normalize2D() * (bestDef->GetRadius() + d->GetBuildDistance() * 0.5f));
++		}
++		const float ownSpeed = (unit != nullptr) ? unit->GetCircuitDef()->GetBuildSpeed() : 0.f;
++		CThreatMap* threatMap = circuit->GetThreatMap();
++		float bestTime = std::numeric_limits<float>::max();
++		CCircuitDef* bdef = (unit == nullptr) ? bestDef : unit->GetCircuitDef();
++		for (AIFloat3 c : cands) {
++			CTerrainManager::CorrectPosition(c);
++			const AIFloat3 site = circuit->GetTerrainManager()->GetBuildPosition(bdef, c);
++			if (!geom::is_valid(site) || (threatMap->GetBuilderThreatAt(site) > THREAT_MIN)) {
++				continue;
++			}
++			float power = ownSpeed;
++			for (size_t k = 0; k < nanos.size(); ++k) {
++				if (nanos[k].first.distance2D(site) <= nanoRange[k] + bestDef->GetRadius()) {
++					power += nanoSpeed[k];
++				}
++			}
++			const float t = bestDef->GetBuildTime() / std::max(1.f, power);
++			if (t < bestTime) {
++				bestTime = t;
++				buildPos = site;
++			}
++		}
++	} else if (bestDef->IsAttrBase()) {
+ 		buildPos = (bestDef->GetCostM() < 1000.0f) ? setupMgr->GetEnergyBase() : setupMgr->GetEnergyBase2();
+ 		CCircuitDef* bdef = (unit == nullptr) ? bestDef : unit->GetCircuitDef();
+ 		buildPos = circuit->GetTerrainManager()->GetBuildPosition(bdef, buildPos);
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
 index 54fef916..3ddb44de 100644
 --- a/src/circuit/module/FactoryManager.cpp
