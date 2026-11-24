@@ -98,6 +98,41 @@
    "columns": "share, survival min, outright losses",
    "finding": "8-game batches cannot resolve effects under ~0.15 share: near byte-identical code scored 0.26-0.42. Arms were not run concurrently (official ran beside another batch; controls alone) and CircuitAI pathing is asynchronous, so load is a confound. From now on: paired arms run concurrently, two rounds each, judged on outright losses and share together. Core behaviour changes are script switches, off by default; by review the switched-off core is passive.",
    "next": "F_HOLD+F_COMMGUARD on vs off, same CI DLL, 2 concurrent rounds"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "F_HOLD+F_COMMGUARD on vs off, CI core, 2 concurrent rounds x 8 games, 1v2",
+   "results": {
+    "on": {
+     "share": [
+      0.33,
+      0.27
+     ],
+     "outright_losses": 1,
+     "survival": [
+      28.9,
+      30.0
+     ]
+    },
+    "off": {
+     "share": [
+      0.19,
+      0.47
+     ],
+     "outright_losses": 4,
+     "survival": [
+      28.0,
+      30.0
+     ]
+    }
+   },
+   "decision": "both on by default: fewer outright losses, share unchanged"
+  },
+  {
+   "date": "2026-11-24",
+   "experiment": "tech progression per team (new harness tech line), 4 games 1v2",
+   "finding": "Not tech timing: Anarva gets T2 labs/moho as early as each bot. It is territory: Anarva's T1 extractors peak ~14 at 12-15 min then fall to ~8 by 30, each bot climbs to ~25 (49 vs 14 at 21 min for the two bots). Bots also keep more constructors (16-24 vs 10-16). Energy is not wasted (pull ~ income, 8 T1 converters running).",
+   "next": "expansion from live free spots weighted by holdability (F_EXPAND rewrite), metric: extractor count at 15/21/27"
   }
  ],
  "install": {

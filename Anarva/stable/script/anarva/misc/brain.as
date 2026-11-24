@@ -46,9 +46,9 @@ const bool F_STAKE = false;     // trade estimate weighted by the army at stake 
 const bool F_COMMZONE = false;  // commander works only inside the zone where nothing of ours has died (with F_COMMSAFE)
 const bool F_REZ = false;       // rez-bot fleet sized to the wreck metal on the map
 const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
-const bool F_HOLD = false;      // just-in-time extractor defence: meet each incoming enemy group at the extractor it is heading for (C++ bridge)
+const bool F_HOLD = true;       // just-in-time extractor defence: meet each incoming enemy group at the extractor it is heading for (C++ bridge)
 const bool F_ARTYHIGH = false;  // core switch: artillery fires from the spot it reaches soonest, height-aware range (C++)
-const bool F_COMMGUARD = false; // commander goes home when a known force it can't survive could reach it first (C++ bridge)
+const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -2359,9 +2359,11 @@ void Expand()
 	const float income = aiEconomyMgr.metal.income;
 	if (m is null || m.mex <= 0 || con is null || income <= 0.f)
 		return;
-	const float players = float(AiMax(2, ai.GetEnemyTeamSize() + 1));
 	const float ours = float(Brain::Economist::mexes.length());
-	const float F = float(m.mex) / players - ours;
+	// Free spots, counted live (C++ bridge): open (not ours, not queued), not under a known enemy
+	// extractor, and safe for a constructor right now. No "fair share": a free spot is worth the same
+	// whether we hold a third of the map or half of it.
+	const float F = FreeSpots(con);
 	if (F <= 0.f) {
 		expandWant = 0.f;
 		return;
@@ -2373,17 +2375,48 @@ void Expand()
 	const float s = ours > 0.f ? AiMax(0.5f, income / ours) : 1.f;  // upper bound: includes reclaim/makers
 	const float c = Brain::Economist::MetalValue(con);
 	expandWant = F * sqrt(s * t / (2.f * c));
-	// A spot is only worth what survives: discount by the pressure on us (home losses against a minute
-	// of income). Not by the army ratio: humans boom on 0.4x the bots' army; what counts is force sent at us.
-	const float income60 = income * 60.f;
-	const float p = Brain::Assess::lostNear / AiMax(1.f, Brain::Assess::lostNear + income60);
-	expandWant *= (1.f - p);
+	// (danger is already per spot: threatened spots are not counted as free)
 	// the core adds a constructor while workers' build power < income * ratio
 	const float coreWorkers = income * aiFactoryMgr.buildpowerRatio / Brain::Production::BUILD_SPEED_PER_WORKER;
 	const float want = AiMax(coreWorkers, expandWant + income * baseBP / Brain::Production::BUILD_SPEED_PER_WORKER);
 	aiFactoryMgr.buildpowerRatio = want * Brain::Production::BUILD_SPEED_PER_WORKER / income;
 }
 const float MEX_BUILDTIME = 1800.f;  // T1 extractor buildtime (unit facts)
+
+uint freeSpots = 0, enemySpots = 0, unsafeSpots = 0;
+float FreeSpots(CCircuitDef@ con)
+{
+	array<AIFloat3> sp; array<float> si; array<bool> so;
+	const uint n = AiGetMetalSpots(sp, si, so);
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	array<AIFloat3> emex, estatic;
+	for (uint i = 0; i < ne; ++i) {
+		if (ed[i] is null || ed[i].IsMobile()) continue;
+		estatic.insertLast(ep[i]);
+		const string nm = ed[i].GetName();
+		if (nm.findFirst("mex") >= 0 || nm.findFirst("moho") >= 0) emex.insertLast(ep[i]);
+	}
+	if (estatic.length() == 0) estatic.insertLast(aiEnemyMgr.GetEnemyPos());  // the core's estimate of where they are
+	// How holdable a spot is: the share of the way from the nearest enemy building to us that lies on
+	// their side, dE/(dU+dE). Our half of the map counts most, their doorstep almost nothing; more enemy
+	// bases shrink our side by themselves. No cutoff.
+	freeSpots = 0; enemySpots = 0; unsafeSpots = 0;
+	float holdable = 0.f;
+	for (uint k = 0; k < n; ++k) {
+		if (!so[k]) continue;
+		bool held = false;
+		for (uint j = 0; j < emex.length() && !held; ++j) held = emex[j].distance2D(sp[k]) < 64.f;  // an extractor sits on its spot
+		if (held) { ++enemySpots; continue; }
+		if (aiThreat.GetThreatAt(con, sp[k]) > 0.f) { ++unsafeSpots; continue; }
+		++freeSpots;
+		const float dU = basePos.distance2D(sp[k]);
+		float dE = 1e9f;
+		for (uint j = 0; j < estatic.length(); ++j) dE = AiMin(dE, estatic[j].distance2D(sp[k]));
+		holdable += dE / AiMax(1.f, dU + dE);
+	}
+	return holdable;
+}
 
 string scaleWhy = "";
 bool blind = false;
@@ -2721,7 +2754,7 @@ void Update()  // every 30 frames
 		AiLog("[ANV] eco t=" + Minute() + "m workers=" + aiBuilderMgr.GetWorkerCount() + " mex=" + Economist::mexes.length()
 			+ " M inc=" + F1(aiEconomyMgr.metal.income) + " M " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
 			+ " E inc=" + F1(aiEconomyMgr.energy.income) + " E " + int(aiEconomyMgr.energy.current) + "/" + int(aiEconomyMgr.energy.storage)
-			+ " stall=" + aiEconomyMgr.isEnergyStalling + " expandWant=" + F1(Director::expandWant) + " bpTarget=" + F1(aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio));
+			+ " stall=" + aiEconomyMgr.isEnergyStalling + " expandWant=" + F1(Director::expandWant) + " spots(free/enemy/unsafe)=" + Director::freeSpots + "/" + Director::enemySpots + "/" + Director::unsafeSpots + " bpTarget=" + F1(aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio));
 		Intel::BridgeLog();
 		if (F_HOLD) AiLog("[ANV] hold " + Hold::Status());
 
