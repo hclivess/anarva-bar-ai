@@ -1,0 +1,84 @@
+name: Build core library
+
+# Anarva's native library: BARb's CircuitAI core (barbarian @ e3bebd3) + core/circuitai.patch,
+# compiled inside the Recoil engine's own build containers (the same toolchain BAR's official
+# builds use), for the engine version Anarva targets. Output: SkirmishAI.dll and libSkirmishAI.so.
+
+on:
+  push:
+    paths: ["core/**", ".github/workflows/core.yml"]
+  workflow_dispatch:
+  workflow_call:
+
+env:
+  RECOIL_TAG: "2026.09.03"
+  CIRCUITAI_COMMIT: e3bebd3
+
+jobs:
+  build:
+    name: core (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: amd64-windows
+            image: ghcr.io/beyond-all-reason/recoil-build-amd64-windows@sha256:3ba630ac0c181a95dde522c3a4a81df2302914c7c4e6674e6bde0d4f6bf058ef
+            lib: SkirmishAI.dll
+            strip: x86_64-w64-mingw32-strip
+          - platform: amd64-linux
+            image: ghcr.io/beyond-all-reason/recoil-build-amd64-linux@sha256:31b3667ba0d37620b4ad9b45d1840c8d3e95317f2b233044d2e17697ce8fe61d
+            lib: libSkirmishAI.so
+            strip: strip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch engine source
+        run: |
+          git clone --depth 1 --branch "$RECOIL_TAG" https://github.com/beyond-all-reason/RecoilEngine.git recoil
+          cd recoil
+          git submodule update --init --recursive --depth 1 rts/lib tools/pr-downloader
+
+      - name: Fetch CircuitAI and apply Anarva's patch
+        run: |
+          rm -rf recoil/AI/Skirmish/BARb
+          git clone https://github.com/rlcevg/CircuitAI.git recoil/AI/Skirmish/BARb
+          cd recoil/AI/Skirmish/BARb
+          git checkout -q "$CIRCUITAI_COMMIT"
+          git apply --whitespace=nowarn "$GITHUB_WORKSPACE/core/circuitai.patch"
+          git -c user.name=ci -c user.email=ci@localhost commit -qam "Anarva patch"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.platform }}-${{ hashFiles('core/circuitai.patch') }}
+          restore-keys: ccache-${{ matrix.platform }}-
+
+      - name: Configure and compile (engine build container)
+        run: |
+          mkdir -p out .ccache
+          docker run --rm \
+            -v "$PWD/recoil:/build/src:ro" \
+            -v "$PWD/out:/build/out" \
+            -v "$PWD/.ccache:/build/cache" \
+            ${{ matrix.image }} \
+            bash -c '
+              set -e
+              git config --global --add safe.directory "*"
+              # the engine'"'"'s own configure script (same flags as official builds), AI-only target
+              /build/src/docker-build-v2/scripts/configure.sh -DAI_TYPES=NATIVE \
+                -DAI_EXCLUDE_REGEX="^(CppTestAI|CircuitAI|NullAI)$" -DBUILD_TESTING=OFF
+              cmake --build /build/out --target BARb
+              ${{ matrix.strip }} -o /build/out/${{ matrix.lib }} /build/out/AI/Skirmish/BARb/data/${{ matrix.lib }}
+            '
+          ls -la out/${{ matrix.lib }}
+          sha256sum out/${{ matrix.lib }} | tee out/${{ matrix.lib }}.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-${{ matrix.platform }}
+          path: |
+            out/${{ matrix.lib }}
+            out/${{ matrix.lib }}.sha256
+          if-no-files-found: error
