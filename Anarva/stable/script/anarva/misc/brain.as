@@ -51,6 +51,7 @@ const bool F_ARTYHIGH = true;   // core switch: artillery fires from the spot it
 const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their range from the height of their spot (C++)
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
+const bool F_POWERALL = false;  // our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -2472,7 +2473,26 @@ string scaleWhy = "";
 bool blind = false;
 string reason = "start";
 
-float OurPower() { return Brain::Army::groundPower + Brain::Army::raiderPoolPower; }
+float PoolPower() { return Brain::Army::groundPower + Brain::Army::raiderPoolPower; }
+// Everything of ours that fights on the surface. The gather pool alone drops every unit with a support,
+// artillery or AA secondary role, which is most of a mixed army: measured 48 vs ~11k metal fielded.
+float allPower = 0.f;
+int allPowerFrame = -1;
+float MeasuredPower()
+{
+	if (allPowerFrame == ai.frame) return allPower;
+	allPowerFrame = ai.frame;
+	allPower = 0.f;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) {
+		const CCircuitDef@ d = all[i].circuitDef;
+		if (!d.IsMobile() || d.power <= 0.f || d.surfThrDmg <= 0.f || all[i] is commander) continue;
+		if (d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
+		allPower += d.power;
+	}
+	return allPower;
+}
+float OurPower() { return F_POWERALL ? MeasuredPower() : PoolPower(); }
 
 float needPowerAway = 0.f;
 float needPower = 0.f;   // army power needed to win against what we know (and guess) is out there
@@ -2811,7 +2831,7 @@ void Update()  // every 30 frames
 		Intel::BridgeLog();
 		if (F_HOLD) AiLog("[ANV] hold " + Hold::Status());
 
-		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | groundPow=" + F1(Army::groundPower) + " units=" + Army::ground.length()
+		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | groundPow=" + F1(Army::groundPower) + " allPow=" + F1(Director::MeasuredPower()) + " units=" + Army::ground.length()
 			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " waves=" + Army::waves + " recalls=" + Army::recalls + " ft=" + Army::Hist()
 			+ " quota.attack=" + F1(aiMilitaryMgr.quota.attack) + " raidMin=" + F1(aiMilitaryMgr.quota.raid.min)
 			+ " enemyMob=" + F1(aiEnemyMgr.mobileThreat) + " jamCost=" + F1(Intel::jammerCost)
