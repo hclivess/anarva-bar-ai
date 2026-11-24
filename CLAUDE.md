@@ -16,6 +16,15 @@ IMPROVEMENT ONLY THEN YOU CAN TEST."
 - **Trust no inherited code.** BARb's scripts, configs and C++ hold hand-picked gates and dice that quietly block
   the reasoning layered on top (example: the Recycler never reclaimed a solar because three fixed conditions had to
   hold at once). Read what actually decides before adding anything on top of it.
+- **Know every unit from evidence, never from BARb's tables.** For every unit in the game: what it is good
+  against, what kills it, its weakness - measured from top players' replays (damage and kills by attacker unit vs
+  victim unit, per metal spent) and from its unit facts (range, speed, turn rate, damage type, armour, targets).
+  Production, targeting and counters use that knowledge. Owner, 2026-11-24: "What is a good unit against Behemoth
+  in competitive play? Why haven't you analyzed the replays and taken notes? Why haven't you done it for every unit
+  in the game and instead you just copied BARb on everything [and] ran 15000 tests. Pointless."
+- **Tests are not progress.** Thousands of A/B games on marginal flags produced nothing a single watched game
+  didn't show. Study (replays, unit facts) and reasoned implementation come first.
+
 - **No substitutes for decisions.** A rotation, a fixed range middle or a "more likely than not" cutoff is not a
   decision; derive the choice from value.
 
