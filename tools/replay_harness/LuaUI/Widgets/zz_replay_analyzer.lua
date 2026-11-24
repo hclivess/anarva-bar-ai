@@ -94,6 +94,9 @@ function widget:GameFrame(n)
 	if n % 300 == 5 then
 		Spring.SendCommands("setmaxspeed " .. SPEED, "setminspeed " .. SPEED, "setspeed " .. SPEED)
 	end
+	if n == 31 then  -- demos ignore speed commands: skip simulates ahead at full speed, callins still run
+		Spring.SendCommands("skip " .. math.floor(MAXF / 30 + 5))
+	end
 	if n % 1800 == 0 and n > 0 then
 		local teams = Spring.GetTeamList()
 		for i = 1, #teams do
