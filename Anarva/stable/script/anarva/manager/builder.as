@@ -22,6 +22,7 @@ void AiTaskAdded(IUnitTask@ task)
 
 void AiTaskRemoved(IUnitTask@ task, bool done)
 {
+	Brain::OnBuilderTaskRemoved(task);
 }
 
 void AiUnitAdded(CCircuitUnit@ unit, Unit::UseAs usage)

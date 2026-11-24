@@ -52,6 +52,7 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_COMMFWD = false;   // (with F_COMMRISK) commander claims the free extractor spot with the best gain - risk, anywhere: the human front-builder pattern
 const bool F_COMMRISK = false;  // commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle
 const bool F_COMMSPOT = false;  // commander retreats to the safe spot where its death explosion would destroy least (not into the eco)
 const bool F_JIT = false;       // build-power scale from the ratio at each enemy arrival time (just in time), not from everything at once
@@ -2981,6 +2982,63 @@ IUnitTask@ CommBestJob(const AIFloat3& in from, float floorScore)
 	return aiBuilderMgr.Enqueue(TaskB::Reclaim(Task::Priority::HIGH, bestP, R, 20 * SECOND));
 }
 IUnitTask@ CommSafeJob(const AIFloat3& in from) { ++commRetreats; return CommBestJob(from, -1e30f); }
+
+/*
+ * Forward commander (replay study, 124 human commanders): after building eco at the start for ~3 min,
+ * humans walk the commander 2000-3000 out and use it as the front builder: extractors, turrets, radar,
+ * repairs, in even fights. The reasoning: early on it is the strongest builder on the map and what the
+ * enemy has out there is weak against it, so the territory it claims is cheap. Here: each free extractor
+ * spot is worth its income over the planning horizon times how holdable it is (dE/(dU+dE)), minus the
+ * extractor, the walk (its build rate x the time) and P(death) there x everything we own. The commander
+ * takes the best spot when that beats the job it has.
+ */
+int commFwd = 0, fwdCalls = 0, fwdBusy = 0, fwdNone = 0; float fwdBestSeen = 0.f, fwdCurSeen = 0.f; IUnitTask@ commFwdTask = null; float lastFwdGain = 0.f; int fwdDue = 0, fwdFailed = 0;
+void OnBuilderTaskRemoved(IUnitTask@ task) { if (task is commFwdTask) @commFwdTask = null; if (task is commGuardTask) @commGuardTask = null; }
+IUnitTask@ CommForward(const AIFloat3& in from, float curScore)
+{
+	if (!F_COMMFWD || Brain::Economist::mexT1 is null) return null;
+	++fwdCalls;
+	if (commFwdTask !is null) {
+		// one claim at a time; whoever builds it (the commander or a constructor nearby), the spot is ours
+		if (ai.frame <= fwdDue) { ++fwdBusy; return null; }
+		++fwdFailed;  // later than its own estimate: blocked or nobody could take it
+		IUnitTask@ stale = commFwdTask;
+		@commFwdTask = null;
+		stale.Abort();
+	}
+	array<AIFloat3> sp; array<float> si; array<bool> so;
+	const uint n = AiGetMetalSpots(sp, si, so);
+	if (n == 0) return null;
+	float avg = 0.f; for (uint k = 0; k < n; ++k) avg += si[k]; avg = AiMax(1e-3f, avg / float(n));
+	const float perMex = aiEconomyMgr.metal.income / float(AiMax(1, int(Brain::Economist::mexes.length())));
+	const float H = Brain::Economist::Horizon();
+	const AIFloat3 ec0 = aiEnemyMgr.GetEnemyPos();
+	const float V = GameValue();
+	const float rate = JobValue(null) / 20.f;  // metal/s the commander's build power carries
+	const float cost = Brain::Economist::MetalValue(Brain::Economist::mexT1);
+	int best = -1; float bestScore = curScore; float topSeen = -1e30f;
+	for (uint k = 0; k < n; ++k) {
+		if (!so[k]) continue;
+		const float dU = HasBase() ? basePos.distance2D(sp[k]) : 0.f;
+		const float dE = ec0.distance2D(sp[k]);
+		const float hold = dE / AiMax(1.f, dU + dE);
+		const float t = from.distance2D(sp[k]) / AiMax(1.f, commander.circuitDef.speed);
+		const float gain = perMex * si[k] / avg * AiMax(0.f, H - t) * hold - cost - rate * t;
+		if (gain <= bestScore) continue;
+		const float sc = gain - CommPDeath(sp[k], EscapeTime(sp[k])) * V;
+		topSeen = AiMax(topSeen, sc);
+		if (sc > bestScore) { bestScore = sc; best = int(k); }
+	}
+	fwdBestSeen = topSeen; fwdCurSeen = curScore;
+	if (best < 0) { ++fwdNone; return null; }
+	++commFwd; lastFwdGain = bestScore;
+	// the claim's own estimate: walk there, then build the extractor at the commander's rate
+	const float tWalk = from.distance2D(sp[best]) / AiMax(1.f, commander.circuitDef.speed);
+	fwdDue = ai.frame + int((tWalk + cost / AiMax(1e-3f, rate)) * SECOND);
+	@commFwdTask = aiBuilderMgr.Enqueue(TaskB::Spot(Task::BuildType::MEX, Task::Priority::HIGH, Brain::Economist::mexT1, sp[best], best, true, 2 * MINUTE));
+	return commFwdTask;
+}
+
 bool CommWorth(const AIFloat3& in p, float gain)
 {
 	lastV = GameValue();
@@ -3028,6 +3086,8 @@ void CommGuardUpdate()
 	if (F_COMMRISK) {
 		IBuilderTask@ cur = cast<IBuilderTask>(commander.task);
 		if (CommWorth(c, JobValue(cur))) {
+			IUnitTask@ fwd = CommForward(c, lastGain - lastRisk);
+			if (fwd !is null) { aiBuilderMgr.AssignTask(commander, fwd); return; }
 			// worth staying; but an assist or nothing is the commander's weakest use: is a wreck field better?
 			if (cur is null || cur.buildDef is null) {
 				IUnitTask@ better = CommBestJob(c, lastGain - lastRisk);
@@ -3113,7 +3173,7 @@ void Update()  // every 30 frames
 		if (commander !is null) {
 			const AIFloat3 cp = commander.GetPos(ai.frame);
 			AiLog("[ANV] commander at (" + int(cp.x) + "," + int(cp.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(cp) : -1.f)
-				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects + " guards=" + commGuards + " retreats=" + commRetreats + " frontReclaims=" + commReclaims);
+				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects + " guards=" + commGuards + " retreats=" + commRetreats + " frontReclaims=" + commReclaims + " fwdClaims=" + commFwd + " fwdFailed=" + fwdFailed + " fwd(calls/busy/none)=" + fwdCalls + "/" + fwdBusy + "/" + fwdNone + " fwdBest=" + int(fwdBestSeen) + " vs cur " + int(fwdCurSeen));
 		}
 		AiLog("[ANV] eco t=" + Minute() + "m workers=" + aiBuilderMgr.GetWorkerCount() + " mex=" + Economist::mexes.length()
 			+ " M inc=" + F1(aiEconomyMgr.metal.income) + " M " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
