@@ -374,41 +374,68 @@ void Update()
 	Director::MeasuredPower();
 	const float speed = ns > 0 ? sp / ns : AiMax(1.f, Director::allSpeed);
 	const float meanCost = ns > 0 ? cost / ns : 0.f;
-	// per cell: how far (in cells) something unseen there could have come since we last looked
-	array<float> reach(n, 0.f);
-	for (int c = 0; c < n; ++c) reach[c] = float(ai.frame - lastSeen[c]) / SECOND * speed / Intel::CELL;
-	// Greedy, marginal: each pick covers the assets of ours it watches over; later picks count only what is
-	// still uncovered. A scout is worth keeping while its pick's uncovered value beats what a scout costs.
-	array<bool> covered(n, false);
+	/*
+	 * Value of seeing cell c, per asset a of ours (cells holding our metal):
+	 *   warning   = min(d(c,a)/speed, Tr(a)) / Tr(a): seeing c warns a by the enemy's travel time from c, but only up
+	 *               to a's response time Tr(a) (our army's travel time to a) is useful
+	 *   staleness = min(1, age(c)*speed / d(c,a)): something can only be at c, on its way to a, if c has been dark long enough
+	 *   direction = for later picks, the angle between c and the picks already watching a (0 same way .. 1 opposite)
+	 * A pick is kept while its value beats what a scout costs.
+	 */
+	array<int> assets;
+	for (int c = 0; c < n; ++c) if (ours[c] > 0.f) assets.insertLast(c);
+	// our army's centre: where the response comes from
+	float axs = 0.f, azs = 0.f, aw = 0.f;
+	for (uint i = 0; i < all.length(); ++i) {
+		const CCircuitDef@ d = all[i].circuitDef;
+		if (!d.IsMobile() || d.power <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
+		const AIFloat3 q = all[i].GetPos(ai.frame); axs += q.x * d.power; azs += q.z * d.power; aw += d.power;
+	}
+	const AIFloat3 armyAt = aw > 0.f ? AIFloat3(axs / aw, 0.f, azs / aw) : (HasBase() ? basePos : Intel::CellCenter(0));
+	const float ourSpeed = AiMax(1.f, Director::allSpeed);
+	array<float> tr(assets.length());
+	for (uint k = 0; k < assets.length(); ++k)
+		tr[k] = AiMax(1.f, armyAt.distance2D(Intel::CellCenter(assets[k])) / ourSpeed);
+	array<array<float>> watched(assets.length());  // per asset: angles of the picks watching it
 	array<AIFloat3> tp; array<float> tv;
 	topValue = 0.f; worthy = 0;
 	const float scoutCost = cheapest is null ? 1e9f : Economist::MetalValue(cheapest);
+	array<bool> picked(n, false);
 	for (uint pick = 0; pick < uint(n); ++pick) {
 		int best = -1; float bestV = 0.f;
 		for (int c = 0; c < n; ++c) {
-			if (reach[c] <= 0.f && dots[c] <= 0.f) continue;
+			if (picked[c]) continue;
+			const AIFloat3 cc = Intel::CellCenter(c);
+			const float age = float(ai.frame - lastSeen[c]) / SECOND;
+			if (age <= 0.f && dots[c] <= 0.f) continue;
 			float v = dots[c] * meanCost;
-			const int cx = c % Intel::gw, cz = c / Intel::gw;
-			const int r = int(reach[c]) + 1;
-			for (int z = AiMax(0, cz - r); z <= AiMin(Intel::gh - 1, cz + r); ++z)
-				for (int x = AiMax(0, cx - r); x <= AiMin(Intel::gw - 1, cx + r); ++x) {
-					const int k = z * Intel::gw + x;
-					if (covered[k]) continue;
-					if (sqrt(float((x - cx) * (x - cx) + (z - cz) * (z - cz))) <= reach[c]) v += ours[k];
+			for (uint k = 0; k < assets.length(); ++k) {
+				const AIFloat3 ac = Intel::CellCenter(assets[k]);
+				const float d = AiMax(1.f, cc.distance2D(ac));
+				const float warn = AiMin(d / speed, tr[k]) / tr[k];
+				const float stale = AiMin(1.f, age * speed / d);
+				float dir = 1.f;
+				const float ang = atan2(cc.z - ac.z, cc.x - ac.x);
+				for (uint w = 0; w < watched[k].length(); ++w) {
+					float da = AiMax(ang - watched[k][w], watched[k][w] - ang);
+					if (da > 3.14159265f) da = 2.f * 3.14159265f - da;
+					dir = AiMin(dir, da / 3.14159265f);
 				}
+				v += ours[assets[k]] * warn * stale * dir;
+			}
 			if (v > bestV) { bestV = v; best = c; }
 		}
 		if (best < 0 || bestV <= scoutCost) break;
+		picked[best] = true;
 		value[best] = bestV;
 		if (bestV > topValue) topValue = bestV;
 		++worthy;
-		tp.insertLast(Intel::CellCenter(best)); tv.insertLast(bestV);
-		const int bx = best % Intel::gw, bz = best / Intel::gw, br = int(reach[best]) + 1;
-		for (int z = AiMax(0, bz - br); z <= AiMin(Intel::gh - 1, bz + br); ++z)
-			for (int x = AiMax(0, bx - br); x <= AiMin(Intel::gw - 1, bx + br); ++x)
-				if (sqrt(float((x - bx) * (x - bx) + (z - bz) * (z - bz))) <= reach[best]) covered[z * Intel::gw + x] = true;
-		dots[best] = 0.f;
-		reach[best] = 0.f;
+		const AIFloat3 bc = Intel::CellCenter(best);
+		tp.insertLast(bc); tv.insertLast(bestV);
+		for (uint k = 0; k < assets.length(); ++k) {
+			const AIFloat3 ac = Intel::CellCenter(assets[k]);
+			watched[k].insertLast(atan2(bc.z - ac.z, bc.x - ac.x));
+		}
 	}
 	aiMilitaryMgr.SetScoutTargets(tp, tv);
 	aiMilitaryMgr.quota.scout = AiMax(1, int(worthy));
