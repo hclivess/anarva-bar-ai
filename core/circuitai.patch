@@ -3175,7 +3175,7 @@ index 5f061310..46525b2d 100644
  }
  
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a922..16a636e2 100644
+index a0f5a922..0579f246 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -3208,7 +3208,60 @@ index a0f5a922..16a636e2 100644
  	isAbleToCloak     = def->IsAbleToCloak();
  	isAbleToRepair    = def->IsAbleToRepair();
  	isAbleToReclaim   = def->IsAbleToReclaim();
-@@ -479,6 +486,25 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -361,15 +368,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 
+ 		// FIXME: Paralyzer with extra_damage should have more scale than without.
+ 		// Though extra_damage is Zero-K's feature.
+-		float scale = wd->IsParalyzer() ? 0.1f : 1.0f;
++		// Anarva: by what the weapon does (no 0.1/0.5/0.02 weights): stun and disarm stop a unit fighting as a kill does
++		// (1), slow-only and impulse-only don't damage (0), capture moves the unit to our side (enemy -1, us +1 = 2)
++		float scale = 1.0f;
+ 		auto it = customParams.find("disarmdamageonly");
+ 		if ((it != customParams.end()) && (utils::string_to_int(it->second) == 1)) {
+-			scale = 0.5f;
++			scale = 1.0f;
+ 		}
+ 
+ 		it = customParams.find("timeslow_onlyslow");
+ 		if ((it != customParams.end()) && (utils::string_to_int(it->second) == 1)) {
+-			scale = 0.5f;
++			scale = 0.0f;
+ 		} else {
+ 			it = customParams.find("timeslow_damagefactor");
+ 			if (it != customParams.end()) {
+@@ -393,7 +402,7 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 			extraDmg += utils::string_to_float(it->second);
+ 			it = customParams.find("area_damage_is_impulse");
+ 			if ((it != customParams.end()) && (utils::string_to_int(it->second) == 1)) {
+-				scale = 0.02f;
++				scale = 0.0f;
+ 			}
+ 		}
+ 
+@@ -405,7 +414,7 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 		if (minReloadTime > reloadTime) {
+ 			minReloadTime = reloadTime;
+ 		}
+-		if (extraDmg > 0.1f) {
++		if (extraDmg > 0.f) {
+ 			dmg += extraDmg;
+ 			dps += extraDmg * wd->GetSalvoSize() / reloadTime * scale;
+ 		}
+@@ -421,11 +430,10 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ //		it = customParams.find("truerange");
+ 		const float range = /*(it != customParams.end()) ? utils::string_to_float(it->second) : */wd->GetRange();
+ 
+-		isAlwaysHit |= ((wt == "Cannon") || (wt == "DGun") || (wt == "EmgCannon") || (wt == "Flame") ||
+-				(wt == "LaserCannon") || (wt == "AircraftBomb")) && (projectileSpeed * FRAMES_PER_SEC >= .8f * range);  // Cannons with fast projectiles
++		// Anarva: shells in flight can be dodged; only instant weapons and tracking missiles always hit (no 0.8 x range rule)
+ 		isAlwaysHit |= (wt == "BeamLaser") || (wt == "LightningCannon") || (wt == "Rifle") ||  // Instant-hit
+ 				(((wt == "MissileLauncher") || (wt == "StarburstLauncher") || ((wt == "TorpedoLauncher") && wd->IsSubMissile())) && wd->IsTracks());  // Missiles
+-		const bool isAirWeapon = isAlwaysHit && (range > 150.f);
++		const bool isAirWeapon = isAlwaysHit;
+ 		canSurfTargetAir |= isAirWeapon;
+ 
+ 		const bool isLandWeapon = ((wt != "TorpedoLauncher") || wd->IsSubMissile());
+@@ -479,6 +487,25 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  		waterDps += dps;
  
  		minRange = std::min(minRange, range);
@@ -3234,7 +3287,7 @@ index a0f5a922..16a636e2 100644
  		if ((weaponCat & circuit->GetAirCategory()) && isAirWeapon) {
  			float& mr = maxRange[static_cast<RangeT>(RangeType::AIR)];
  			mr = std::max(mr, range);
-@@ -568,6 +594,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -568,6 +595,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  	}
  
  	isAttacker = (airDps > .1f) || (surfDps > .1f) || (waterDps > .1f);
@@ -3252,7 +3305,7 @@ index a0f5a922..16a636e2 100644
  	if (IsMobile() && !IsAttacker()) {  // mobile bomb?
  		WeaponDef* wd = def->GetDeathExplosion();
  		aoe = wd->GetAreaOfEffect();
-@@ -619,11 +656,15 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -619,11 +657,15 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  	//       health /= def->GetArmoredMultiple();
  	const float dmg = std::max(std::max(waterDmg, surfDmg), airDmg);
  	const float dps = std::max(std::max(waterDps, surfDps), airDps);
@@ -3273,7 +3326,7 @@ index a0f5a922..16a636e2 100644
  #if 0
  	circuit->LOG("THREAT %s | def=%f air=%f surf=%f water=%f", def->GetName(), defThreat,
  			airThrDmg * sqrtf(health + maxShield * SHIELD_MOD),
-@@ -843,3 +884,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
+@@ -843,3 +885,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
  }
  
  } // namespace circuit
