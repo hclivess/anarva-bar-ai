@@ -255,7 +255,7 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
-index e4c1d126..e184fcd8 100644
+index e4c1d126..07e8cc29 100644
 --- a/src/circuit/module/BuilderManager.cpp
 +++ b/src/circuit/module/BuilderManager.cpp
 @@ -6,6 +6,7 @@
@@ -274,15 +274,23 @@ index e4c1d126..e184fcd8 100644
  {
  	circuit->GetScheduler()->RunOnInit(CScheduler::GameJob(&CBuilderManager::Init, this));
  
-@@ -265,7 +265,7 @@ void CBuilderManager::InitHandlers()
- 	const Json::Value& retreat = root["retreat"]["builder"];
- 	const float minRet = retreat.get((unsigned)0, 0.8f).asFloat();
- 	const float maxRet = retreat.get((unsigned)1, 0.8f).asFloat();
--	const float builderRet = (float)rand() / RAND_MAX * (maxRet - minRet) + minRet;
-+	const float builderRet = 0.5f * (minRet + maxRet);  // Anarva: no dice; with switch decide the retreat is a live decision
- 	const float retMod = retreat.get((unsigned)2, 1.0f).asFloat();
- 	const float goalBuildMod = root["economy"].get("build_mod", 320.f).asFloat();
+@@ -263,11 +263,11 @@ void CBuilderManager::InitHandlers()
  
+ 	const Json::Value& root = circuit->GetSetupManager()->GetConfig();
+ 	const Json::Value& retreat = root["retreat"]["builder"];
+-	const float minRet = retreat.get((unsigned)0, 0.8f).asFloat();
+-	const float maxRet = retreat.get((unsigned)1, 0.8f).asFloat();
+-	const float builderRet = (float)rand() / RAND_MAX * (maxRet - minRet) + minRet;
+-	const float retMod = retreat.get((unsigned)2, 1.0f).asFloat();
+-	const float goalBuildMod = root["economy"].get("build_mod", 320.f).asFloat();
++	// Anarva: no config retreat levels or build_mod; retreat is decided live (ShouldRetreat)
++	(void)retreat;
++	const float builderRet = 0.f;
++	const float retMod = 1.f;
++	const float goalBuildMod = 0.f;
+ 
+ 	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
+ 	for (CCircuitDef& cdef : circuit->GetCircuitDefs()) {
 @@ -315,6 +315,11 @@ void CBuilderManager::InitHandlers()
  	ReadConfig();
  }
@@ -295,7 +303,18 @@ index e4c1d126..e184fcd8 100644
  void CBuilderManager::ReadConfig()
  {
  	const Json::Value& root = circuit->GetSetupManager()->GetConfig();
-@@ -335,7 +340,9 @@ void CBuilderManager::ReadConfig()
+@@ -325,17 +330,15 @@ void CBuilderManager::ReadConfig()
+ 	if (terraDef == nullptr) {
+ 		terraDef = circuit->GetEconomyManager()->GetSideInfo().defaultDef;
+ 	}
+-	goalExecTime = econ.get("goal_exec", 16.f).asFloat();
+-
+-	const Json::Value& cond = root["porcupine"]["superweapon"]["condition"];
+-	super.minIncome = cond.get((unsigned)0, 50.f).asFloat();
+-	super.maxTime = cond.get((unsigned)1, 300.f).asFloat();
++	// Anarva: no goal_exec or superweapon condition from config (GetGoalExecTime and the superweapon rule are live)
+ 
+ 	SBuildInfo::DirName& dirNames = SBuildInfo::GetDirNames();
  	SBuildInfo::CondName& condNames = SBuildInfo::GetCondNames();
  	SBuildInfo::PrioName& prioNames = SBuildInfo::GetPrioNames();
  	IBuilderTask::BuildName& buildNames = IBuilderTask::GetBuildNames();
@@ -306,7 +325,7 @@ index e4c1d126..e184fcd8 100644
  	for (const std::string& catName : build.getMemberNames()) {
  		auto it = buildNames.find(catName);
  		if (it == buildNames.end()) {
-@@ -467,8 +474,7 @@ void CBuilderManager::Init()
+@@ -467,8 +470,7 @@ void CBuilderManager::Init()
  		scheduler->RunJobEvery(CScheduler::GameJob(&CBuilderManager::UpdateIdle, this), interval, offset + 0);
  		scheduler->RunJobEvery(CScheduler::GameJob(&CBuilderManager::Update, this), 1/*interval*/, offset + 1);
  
@@ -316,7 +335,7 @@ index e4c1d126..e184fcd8 100644
  								circuit->GetSkirmishAIId() * WATCHDOG_COUNT + 10);
  	};
  
-@@ -830,7 +836,7 @@ void CBuilderManager::FallbackTask(CCircuitUnit* unit)
+@@ -830,7 +832,7 @@ void CBuilderManager::FallbackTask(CCircuitUnit* unit)
  
  	const int frame = circuit->GetLastFrame();
  	const AIFloat3& pos = unit->GetPos(frame);
@@ -325,7 +344,7 @@ index e4c1d126..e184fcd8 100644
  	task->AssignTo(unit);
  	task->Start(unit);
  	static_cast<CBuilderScript*>(script)->TaskAssigned(unit);
-@@ -856,11 +862,9 @@ bool CBuilderManager::IsBuilderInArea(CCircuitDef* buildDef, const AIFloat3& pos
+@@ -856,11 +858,9 @@ bool CBuilderManager::IsBuilderInArea(CCircuitDef* buildDef, const AIFloat3& pos
  
  bool CBuilderManager::HasFreeAssists(CCircuitUnit* builder) const
  {
@@ -339,7 +358,7 @@ index e4c1d126..e184fcd8 100644
  }
  
  SBuildChain* CBuilderManager::GetBuildChain(IBuilderTask::BuildType buildType, CCircuitDef* cdef) const
-@@ -941,7 +945,7 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
+@@ -941,7 +941,7 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
  	const AIFloat3& pos = unit->GetPos(frame);
  
  	const CCircuitDef* cdef = unit->GetCircuitDef();
@@ -348,7 +367,7 @@ index e4c1d126..e184fcd8 100644
  	if ((cdef->GetPower() > THREAT_MIN)
  		&& (circuit->GetMilitaryManager()->FindBCombatTarget(unit, pos, POWER_MOD, true) != nullptr))
  	{
-@@ -966,30 +970,8 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
+@@ -966,30 +966,8 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
  
  	std::shared_ptr<CQueryCostMap> pQuery = std::static_pointer_cast<CQueryCostMap>(query);
  
@@ -381,7 +400,7 @@ index e4c1d126..e184fcd8 100644
  	return unit->IsAttrBase()
  			? MakeEnergizerTask(unit, pQuery.get())
  			: MakeBuilderTask(unit, pQuery.get());
-@@ -1020,7 +1002,6 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1020,7 +998,6 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
@@ -389,7 +408,7 @@ index e4c1d126..e184fcd8 100644
  	float metric = std::numeric_limits<float>::max();
  
  	constexpr std::array<std::pair<IBuilderTask::BuildType, float>, (int)IBuilderTask::BuildType::_SIZE_> prioTasks = {
-@@ -1047,7 +1028,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1047,7 +1024,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	};
  
  	for (const std::pair<IBuilderTask::BuildType, float>& pair : prioTasks) {
@@ -398,7 +417,7 @@ index e4c1d126..e184fcd8 100644
  		for (const IBuilderTask* candidate : GetTasks(pair.first)) {
  			if (!candidate->CanAssignTo(unit)) {
  				continue;
-@@ -1090,32 +1071,23 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1090,32 +1067,23 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -443,7 +462,7 @@ index e4c1d126..e184fcd8 100644
  	}
  
  	if ((task == nullptr) &&
-@@ -1123,9 +1095,9 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1123,9 +1091,9 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	{
  		CCircuitUnit* vip = circuit->GetFactoryManager()->GetClosestFactory(pos);
  		if (vip != nullptr) {
@@ -455,7 +474,7 @@ index e4c1d126..e184fcd8 100644
  		}
  	}
  
-@@ -1164,20 +1136,6 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1164,20 +1132,6 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
  	float metric = std::numeric_limits<float>::max();
  
@@ -476,7 +495,7 @@ index e4c1d126..e184fcd8 100644
  
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
-@@ -1234,27 +1192,20 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1234,27 +1188,20 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -516,7 +535,7 @@ index e4c1d126..e184fcd8 100644
  		}
  	}
  
-@@ -1263,9 +1214,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1263,9 +1210,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  	{
  		CCircuitUnit* vip = circuit->GetFactoryManager()->GetClosestFactory(pos);
  		if (vip != nullptr) {
@@ -528,7 +547,7 @@ index e4c1d126..e184fcd8 100644
  		}
  	}
  
-@@ -1294,7 +1245,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1294,7 +1241,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  //	}
  
  	const bool isStalling = economyMgr->IsMetalEmpty() &&
@@ -537,7 +556,7 @@ index e4c1d126..e184fcd8 100644
  							(metalPull > economyMgr->GetPullMtoS() * circuit->GetFactoryManager()->GetMetalPull());
  	const bool isNotReady = !economyMgr->IsExcessed() || isStalling/* || economyMgr->IsEnergyStalling()*/;
  
-@@ -1352,7 +1303,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1352,7 +1299,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			float distCost;
  			const float rawSqDist = pos.SqDistance2D(buildPos);  // TODO: add target's radius to rawSqDist
@@ -545,7 +564,7 @@ index e4c1d126..e184fcd8 100644
  			if (rawSqDist < buildSqDistance) {
  				distCost = sqrtf(rawSqDist) / pathfinder->GetSquareSize() * COST_BASE * 0.5f;
  			} else {
-@@ -1364,28 +1314,20 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1364,28 +1310,20 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -586,7 +605,7 @@ index e4c1d126..e184fcd8 100644
  		}
  	}
  
-@@ -1403,7 +1345,7 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1403,7 +1341,7 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  {
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  	if (terrainMgr->IsZoneAlly(position)) {
@@ -595,7 +614,7 @@ index e4c1d126..e184fcd8 100644
  	}
  
  	CEconomyManager* ecoMgr = circuit->GetEconomyManager();
-@@ -1420,10 +1362,13 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1420,10 +1358,13 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  	CMilitaryManager* militaryMgr = circuit->GetMilitaryManager();
  	const float energyIncome = ecoMgr->GetAvgEnergyIncome() * ecoMgr->GetEcoFactor();
  	const float metalIncome = std::min(ecoMgr->GetAvgMetalIncome() * ecoMgr->GetEcoFactor(), energyIncome);
@@ -612,7 +631,7 @@ index e4c1d126..e184fcd8 100644
  		{
  			const std::set<IBuilderTask*>& tasks = GetTasks(IBuilderTask::BuildType::BIG_GUN);
  			if (tasks.empty()) {
-@@ -1445,14 +1390,14 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1445,14 +1386,14 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  			? circuit->GetFactoryManager()->GetClosestFactory(position)
  			: militaryMgr->GetClosestLeader({IFighterTask::FightType::ATTACK, IFighterTask::FightType::DEFEND}, position);
  	if (vip != nullptr) {
@@ -1372,7 +1391,7 @@ index 733f7a43..a11811e2 100644
  	bool IsAllyOpenMexSpot(int spotId) const;
  	bool IsOpenMexSpot(int spotId) const;
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
-index 54fef916..cbf9d422 100644
+index 54fef916..d89546c5 100644
 --- a/src/circuit/module/FactoryManager.cpp
 +++ b/src/circuit/module/FactoryManager.cpp
 @@ -6,6 +6,8 @@
@@ -1393,7 +1412,7 @@ index 54fef916..cbf9d422 100644
  		const float sqRadius = SQUARE(radius);
  		SAssistToFactory& af = assists[unit];
  		for (SFactory& fac : factories) {
-@@ -327,10 +329,9 @@ void CFactoryManager::ReadConfig()
+@@ -327,12 +329,11 @@ void CFactoryManager::ReadConfig()
  	}
  
  	const Json::Value& product = econom["production"];
@@ -1405,8 +1424,11 @@ index 54fef916..cbf9d422 100644
 +	newFacModM = newFacModE = facModM = facModE = 1.f;
 +	(void)product;
  
- 	numBatch = root["quota"].get("num_batch", 5).asInt();
+-	numBatch = root["quota"].get("num_batch", 5).asInt();
++	numBatch = 0;  // Anarva: no batch repeats
  
+ 	/*
+ 	 * Roles, attributes and retreat
 @@ -421,88 +422,9 @@ void CFactoryManager::ReadConfig()
  		}
  		cdef->SetOn(behaviour.get("on", true).asBool());
@@ -1510,7 +1532,27 @@ index 54fef916..cbf9d422 100644
  	}
  	circuit->GetAllyTeam()->NonDefaultThreats(std::move(modRoles), circuit);
  
-@@ -676,7 +594,7 @@ void CFactoryManager::ReadConfig()
+@@ -543,18 +461,7 @@ void CFactoryManager::ReadConfig()
+ 		const Json::Value& factory = factories[fac];
+ 		SFactoryDef facDef;
+ 
+-		// TODO: Replace importance with proper terrain analysis (size, hardness, unit's power, speed)
+-		const Json::Value& importance = factory["importance"];
+-		if (importance.isNull()) {
+-			facDef.startImp = 1.0f;
+-			facDef.switchImp = 1.0f;
+-		} else {
+-			facDef.startImp = importance.get((unsigned)0, 1.0f).asFloat();
+-			facDef.switchImp = importance.get((unsigned)1, 1.0f).asFloat();
+-			// FIXME: DEBUG Silly t1 detection
+-			facDef.isT1 = (facDef.switchImp <= .0f);
+-			// FIXME: DEBUG
+-		}
++		// Anarva: no config importance; factories compete on value (FactoryData), tier from unit facts (IsT1Factory)
+ 
+ 		facDef.isRequireEnergy = factory.get("require_energy", false).asBool();
+ 
+@@ -676,35 +583,17 @@ void CFactoryManager::ReadConfig()
  			facDef.airTiers = terrainMgr->IsWaterMap() ? facDef.waterTiers : facDef.landTiers;
  		}
  
@@ -1519,25 +1561,41 @@ index 54fef916..cbf9d422 100644
  
  		factoryDefs[cdef->GetId()] = facDef;
  	}
-@@ -685,7 +603,7 @@ void CFactoryManager::ReadConfig()
- 	const Json::Value& offset = select["offset"];
- 	const Json::Value& speed = select["speed"];
- 	const Json::Value& map = select["map"];
+ 
+-	const Json::Value& select = root["select"];
+-	const Json::Value& offset = select["offset"];
+-	const Json::Value& speed = select["speed"];
+-	const Json::Value& map = select["map"];
 -	airMapPerc = select.get("air_map", 80.0f).asFloat();
-+	airMapPerc = 100.f;  // Anarva: aircraft reach the whole map
- 	minOffset = offset.get((unsigned)0, -20.0f).asFloat();
- 	const float maxOffset = offset.get((unsigned)1, 20.0f).asFloat();
- 	lenOffset = maxOffset - minOffset;
-@@ -701,7 +619,7 @@ void CFactoryManager::ReadConfig()
- 		kv.second.mapSpeedPerc = speedFactor * (mapSize * avgSpeed - minMapSp) + minSpPerc;
- 	}
- 
+-	minOffset = offset.get((unsigned)0, -20.0f).asFloat();
+-	const float maxOffset = offset.get((unsigned)1, 20.0f).asFloat();
+-	lenOffset = maxOffset - minOffset;
+-	const float minSpPerc = speed.get((unsigned)0, 0.0f).asFloat();
+-	const float maxSpPerc = speed.get((unsigned)1, 40.0f).asFloat();
+-	const float minMap = map.get((unsigned)0, 8.0f).asFloat();
+-	const float maxMap = map.get((unsigned)1, 24.0f).asFloat();
+-	const float minMapSp = SQUARE(minMap) * minSpeed;
+-	const float mapSize = (circuit->GetMap()->GetWidth() / 64) * (circuit->GetMap()->GetHeight() / 64);
+-	const float speedFactor = (maxSpPerc - minSpPerc) / (SQUARE(maxMap) * maxSpeed - minMapSp);
+-	for (auto& kv : factoryDefs) {
+-		float avgSpeed = kv.second.mapSpeedPerc;
+-		kv.second.mapSpeedPerc = speedFactor * (mapSize * avgSpeed - minMapSp) + minSpPerc;
+-	}
+-
 -	noAirNum = select.get("no_air", 2).asUInt();
+-
+-	bpRatio = root["economy"].get("buildpower", 1.f).asFloat();
+-	reWeight = root["response"].get("_weight_", .5f).asFloat();
++	airMapPerc = 100.f;  // Anarva: aircraft reach the whole map; no config select offsets / speed / map ramps
++	(void)minSpeed; (void)maxSpeed;
++
 +	noAirNum = 0;  // Anarva: no "first factories are never air" rule; value decides
++
++	bpRatio = 1.f;  // Anarva: set live by the script (EcoPos)
+ }
  
- 	bpRatio = root["economy"].get("buildpower", 1.f).asFloat();
- 	reWeight = root["response"].get("_weight_", .5f).asFloat();
-@@ -716,8 +634,7 @@ void CFactoryManager::Init()
+ void CFactoryManager::Init()
+@@ -716,8 +605,7 @@ void CFactoryManager::Init()
  		scheduler->RunJobEvery(CScheduler::GameJob(&CFactoryManager::UpdateIdle, this), interval, offset + 0);
  		scheduler->RunJobEvery(CScheduler::GameJob(&CFactoryManager::Update, this), interval, offset + 2);
  
@@ -1547,7 +1605,7 @@ index 54fef916..cbf9d422 100644
  								circuit->GetSkirmishAIId() * WATCHDOG_COUNT + 11);
  	};
  
-@@ -1043,9 +960,11 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+@@ -1043,9 +931,11 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const float metalIncome = std::min(economyMgr->GetAvgMetalIncome(), economyMgr->GetAvgEnergyIncome());
@@ -1561,7 +1619,7 @@ index 54fef916..cbf9d422 100644
  	{
  		return nullptr;
  	}
-@@ -1063,10 +982,10 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+@@ -1063,10 +953,10 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  			return nullptr;
  		}
  #ifdef FACTORY_CHOICE
@@ -1575,7 +1633,22 @@ index 54fef916..cbf9d422 100644
  	}
  	return nullptr;
  }
-@@ -1151,7 +1070,7 @@ CCircuitDef* CFactoryManager::GetRepresenter(const CCircuitDef* facDef) const
+@@ -1116,11 +1006,9 @@ void CFactoryManager::DelFactory(const CCircuitDef* cdef)
+ 
+ bool CFactoryManager::IsT1Factory(const CCircuitDef* cdef)
+ {
+-	auto it = factoryDefs.find(cdef->GetId());
+-	if (it != factoryDefs.end()) {
+-		return it->second.isT1;
+-	}
+-	return false;
++	// Anarva: a lab is T1 when the commander itself can build it (unit facts, not config importance)
++	CCircuitDef* comm = circuit->GetSetupManager()->GetCommChoice();
++	return (comm != nullptr) && comm->CanBuild(cdef);
+ }
+ 
+ CCircuitDef* CFactoryManager::GetRoleDef(const CCircuitDef* facDef, CCircuitDef::RoleT role) const
+@@ -1151,7 +1039,7 @@ CCircuitDef* CFactoryManager::GetRepresenter(const CCircuitDef* facDef) const
  			CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  			SArea* area = terrainMgr->GetMobileTypeById(landDef->GetMobileId())->areaLargest;
  			// FIXME: area->percentOfMap < 40.0 doesn't seem right as water identifier
@@ -1584,7 +1657,7 @@ index 54fef916..cbf9d422 100644
  		}
  	} else {
  		return GetWaterDef(facDef);
-@@ -1229,7 +1148,7 @@ void CFactoryManager::EnableFactory(CCircuitUnit* unit)
+@@ -1229,7 +1117,7 @@ void CFactoryManager::EnableFactory(CCircuitUnit* unit)
  	std::map<CCircuitDef*, SAssistant> nanos;
  	const AIFloat3& pos = unit->GetPos(circuit->GetLastFrame());
  	COOAICallback* clb = circuit->GetCallback();
@@ -1593,7 +1666,7 @@ index 54fef916..cbf9d422 100644
  	int teamId = circuit->GetTeamId();
  	for (Unit* nano : units) {
  		int unitId = nano->GetUnitId();
-@@ -1465,7 +1384,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1465,7 +1353,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  			if (validAir.find(unit) != validAir.end()) {
  				DisableFactory(unit);
  			}
@@ -1602,7 +1675,7 @@ index 54fef916..cbf9d422 100644
  		}
  	}
  
-@@ -1478,11 +1397,11 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1478,11 +1366,11 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const bool isStalling = economyMgr->IsMetalEmpty() &&
@@ -1616,7 +1689,7 @@ index 54fef916..cbf9d422 100644
  	}
  
  	task = UpdateFirePower(unit, isActive);
-@@ -1490,7 +1409,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1490,7 +1378,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  		return task;
  	}
  
@@ -1625,7 +1698,7 @@ index 54fef916..cbf9d422 100644
  }
  
  IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
-@@ -1508,7 +1427,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
+@@ -1508,7 +1396,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
  	float curCost = std::numeric_limits<float>::max();
  	circuit->UpdateFriendlyUnits();
  	// NOTE: OOAICallback::GetFriendlyUnitsIn depends on unit's radius
@@ -1634,7 +1707,7 @@ index 54fef916..cbf9d422 100644
  	for (Unit* u : units) {
  		auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
  		if ((cand == nullptr) || (cand == unit)
-@@ -1558,7 +1477,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
+@@ -1558,7 +1446,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
  		}
  	}
  
@@ -1643,7 +1716,7 @@ index 54fef916..cbf9d422 100644
  }
  
  void CFactoryManager::Watchdog()
-@@ -1625,7 +1544,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1625,7 +1513,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  
  	const int iS = terrainMgr->GetSectorIndex(pos);
  	auto isEnemyInArea = [&](CCircuitDef* bd) {
@@ -1652,7 +1725,7 @@ index 54fef916..cbf9d422 100644
  			return true;
  		}
  		SArea* area;
-@@ -1634,7 +1553,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1634,7 +1522,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  		return isValid && ((area == nullptr) || terrainMgr->IsEnemyInArea(area));
  	};
  	auto isAvailableDef = [&](CCircuitDef* bd) {
@@ -1661,7 +1734,7 @@ index 54fef916..cbf9d422 100644
  			&& bd->IsAvailable(frame)
  			&& (isActive || bd->IsAttrRare())
  			&& terrainMgr->CanBeBuiltAt(bd, pos, range)
-@@ -1651,13 +1570,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1651,13 +1539,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  #endif
  	CCircuitDef* buildDef = nullptr;
  	bool isResponse = false;
@@ -1676,7 +1749,7 @@ index 54fef916..cbf9d422 100644
  
  	struct SCandidate {
  		CCircuitDef* cdef;
-@@ -1667,9 +1580,6 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1667,9 +1549,6 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  	std::vector<SCandidate> candidates;
  	candidates.reserve(facDef.buildDefs.size());
  
@@ -1686,7 +1759,7 @@ index 54fef916..cbf9d422 100644
  	for (unsigned i = 0; i < facDef.buildDefs.size(); ++i) {
  		CCircuitDef* bd = facDef.buildDefs[i];
  		if (!isAvailableDef(bd)) {
-@@ -1691,42 +1601,23 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1691,42 +1570,23 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  			continue;
  		}
  
@@ -1739,7 +1812,7 @@ index 54fef916..cbf9d422 100644
  			}
  		}
  	}
-@@ -1799,19 +1690,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
+@@ -1799,19 +1659,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
  	}
  
  	CCircuitDef* buildDef = nullptr;
@@ -1766,7 +1839,7 @@ index 54fef916..cbf9d422 100644
  	}
  	candidates.clear();
 diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
-index 719442f0..d0345fd6 100644
+index 719442f0..86c3f240 100644
 --- a/src/circuit/module/MilitaryManager.cpp
 +++ b/src/circuit/module/MilitaryManager.cpp
 @@ -6,6 +6,8 @@
@@ -1778,14 +1851,19 @@ index 719442f0..d0345fd6 100644
  #include "module/BuilderManager.h"
  #include "module/EconomyManager.h"
  #include "module/FactoryManager.h"
-@@ -247,9 +249,9 @@ void CMilitaryManager::InitHandlers()
+@@ -245,11 +247,11 @@ void CMilitaryManager::InitHandlers()
+ 
+ 	const Json::Value& root = circuit->GetSetupManager()->GetConfig();
  	const Json::Value& retreat = root["retreat"]["fighter"];
- 	const float minRet = retreat.get((unsigned)0, 0.5f).asFloat();
- 	const float maxRet = retreat.get((unsigned)1, 0.5f).asFloat();
+-	const float minRet = retreat.get((unsigned)0, 0.5f).asFloat();
+-	const float maxRet = retreat.get((unsigned)1, 0.5f).asFloat();
 -	const float fighterRet = (float)rand() / RAND_MAX * (maxRet - minRet) + minRet;
-+	const float fighterRet = 0.5f * (minRet + maxRet);  // Anarva: no dice; with switch decide the retreat is a live decision (ShouldRetreat)
- 	const float retMod = retreat.get((unsigned)2, 1.0f).asFloat();
+-	const float retMod = retreat.get((unsigned)2, 1.0f).asFloat();
 -	const float commMod = root["quota"]["thr_mod"].get("comm", 1.f).asFloat();
++	// Anarva: no config retreat levels; retreat is decided live (ShouldRetreat)
++	(void)retreat;
++	const float fighterRet = 0.f;
++	const float retMod = 1.f;
 +	const float commMod = 1.f;  // Anarva: the commander is its unit facts (no config multiplier)
  	std::vector<CCircuitDef*> builders;
  
