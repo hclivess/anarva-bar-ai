@@ -277,7 +277,7 @@ index 6e5da8b6..4411695c 100644
  		CCircuitDef* bdef = (unit == nullptr) ? bestDef : unit->GetCircuitDef();
  		buildPos = circuit->GetTerrainManager()->GetBuildPosition(bdef, buildPos);
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
-index 54fef916..3ddb44de 100644
+index 54fef916..5f2ceeb7 100644
 --- a/src/circuit/module/FactoryManager.cpp
 +++ b/src/circuit/module/FactoryManager.cpp
 @@ -6,6 +6,8 @@
@@ -298,52 +298,85 @@ index 54fef916..3ddb44de 100644
  		}
  
  		const Json::Value& selfDHP = behaviour["selfd_hp"];
-@@ -1043,9 +1045,12 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+@@ -1043,9 +1045,11 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const float metalIncome = std::min(economyMgr->GetAvgMetalIncome(), economyMgr->GetAvgEnergyIncome());
 -	const int r = rand();
 +	// Anarva (switch decide): no coin flip. An extra constructor only adds value while income goes unspent (metal pull
 +	// below income); once we spend everything we are metal-limited and the same metal is worth more as army.
-+	const int r = anarva::switches.decide ? 0 : rand();
 +	const bool unspent = economyMgr->GetMetalPull() < economyMgr->GetAvgMetalIncome();
  	if ((circuit->GetBuilderManager()->GetBuildPower() >= metalIncome * bpRatio)
 -		|| (isActive && (r >= RAND_MAX / 2)))
-+		|| (anarva::switches.decide ? (isActive && !unspent) : (isActive && (r >= RAND_MAX / 2))))
++		|| (isActive && !unspent))
  	{
  		return nullptr;
  	}
-@@ -1715,7 +1720,13 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1063,8 +1067,8 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+ 			return nullptr;
+ 		}
+ #ifdef FACTORY_CHOICE
+-		circuit->LOG("choice = %s | %f < %f or (%i and %i < %i)", buildDef->GetDef()->GetName(),
+-				circuit->GetBuilderManager()->GetBuildPower(), metalIncome * bpRatio, isActive, r, RAND_MAX / 2);
++		circuit->LOG("choice = %s | %f < %f or (%i and unspent %i)", buildDef->GetDef()->GetName(),
++				circuit->GetBuilderManager()->GetBuildPower(), metalIncome * bpRatio, isActive, unspent);
+ #endif
+ 		return Enqueue(TaskS::Recruit(CRecruitTask::RecruitType::BUILDPOWER, CRecruitTask::Priority::NORMAL, buildDef, pos, 64.f));
+ 	}
+@@ -1715,18 +1719,16 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  		return {buildDef->GetId(), getPriority(isResponse)};
  	}
  
 -	if (magnitude == 0.f) {  // workaround for disabled units
-+	if (anarva::switches.decide) {  // Anarva: the candidate furthest below its share, no dice
-+		const int k = anarva::DeficitPick(candidates, [](const SCandidate& c) { return c.cdef; }, [](const SCandidate& c) { return c.weight; });
-+		if (k >= 0) {
-+			buildDef = candidates[k].cdef;
-+			isResponse = candidates[k].isResponse;
-+		}
-+	} else if (magnitude == 0.f) {  // workaround for disabled units
- 		if (!candidates.empty()) {
- 			buildDef = candidates[rand() % candidates.size()].cdef;
+-		if (!candidates.empty()) {
+-			buildDef = candidates[rand() % candidates.size()].cdef;
+-		}
+-	} else {
+-		float dice = (float)rand() / RAND_MAX * magnitude;
++	// Anarva: the candidate worth most per metal (constructors by build power, others by fighting strength);
++	// no config probabilities, no dice
++	{
++		float best = -1.f;
+ 		for (const SCandidate& candy : candidates) {
+-			dice -= candy.weight;
+-			if (dice < 0.f) {
++			const float v = anarva::ValuePerMetal(candy.cdef);
++			if (v > best) {
++				best = v;
+ 				buildDef = candy.cdef;
+ 				isResponse = candy.isResponse;
+-				break;
+ 			}
  		}
-@@ -1799,7 +1810,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
+ 	}
+@@ -1799,19 +1801,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
  	}
  
  	CCircuitDef* buildDef = nullptr;
 -	if (magnitude == 0.f) {  // workaround for disabled units
-+	if (anarva::switches.decide) {  // Anarva: the candidate furthest below its share, no dice
-+		const int k = anarva::DeficitPick(candidates, [](const std::pair<CCircuitDef*, float>& c) { return c.first; }, [](const std::pair<CCircuitDef*, float>& c) { return c.second; });
-+		if (k >= 0) {
-+			buildDef = candidates[k].first;
-+		}
-+	} else if (magnitude == 0.f) {  // workaround for disabled units
- 		// FIXME: for previous algo with probs[i]==0; never true with probs[i]>0
- 		if (!candidates.empty()) {
- 			buildDef = candidates[rand() % candidates.size()].first;
+-		// FIXME: for previous algo with probs[i]==0; never true with probs[i]>0
+-		if (!candidates.empty()) {
+-			buildDef = candidates[rand() % candidates.size()].first;
+-		}
+-	} else {
+-		float dice = (float)rand() / RAND_MAX * magnitude;
+-		for (auto& pair : candidates) {
+-			dice -= pair.second;
+-			if (dice < 0.f) {
+-				buildDef = pair.first;
+-				break;
+-			}
++	float best = -1.f;  // Anarva: worth most per metal; no config probabilities, no dice
++	for (auto& pair : candidates) {
++		const float v = anarva::ValuePerMetal(pair.first);
++		if (v > best) {
++			best = v;
++			buildDef = pair.first;
+ 		}
+ 	}
+ 	candidates.clear();
 diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
-index 719442f0..1d5f57d2 100644
+index 719442f0..f618046f 100644
 --- a/src/circuit/module/MilitaryManager.cpp
 +++ b/src/circuit/module/MilitaryManager.cpp
 @@ -6,6 +6,8 @@
@@ -378,7 +411,7 @@ index 719442f0..1d5f57d2 100644
  			const AIFloat3& pos = circuit->GetSetupManager()->GetBasePos();
  			if (ti.check == IFighterTask::FightType::_SIZE_) {
 -				const float mod = (float)rand() / RAND_MAX * defenceMod.len + defenceMod.min;
-+				const float mod = anarva::switches.decide ? defenceMod.min + 0.5f * defenceMod.len : (float)rand() / RAND_MAX * defenceMod.len + defenceMod.min;
++				const float mod = 1.f;  // Anarva: parity - fight when the threat estimate says we win (no config thr_mod)
  				task = new CDefendTask(this, pos, ti.promote, ti.promote, ti.power, 1.0f / mod);
  			} else {
  				task = new CDefendTask(this, pos, ti.check, ti.promote, ti.power, 1.0f);
@@ -387,25 +420,25 @@ index 719442f0..1d5f57d2 100644
  		case IFighterTask::FightType::SCOUT: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
 -			task = new CScoutTask(this, 0.75f / mod);
-+			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = 1.f;  // Anarva: parity (no config thr_mod)
 +			task = new CScoutTask(this, (anarva::switches.decide ? 1.0f : 0.75f) / mod);
  		} break;
  		case IFighterTask::FightType::RAID: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
 -			task = new CRaidTask(this, raid.avg, 0.75f / mod);
-+			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = 1.f;  // Anarva: parity (no config thr_mod)
 +			task = new CRaidTask(this, raid.avg, (anarva::switches.decide ? 1.0f : 0.75f) / mod);
  		} break;
  		case IFighterTask::FightType::ATTACK: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
 -			task = new CAttackTask(this, minAttackers, 0.8f / mod);
-+			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = 1.f;  // Anarva: parity (no config thr_mod)
 +			task = new CAttackTask(this, minAttackers, (anarva::switches.decide ? 1.0f : 0.8f) / mod);
  		} break;
  		case IFighterTask::FightType::BOMB: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
 -			task = new CBombTask(this, 2.0f / mod);
-+			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = 1.f;  // Anarva: parity (no config thr_mod)
 +			task = new CBombTask(this, (anarva::switches.decide ? 1.0f : 2.0f) / mod);
  		} break;
  		case IFighterTask::FightType::ARTY: {
@@ -413,13 +446,13 @@ index 719442f0..1d5f57d2 100644
  		} break;
  		case IFighterTask::FightType::AA: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
-+			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = 1.f;  // Anarva: parity (no config thr_mod)
  			task = new CAntiAirTask(this, 1.0f / mod);
  		} break;
  		case IFighterTask::FightType::AH: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
 -			task = new CAntiHeavyTask(this, 2.0f / mod);
-+			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
++			const float mod = 1.f;  // Anarva: parity (no config thr_mod)
 +			task = new CAntiHeavyTask(this, (anarva::switches.decide ? 1.0f : 2.0f) / mod);
  		} break;
  		case IFighterTask::FightType::SUPPORT: {
@@ -478,18 +511,26 @@ index 719442f0..1d5f57d2 100644
  	ClearScoutPosition(unit->GetTask());
  	CMetalManager* metalMgr = circuit->GetMetalManager();
  	const CMetalData::Clusters& clusters = metalMgr->GetClusters();
-@@ -1318,6 +1358,11 @@ void CMilitaryManager::DiceBigGun()
+@@ -1317,13 +1357,15 @@ void CMilitaryManager::DiceBigGun()
+ 		return;
  	}
  
++	// Anarva: the superweapon with the most fighting strength per metal (no config weights, no dice)
  	unsigned choice = 0;
-+	if (anarva::switches.decide) {  // Anarva: largest deficit, no dice
-+		const int k = anarva::DeficitPick(candidates, [](const std::pair<CCircuitDef*, float>& c) { return c.first; }, [](const std::pair<CCircuitDef*, float>& c) { return c.second; });
-+		bigGunDef = candidates[std::max(0, k)].first;
-+		return;
-+	}
- 	float dice = (float)rand() / RAND_MAX * magnitude;
+-	float dice = (float)rand() / RAND_MAX * magnitude;
++	float best = -1.f;
  	for (unsigned i = 0; i < candidates.size(); ++i) {
- 		dice -= candidates[i].second;
+-		dice -= candidates[i].second;
+-		if (dice < 0.f) {
++		CCircuitDef* d = candidates[i].first;
++		const float v = d->GetPower() / std::max(1.f, d->GetCostM());
++		if (v > best) {
++			best = v;
+ 			choice = i;
+-			break;
+ 		}
+ 	}
+ 	bigGunDef = candidates[choice].first;
 diff --git a/src/circuit/module/MilitaryManager.h b/src/circuit/module/MilitaryManager.h
 index f752cb27..174b6e23 100644
 --- a/src/circuit/module/MilitaryManager.h
@@ -543,7 +584,7 @@ index 0be6a835..b91cfe6e 100644
  
  }
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..8fdb5a6c 100644
+index c3aaefe5..5b936a05 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -580,7 +621,21 @@ index c3aaefe5..8fdb5a6c 100644
  #include "Log.h"
  #include "Drawer.h"
  #include "Game.h"
-@@ -702,6 +714,16 @@ void CInitScript::RegisterCore()
+@@ -574,13 +586,11 @@ void CInitScript::RegisterCore()
+ 	r = engine->RegisterGlobalFunction("void AiDelPoint(const AIFloat3& in)", asMETHOD(CInitScript, DelPoint), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+ 	r = engine->RegisterGlobalFunction("void AiAddLine(const AIFloat3& in, const AIFloat3& in)", asMETHOD(CInitScript, AddLine), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+ 	r = engine->RegisterGlobalFunction("void AiPause(bool, const string& in)", asMETHOD(CInitScript, Pause), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+-	r = engine->RegisterGlobalFunction("int AiDice(const array<float>@+)", asMETHOD(CInitScript, Dice), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+ 	r = engine->RegisterGlobalFunction("int AiNearestPointIdx(const AIFloat3& in, const array<AIFloat3>@+)", asMETHOD(CInitScript, NearestPointIdx), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+ 	r = engine->RegisterGlobalFunction("int AiMin(int, int)", asMETHODPR(CInitScript, Min<int>, (int, int) const, int), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+ 	r = engine->RegisterGlobalFunction("float AiMin(float, float)", asMETHODPR(CInitScript, Min<float>, (float, float) const, float), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+ 	r = engine->RegisterGlobalFunction("int AiMax(int, int)", asMETHODPR(CInitScript, Max<int>, (int, int) const, int), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+ 	r = engine->RegisterGlobalFunction("float AiMax(float, float)", asMETHODPR(CInitScript, Max<float>, (float, float) const, float), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+-	r = engine->RegisterGlobalFunction("int AiRandom(int, int)", asMETHOD(CInitScript, Random), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+ 	r = engine->RegisterGlobalFunction("void AiSendMessage(const string& in, int = -1)", asMETHOD(CInitScript, SendMessage), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
+ 	r = engine->RegisterFuncdef("void AiOnFinish(dictionary@+)"); ASSERT(r >= 0);
+ 	r = engine->RegisterFuncdef("AiOnFinish@+ AiExec(dictionary@+)"); ASSERT(r >= 0);
+@@ -702,6 +712,16 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float pwrDmg", asOFFSET(CCircuitDef, pwrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float airThrDmg", asOFFSET(CCircuitDef, airThrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float surfThrDmg", asOFFSET(CCircuitDef, surfThrDmg)); ASSERT(r >= 0);
@@ -597,7 +652,7 @@ index c3aaefe5..8fdb5a6c 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float waterThrDmg", asOFFSET(CCircuitDef, waterThrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float minRange", asOFFSET(CCircuitDef, minRange)); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetMaxRange(Type) const", asMETHODPR(CCircuitDef, GetMaxRange, (CCircuitDef::RangeType) const, float), asCALL_THISCALL); ASSERT(r >= 0);
-@@ -711,8 +733,10 @@ void CInitScript::RegisterCore()
+@@ -711,8 +731,10 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetAirThreat() const", asMETHOD(CCircuitDef, GetAirThreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetSurfThreat() const", asMETHOD(CCircuitDef, GetSurfThreat), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitDef", "float GetWaterThreat() const", asMETHOD(CCircuitDef, GetWaterThreat), asCALL_THISCALL); ASSERT(r >= 0);
@@ -609,7 +664,7 @@ index c3aaefe5..8fdb5a6c 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -738,6 +762,172 @@ void CInitScript::RegisterCore()
+@@ -738,6 +760,172 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectMethod("CCircuitUnit", "string GetRulesParam(const string& in, const string& in) const", asFUNCTION(CCircuitUnit_GetRulesParamString), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
  }
  
@@ -782,7 +837,7 @@ index c3aaefe5..8fdb5a6c 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +957,31 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +955,31 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -814,6 +869,45 @@ index c3aaefe5..8fdb5a6c 100644
  }
  
  bool CInitScript::Init()
+@@ -920,22 +1133,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+ 	circuit->GetGame()->SetPause(enable, msg.c_str());
+ }
+ 
+-int CInitScript::Dice(const CScriptArray* array) const
+-{
+-	float magnitude = 0.f;
+-	for (asUINT i = 0; i < array->GetSize(); ++i) {
+-		magnitude += *static_cast<const float*>(array->At(i));
+-	}
+-	float dice = (float)rand() / RAND_MAX * magnitude;
+-	for (asUINT i = 0; i < array->GetSize(); ++i) {
+-		dice -= *static_cast<const float*>(array->At(i));
+-		if (dice < 0.f) {
+-			return i;
+-		}
+-	}
+-	return -1;
+-}
+-
+ int CInitScript::NearestPointIdx(const AIFloat3& pos, const CScriptArray* array)
+ {
+ 	float bestSqDist = std::numeric_limits<float>::max();
+diff --git a/src/circuit/script/InitScript.h b/src/circuit/script/InitScript.h
+index bc7d286a..5fc79dcd 100644
+--- a/src/circuit/script/InitScript.h
++++ b/src/circuit/script/InitScript.h
+@@ -83,11 +83,9 @@ private:
+ 	void DelPoint(const springai::AIFloat3& pos) const;
+ 	void AddLine(const springai::AIFloat3& posA, const springai::AIFloat3& posB) const;
+ 	void Pause(bool enable, const std::string& msg) const;
+-	int Dice(const CScriptArray* array) const;
+ 	int NearestPointIdx(const springai::AIFloat3& pos, const CScriptArray* array);
+ 	template<typename T> T Min(T l, T r) const { return std::min(l, r); }
+ 	template<typename T> T Max(T l, T r) const { return std::max(l, r); }
+-	int Random(int min, int max) const { return min + rand() % (max - min + 1); }
+ 
+ 	void SendMessage(const std::string& msg, int toTeamId = -1);
+ 	void ReceiveMessage(const std::string& msg, int fromTeamId);
 diff --git a/src/circuit/script/MilitaryScript.cpp b/src/circuit/script/MilitaryScript.cpp
 index 89633988..092100a6 100644
 --- a/src/circuit/script/MilitaryScript.cpp
@@ -909,6 +1003,19 @@ index d809caf8..2c99a4c2 100644
  	circuit->GetLua()->CallRules(cmd.c_str(), cmd.size());
  
  	return true;
+diff --git a/src/circuit/setup/SetupManager.h b/src/circuit/setup/SetupManager.h
+index 9e1293b2..e113e6a7 100644
+--- a/src/circuit/setup/SetupManager.h
++++ b/src/circuit/setup/SetupManager.h
+@@ -81,7 +81,7 @@ public:
+ 	CAllyTeam* GetAllyTeam() const;
+ 
+ 	void ReadConfig();
+-	bool IsAntiCap() const { return antiCapProb > (float)rand() / RAND_MAX; }
++	bool IsAntiCap() const { return true; }  // Anarva: a captured structure hands the enemy our metal; always resist (no dice)
+ 	float GetEmptyShield() const { return emptyShield; }
+ 	float GetFullShield() const { return fullShield; }
+ 	int GetAssistFac() const { return assistFac; }
 diff --git a/src/circuit/spring/SpringMap.h b/src/circuit/spring/SpringMap.h
 index b468c2e1..2a99e191 100644
 --- a/src/circuit/spring/SpringMap.h
@@ -966,7 +1073,7 @@ index fcc4c984..846af2c5 100644
  		{
  			Recovered(unit);
 diff --git a/src/circuit/task/builder/BuilderTask.cpp b/src/circuit/task/builder/BuilderTask.cpp
-index 172d4c26..35cacb2b 100644
+index 172d4c26..4248d092 100644
 --- a/src/circuit/task/builder/BuilderTask.cpp
 +++ b/src/circuit/task/builder/BuilderTask.cpp
 @@ -6,6 +6,8 @@
@@ -987,19 +1094,15 @@ index 172d4c26..35cacb2b 100644
  		if (healthPerc < cdef->GetSelfDHP()) {
  			unit->CmdSelfD(true);
  		}
-@@ -828,7 +830,14 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
+@@ -828,7 +830,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
  						}
  					} break;
  					case SBuildInfo::Condition::CHANCE: {
 -						isValid = rand() < bi.value * RAND_MAX;
-+						if (anarva::switches.decide) {  // Anarva: realise the probability deterministically (accumulate, fire at 1)
-+							static float acc = 0.f;
-+							acc += bi.value;
-+							isValid = (acc >= 1.f);
-+							if (isValid) acc -= 1.f;
-+						} else {
-+							isValid = rand() < bi.value * RAND_MAX;
-+						}
++						// Anarva: no dice. A follow-up the config always wants (1) is built; any other is worth building only when
++						// what triggered the chain is worth more than it (guarding pays when the loss would cost more than the guard)
++						isValid = (bi.value >= 1.f)
++							|| ((GetBuildDef() != nullptr) && (GetBuildDef()->GetCostM() > bi.cdef->GetCostM()));
  					} break;
  					case SBuildInfo::Condition::ALWAYS:
  					default: break;
@@ -1048,7 +1151,7 @@ index 7934b918..46b256dc 100644
  			unit->CmdSelfD(true);
  		}
 diff --git a/src/circuit/task/fighter/AntiAirTask.cpp b/src/circuit/task/fighter/AntiAirTask.cpp
-index 93297d2c..bc947297 100644
+index 93297d2c..6f8e8b01 100644
 --- a/src/circuit/task/fighter/AntiAirTask.cpp
 +++ b/src/circuit/task/fighter/AntiAirTask.cpp
 @@ -6,6 +6,8 @@
@@ -1067,13 +1170,13 @@ index 93297d2c..bc947297 100644
 -	float x = rand() % circuit->GetTerrainManager()->GetTerrainWidth();
 -	float z = rand() % circuit->GetTerrainManager()->GetTerrainHeight();
 +	// Anarva (switch decide): start toward the enemy's centre, not a random map point
-+	float x = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().x : rand() % circuit->GetTerrainManager()->GetTerrainWidth();
-+	float z = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().z : rand() % circuit->GetTerrainManager()->GetTerrainHeight();
++	float x = circuit->GetEnemyManager()->GetEnemyPos().x;
++	float z = circuit->GetEnemyManager()->GetEnemyPos().z;
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
 diff --git a/src/circuit/task/fighter/AntiHeavyTask.cpp b/src/circuit/task/fighter/AntiHeavyTask.cpp
-index 698c60aa..35efde14 100644
+index 698c60aa..d631075f 100644
 --- a/src/circuit/task/fighter/AntiHeavyTask.cpp
 +++ b/src/circuit/task/fighter/AntiHeavyTask.cpp
 @@ -6,6 +6,8 @@
@@ -1092,8 +1195,8 @@ index 698c60aa..35efde14 100644
 -	float x = rand() % circuit->GetTerrainManager()->GetTerrainWidth();
 -	float z = rand() % circuit->GetTerrainManager()->GetTerrainHeight();
 +	// Anarva (switch decide): start toward the enemy's centre, not a random map point
-+	float x = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().x : rand() % circuit->GetTerrainManager()->GetTerrainWidth();
-+	float z = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().z : rand() % circuit->GetTerrainManager()->GetTerrainHeight();
++	float x = circuit->GetEnemyManager()->GetEnemyPos().x;
++	float z = circuit->GetEnemyManager()->GetEnemyPos().z;
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
@@ -1258,7 +1361,7 @@ index a36c4e1b..cc6b7ef6 100644
  	void ApplySafePos(const CQueryPathMulti* query);
  	void Fallback(CCircuitUnit* unit, bool proceed);
 diff --git a/src/circuit/task/fighter/AttackTask.cpp b/src/circuit/task/fighter/AttackTask.cpp
-index 2f556d6d..d85e2e3a 100644
+index 2f556d6d..a1bb47f0 100644
 --- a/src/circuit/task/fighter/AttackTask.cpp
 +++ b/src/circuit/task/fighter/AttackTask.cpp
 @@ -6,6 +6,8 @@
@@ -1277,8 +1380,8 @@ index 2f556d6d..d85e2e3a 100644
 -	float x = rand() % circuit->GetTerrainManager()->GetTerrainWidth();
 -	float z = rand() % circuit->GetTerrainManager()->GetTerrainHeight();
 +	// Anarva (switch decide): start toward the enemy's centre, not a random map point
-+	float x = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().x : rand() % circuit->GetTerrainManager()->GetTerrainWidth();
-+	float z = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().z : rand() % circuit->GetTerrainManager()->GetTerrainHeight();
++	float x = circuit->GetEnemyManager()->GetEnemyPos().x;
++	float z = circuit->GetEnemyManager()->GetEnemyPos().z;
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
@@ -1471,7 +1574,7 @@ index 0400f8d6..d64db858 100644
  			circuit->GetBuilderManager()->Enqueue(TaskB::Repair(IBuilderTask::Priority::NOW, unit));
  		}
 diff --git a/src/circuit/task/fighter/RaidTask.cpp b/src/circuit/task/fighter/RaidTask.cpp
-index b62de532..6b361bd2 100644
+index b62de532..d501e584 100644
 --- a/src/circuit/task/fighter/RaidTask.cpp
 +++ b/src/circuit/task/fighter/RaidTask.cpp
 @@ -6,6 +6,8 @@
@@ -1490,8 +1593,8 @@ index b62de532..6b361bd2 100644
 -	float x = rand() % circuit->GetTerrainManager()->GetTerrainWidth();
 -	float z = rand() % circuit->GetTerrainManager()->GetTerrainHeight();
 +	// Anarva (switch decide): start toward the enemy's centre, not a random map point
-+	float x = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().x : rand() % circuit->GetTerrainManager()->GetTerrainWidth();
-+	float z = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().z : rand() % circuit->GetTerrainManager()->GetTerrainHeight();
++	float x = circuit->GetEnemyManager()->GetEnemyPos().x;
++	float z = circuit->GetEnemyManager()->GetEnemyPos().z;
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
@@ -1742,7 +1845,7 @@ index 154ce4bf..9eeabd69 100644
  			}
  
 diff --git a/src/circuit/terrain/TerrainManager.cpp b/src/circuit/terrain/TerrainManager.cpp
-index 64571199..f8df86f9 100644
+index 64571199..8dce664b 100644
 --- a/src/circuit/terrain/TerrainManager.cpp
 +++ b/src/circuit/terrain/TerrainManager.cpp
 @@ -6,6 +6,8 @@
@@ -1791,11 +1894,24 @@ index 64571199..f8df86f9 100644
  {
 -	float x = rand() % GetTerrainWidth();
 -	float z = rand() % GetTerrainHeight();
-+	float x = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().x : rand() % GetTerrainWidth();  // Anarva: toward the enemy
-+	float z = anarva::switches.decide ? circuit->GetEnemyManager()->GetEnemyPos().z : rand() % GetTerrainHeight();
++	float x = circuit->GetEnemyManager()->GetEnemyPos().x;  // Anarva: toward the enemy
++	float z = circuit->GetEnemyManager()->GetEnemyPos().z;
  	AIFloat3 pos(x, circuit->GetMap()->GetElevationAt(x, z), z);
  	return GetMovePosition(unit->GetArea(), pos);
  }
+diff --git a/src/circuit/terrain/path/PathFinder.cpp b/src/circuit/terrain/path/PathFinder.cpp
+index 5f061310..46525b2d 100644
+--- a/src/circuit/terrain/path/PathFinder.cpp
++++ b/src/circuit/terrain/path/PathFinder.cpp
+@@ -931,7 +931,7 @@ void CPathFinder::UpdateVis(const IndexVec& path)
+ 		e.y = map->GetElevationAt(e.x, e.z);
+ 		fig->DrawLine(s, e, 16.0f, true, FRAMES_PER_SEC * 20, figId);
+ 	}
+-	fig->SetColor(figId, AIColor((float)rand() / RAND_MAX, (float)rand() / RAND_MAX, (float)rand() / RAND_MAX), 255);
++	fig->SetColor(figId, AIColor(1.f, 1.f, 0.f), 255);  // debug drawing: fixed colour
+ 	delete fig;
+ }
+ 
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
 index a0f5a922..bf38d7a2 100644
 --- a/src/circuit/unit/CircuitDef.cpp
@@ -2143,10 +2259,10 @@ index 834905fe..591df5f1 100644
  } // namespace circuit
 diff --git a/src/circuit/util/AnarvaDecide.h b/src/circuit/util/AnarvaDecide.h
 new file mode 100644
-index 00000000..6e04da05
+index 00000000..cd486c43
 --- /dev/null
 +++ b/src/circuit/util/AnarvaDecide.h
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,95 @@
 +/*
 + * AnarvaDecide.h
 + *
@@ -2227,6 +2343,17 @@ index 00000000..6e04da05
 +	return tKill > tHome;
 +}
 +
++
++// Value of a unit per metal: a constructor by its build power, anything else by its fighting strength (Lanchester power).
++inline float ValuePerMetal(const CCircuitDef* d)
++{
++	if (d == nullptr) {
++		return 0.f;
++	}
++	const float cost = std::max(1.f, d->GetCostM());
++	return (!d->GetBuildOptions().empty() && (d->GetBuildSpeed() > 0.f)) ? d->GetBuildSpeed() / cost : d->GetPower() / cost;
++}
++
 +} // namespace anarva
 +} // namespace circuit
 +
@@ -2279,8 +2406,57 @@ index 9a1beba7..b48ccfc0 100644
  
  typedef std::vector<springai::AIFloat3> F3Vec;
  typedef std::vector<void*> VoidVec;
+diff --git a/src/circuit/util/math/EncloseCircle.cpp b/src/circuit/util/math/EncloseCircle.cpp
+index e54f7ea7..09217343 100644
+--- a/src/circuit/util/math/EncloseCircle.cpp
++++ b/src/circuit/util/math/EncloseCircle.cpp
+@@ -46,11 +46,8 @@ void CEncloseCircle::MakeCircle(const std::vector<AIFloat3>& points)
+ 		for (auto& pos : points) {
+ 			shuffled.push_back(SPoint(pos.x, pos.z));
+ 		}
+-		// Randomize order
+-		// TODO: Read why shuffle??
+-		std::random_device rd;
+-		std::mt19937 g(rd());
+-		std::shuffle(shuffled.begin(), shuffled.end(), g);
++		// Anarva: no shuffle. The smallest enclosing circle is unique for any input order; the shuffle only improved
++		// the expected running time.
+ 
+ 		// Progressively add points to circle or recompute circle
+ 		decltype(shuffled)::iterator it = shuffled.begin();
+diff --git a/src/circuit/util/math/Geometry.h b/src/circuit/util/math/Geometry.h
+index e0f29072..7ea084d7 100644
+--- a/src/circuit/util/math/Geometry.h
++++ b/src/circuit/util/math/Geometry.h
+@@ -17,15 +17,24 @@ static inline bool is_equal_pos(const springai::AIFloat3& posA, const springai::
+ 	return (std::fabs(posA.x - posB.x) <= slack) && (std::fabs(posA.z - posB.z) <= slack);
+ }
+ 
++// Anarva: no random scatter. Successive picks step by the golden angle (each new direction falls in the largest gap
++// left by the previous ones), so repeated positions spread evenly instead of by dice.
++static inline float next_spread_angle()
++{
++	static unsigned k = 0;
++	return float(k++) * 2.39996323f;  // golden angle = pi * (3 - sqrt(5)) rad
++}
++
+ static inline springai::AIFloat3 get_near_pos(const springai::AIFloat3& pos, float range)
+ {
+-	const springai::AIFloat3 offset((float)rand() / RAND_MAX - 0.5f, 0.f, (float)rand() / RAND_MAX - 0.5f);
++	const float angle = next_spread_angle();
++	const springai::AIFloat3 offset(0.5f * std::cos(angle), 0.f, 0.5f * std::sin(angle));  // within the old +-range/2 box
+ 	return pos + offset * range;
+ }
+ 
+ static inline springai::AIFloat3 get_radial_pos(const springai::AIFloat3& pos, float radius)
+ {
+-	const float angle = (float)rand() / RAND_MAX * 2 * M_PI;
++	const float angle = next_spread_angle();
+ 	springai::AIFloat3 offset(std::cos(angle), 0.f, std::sin(angle));
+ 	return pos + offset * radius;
+ }
 diff --git a/src/circuit/util/math/Region.cpp b/src/circuit/util/math/Region.cpp
-index d8e22df4..8fab2b21 100644
+index d8e22df4..71b19944 100644
 --- a/src/circuit/util/math/Region.cpp
 +++ b/src/circuit/util/math/Region.cpp
 @@ -62,25 +62,18 @@ bool CPolygon::ContainsPoint(const AIFloat3& point) const
@@ -2318,3 +2494,23 @@ index d8e22df4..8fab2b21 100644
  }
  
  void CPolygon::Scale(float factor)
+@@ -149,14 +142,14 @@ bool CRegion::ContainsPoint(const AIFloat3& point) const
+ 
+ AIFloat3 CRegion::Random() const
+ {
+-	float dice = (float)rand() / RAND_MAX * area;
++	// Anarva: no dice; the centre of the largest part (a point surely inside the region's bulk)
++	const CPolygon* best = parts.back();
+ 	for (const CPolygon* p : parts) {
+-		dice -= p->GetArea();
+-		if (dice < 0.f) {
+-			return p->Random();
++		if (p->GetArea() > best->GetArea()) {
++			best = p;
+ 		}
+ 	}
+-	return parts.back()->Random();
++	return best->Random();
+ }
+ 
+ } // namespace utils
