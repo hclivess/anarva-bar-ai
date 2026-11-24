@@ -18,7 +18,7 @@ namespace Brain {
 // module can be A/B-tested head-to-head against the first-gen build. A module ships ON only after it\n// has measurably won; defaults below are the best-measured configuration (bisect round 4: 5-3 vs first-gen).
 const bool F_WAVES = false;     // script-owned wave/pack gathering
 const bool F_RECALL = true;     // broken-squad recall
-const bool F_PROD = false;      // capability-based production chooser (incl. rez bots)
+const bool F_PROD = true;       // capability-based production chooser (incl. rez bots)
 const bool F_SCALE = true;      // Director drives buildpowerRatio
 const bool F_ECOGATE = false;   // moho energy-headroom gate
 const bool F_RECYCLE = true;    // eco recycling + T1 salvage
@@ -52,19 +52,19 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
-const bool F_NANOS = false;     // reclaim caretakers whose metal is worth more than the build power they actually apply
-const bool F_ECORECLAIM = false; // reclaim the energy plant whose metal now is worth more than its energy over the horizon (no fixed gates)
-const bool F_STRAFE = false;    // core switch: units sidestep dodgeable shots (flight time x our speed > blast radius)
-const bool F_FOCUS = false;     // core switch: each unit focuses the visible enemy in range with the highest threat per remaining health
-const bool F_DECIDE = false;    // core switch: every dice roll in the core replaced by a computed choice (unit/role pick, constructor, retreat, superweapon, chance, map points)
-const bool F_RAIDRESP = false;  // answer raids already in progress: the 'arrive before the enemy' test can never pass once they are there
+const bool F_NANOS = true;      // reclaim caretakers whose metal is worth more than the build power they actually apply
+const bool F_ECORECLAIM = true;  // reclaim the energy plant whose metal now is worth more than its energy over the horizon (no fixed gates)
+const bool F_STRAFE = true;     // core switch: units sidestep dodgeable shots (flight time x our speed > blast radius)
+const bool F_FOCUS = true;      // core switch: each unit focuses the visible enemy in range with the highest threat per remaining health
+const bool F_DECIDE = true;     // core switch: every dice roll in the core replaced by a computed choice (unit/role pick, constructor, retreat, superweapon, chance, map points)
+const bool F_RAIDRESP = true;   // answer raids already in progress: the 'arrive before the enemy' test can never pass once they are there
 const bool F_RECLAIM = true;    // constructors and rez bots reclaim/revive wreck fields when the metal, minus walk and risk, beats their current job
-const bool F_DEFRISK = false;   // a turret is built only where it is more likely to survive than not (cover vs the danger that can reach it)
-const bool F_BUILDERSAFE = false; // constructors leave a job when (1-P) x job - P x own cost is worth less than assisting a factory
-const bool F_HOLDALL = false;   // the just-in-time defence covers every constructor and structure, not only extractors
-const bool F_STORAGE = false;   // reclaims only start when the metal fits; metal storage built when held-back reclaims are worth more than it costs
-const bool F_ENGAGE = false;    // core switch: gathering squads fight enemies inside their own sight that they can beat (owner saw a raider pace past a lone pawn)
-const bool F_TURN = false;      // travel times include turning (turn rate, arcs) and acceleration, not distance/top speed
+const bool F_DEFRISK = true;    // a turret is built only where it is more likely to survive than not (cover vs the danger that can reach it)
+const bool F_BUILDERSAFE = true;  // constructors leave a job when (1-P) x job - P x own cost is worth less than assisting a factory
+const bool F_HOLDALL = true;    // the just-in-time defence covers every constructor and structure, not only extractors
+const bool F_STORAGE = true;    // reclaims only start when the metal fits; metal storage built when held-back reclaims are worth more than it costs
+const bool F_ENGAGE = true;     // core switch: gathering squads fight enemies inside their own sight that they can beat (owner saw a raider pace past a lone pawn)
+const bool F_TURN = true;       // travel times include turning (turn rate, arcs) and acceleration, not distance/top speed
 const bool F_SCOUTMAP = false;  // scouts go where vision is worth most: our assets an unseen enemy could have reached since we last looked (C++ switch)
 const bool F_MOHO = true;       // T2 lab builds T2 constructors while one more saves more on the extractor-upgrade queue than it costs
 const bool F_COMMFWD = false;   // (with F_COMMRISK) commander claims the free extractor spot with the best gain - risk, anywhere: the human front-builder pattern
@@ -402,16 +402,15 @@ void CheckSquads()
 		const float p = SquadPower(task);
 		if (p > squadPeak[i])
 			squadPeak[i] = p;
-		if (squadPeak[i] <= 0.f || (!F_DECIDE && ai.frame - squadStart[i] < 20 * SECOND))
+		if (squadPeak[i] <= 0.f)
 			continue;
 		// Keep a squad that is still bigger than what we'd send out fresh.
 		const bool isRaid = task.GetFightType() == Task::FightType::RAID;
 		const float fresh = isRaid ? aiMilitaryMgr.quota.raid.min : aiMilitaryMgr.quota.attack;
 		// Recall once the squad has bled and is now weaker than what we'd send fresh, scaled by how well we trade.
 		// decide: it has bled and what is left, at our trade rate, no longer beats what a fresh squad is sized against
-		const bool recall = F_DECIDE ? (p < squadPeak[i] && p * Brain::Assess::trade < fresh)
-			: F_NEWRECALL ? (p < squadPeak[i] && p < fresh * AiMin(1.f, Brain::Assess::trade))
-			: (p < 0.4f * squadPeak[i] && p < fresh);  // first-gen rule
+		// it has bled, and what is left, at our trade rate, no longer beats what a fresh squad is sized against
+		const bool recall = p < squadPeak[i] && p * Brain::Assess::trade < fresh;
 		if (recall) {
 			++recalls;
 			AiLog("[ANV] Army: recalling broken " + (isRaid ? "raid" : "attack") + " squad power "
