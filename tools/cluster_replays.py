@@ -20,7 +20,7 @@ from sklearn.preprocessing import StandardScaler
 TEAM = re.compile(r"\[REPLAY\] TEAM team=(\d+) ally=(-?\d+) side=(\S+) name=(.*)$")
 MAP = re.compile(r"\[REPLAY\] MAP (.*) (\d+)x(\d+)$")
 STAT = re.compile(r"\[REPLAY\] STAT min=(\d+) team=(\d+) m_inc=([\d.]+) e_inc=([\d.]+) army=(\d+) def=(\d+) eco=(\d+) units=(\d+)")
-BUILT = re.compile(r"\[REPLAY\] BUILT f=(\d+) team=(\d+) (\S+) m=(\d+) tl=(\d+) air=(\d) sea=(\d) static=(\d) builder=(\d) armed=(\d) range=(\d+) fac=(\d)")
+BUILT = re.compile(r"\[REPLAY\] BUILT f=(\d+) team=(\d+) (\S+) m=(\d+) tl=(\d+) air=(\d) sea=(\d) static=(\d) builder=(\d) armed=(\d) range=(\d+) fac=(\d)")  # x/z may follow
 COMM = re.compile(r"\[REPLAY\] COMM f=(\d+) team=(\d+) .*fromStart=(\d+) hp=[\d.]+ cmd=\S+ own600=(\d+) enemy600=(\d+)")
 HIT = re.compile(r"\[REPLAY\] FIRSTHIT f=(\d+) team=(\d+)")
 MINUTES = (3, 6, 9, 12, 15, 20, 25)

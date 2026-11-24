@@ -185,9 +185,10 @@ function widget:UnitFinished(unitID, unitDefID, teamID)
 		end
 		local md = ud.moveDef and ud.moveDef.name or ""
 		local sea = (ud.minWaterDepth or 0) > 0 or (md:find("boat") ~= nil) or (md:find("uboat") ~= nil)
-		Spring.Echo(string.format("[REPLAY] BUILT f=%d team=%d %s m=%d tl=%d air=%d sea=%d static=%d builder=%d armed=%d range=%d fac=%d",
+		local bx, _, bz = Spring.GetUnitPosition(unitID)
+		Spring.Echo(string.format("[REPLAY] BUILT f=%d team=%d %s m=%d tl=%d air=%d sea=%d static=%d builder=%d armed=%d range=%d fac=%d x=%d z=%d",
 			Spring.GetGameFrame(), teamID, ud.name, ud.metalCost, tl, ud.canFly and 1 or 0, sea and 1 or 0,
-			(ud.canMove and not ud.isFactory) and 0 or 1, ud.isBuilder and 1 or 0, #(ud.weapons or {}) > 0 and 1 or 0, range, ud.isFactory and 1 or 0))
+			(ud.canMove and not ud.isFactory) and 0 or 1, ud.isBuilder and 1 or 0, #(ud.weapons or {}) > 0 and 1 or 0, range, ud.isFactory and 1 or 0, bx or -1, bz or -1))
 	end
 end
 
