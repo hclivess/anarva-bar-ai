@@ -52,6 +52,8 @@ const bool F_HEIGHTSQUAD = false; // core switch: squad units stand at their ran
 const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
 const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 const bool F_COMMFOG = false;   // commander danger also counts the enemy strength we believe exists but can't see, from their centre
+const bool F_BUILDERSAFE = false; // constructors leave a job when (1-P) x job - P x own cost is worth less than assisting a factory
+const bool F_HOLDALL = false;   // the just-in-time defence covers every constructor and structure, not only extractors
 const bool F_STORAGE = false;   // reclaims only start when the metal fits; metal storage built when held-back reclaims are worth more than it costs
 const bool F_ENGAGE = false;    // core switch: gathering squads fight enemies inside their own sight that they can beat (owner saw a raider pace past a lone pawn)
 const bool F_TURN = false;      // travel times include turning (turn rate, arcs) and acceleration, not distance/top speed
@@ -588,7 +590,15 @@ void OnTaskRemoved(IUnitTask@ task)
 
 void Update()
 {
-	const array<CCircuitUnit@>@ mexes = Economist::mexes;
+	// assets to defend: extractors, or (F_HOLDALL) every constructor and structure of ours
+	array<CCircuitUnit@> mexes;
+	if (F_HOLDALL) {
+		const array<CCircuitUnit@>@ own = AiGetTeamUnits();
+		for (uint k = 0; k < own.length(); ++k) {
+			const CCircuitDef@ d = own[k].circuitDef;
+			if (!d.IsMobile() || (d.IsRoleAny(Unit::Role::BUILDER.mask) && own[k] !is commander)) mexes.insertLast(own[k]);
+		}
+	} else mexes = Economist::mexes;
 	const uint M = mexes.length();
 	if (M == 0) return;
 	array<AIFloat3> mp(M);
@@ -3208,6 +3218,7 @@ float CommFog(const AIFloat3& in p, float tHome, float seenThreat, float seenSpe
 	return dist / AiMax(1.f, sp) <= tHome ? hidden : 0.f;
 }
 float commDanger = 0.f, commCover = 0.f, commDps = 0.f;
+CCircuitUnit@ riskUnit = null;  // whose danger is being measured (the commander, or any builder)
 void CommForces(const AIFloat3& in p, float tHome)
 {
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
@@ -3227,28 +3238,71 @@ void CommForces(const AIFloat3& in p, float tHome)
 		if (fog > 0.f) {
 			commDanger += fog;
 			// its damage at the seen damage-per-threat, or ours if nothing is seen
-			commDps += fog * (seenT > 0.f ? perThreatDps / seenT : commander.circuitDef.surfThrDmg / AiMax(1.f, commander.circuitDef.threat));
+			commDps += fog * (seenT > 0.f ? perThreatDps / seenT : riskUnit.circuitDef.surfThrDmg / AiMax(1.f, riskUnit.circuitDef.threat));
 		}
 	}
-	commCover = commander.circuitDef.power;
+	commCover = riskUnit.circuitDef.power;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	for (uint i = 0; i < all.length(); ++i) {
 		CCircuitUnit@ u = all[i];
 		const CCircuitDef@ d = u.circuitDef;
-		if (u is commander || d.power <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
+		if (u is riskUnit || d.power <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
 		const float dist = u.GetPos(ai.frame).distance2D(p);
 		if (d.IsMobile() ? (MoveTime(d, dist) <= tHome) : (dist <= d.GetMaxRange()))
 			commCover += d.power;
 	}
 }
-float CommPDeath(const AIFloat3& in p, float tHome)
+float RiskPDeath(const AIFloat3& in p, float tHome)
 {
 	CommForces(p, tHome);
 	const float d2 = commDanger * commDanger, c2 = commCover * commCover;
 	const float lose = d2 / AiMax(1e-3f, d2 + c2);  // the fight there goes against us
 	// ...and it can't walk out: time to burn through its health vs time back to cover
-	const float tKill = commander.circuitDef.health / AiMax(1e-3f, commDps);
+	const float tKill = riskUnit.circuitDef.health / AiMax(1e-3f, commDps);
 	return lose * tHome / AiMax(1e-3f, tHome + tKill);
+}
+float CommPDeath(const AIFloat3& in p, float tHome) { @riskUnit = commander; return RiskPDeath(p, tHome); }
+float UnitPDeath(CCircuitUnit@ u, const AIFloat3& in p, float tHome) { @riskUnit = u; return RiskPDeath(p, tHome); }
+
+/*
+ * Builder safety (owner: "you let your builders be decimated, no reaction"). Every constructor weighs its job
+ * like the commander does, with its own stakes: staying is worth (1-P) x job value - P x its own cost; the safe
+ * alternative is assisting the factory it reaches soonest (its build power on our income for the span of that
+ * job). It leaves only when staying is worth less. P is the same fight-and-escape estimate as the commander's.
+ */
+int builderEvacs = 0;
+array<IUnitTask@> safeTasks;
+void BuilderSafeUpdate()
+{
+	if (!F_BUILDERSAFE) return;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	const float income = aiEconomyMgr.metal.income;
+	const float bp = AiMax(1.f, aiBuilderMgr.GetBuildPower());
+	for (uint i = 0; i < all.length(); ++i) {
+		CCircuitUnit@ u = all[i];
+		const CCircuitDef@ d = u.circuitDef;
+		if (u is commander || !d.IsMobile() || !d.IsRoleAny(Unit::Role::BUILDER.mask) || d.buildSpeed <= 0.f) continue;
+		if (u.task !is null && safeTasks.findByRef(u.task) >= 0) continue;  // already on its safe job
+		const AIFloat3 c = u.GetPos(ai.frame);
+		CCircuitUnit@ fac = FactoryReachedSoonest(c, d);
+		if (fac is null) continue;
+		const float tHome = MoveTime(d, fac.GetPos(ai.frame).distance2D(c));
+		const float P = UnitPDeath(u, c, tHome);
+		if (P <= 0.f) continue;
+		IBuilderTask@ bt = cast<IBuilderTask>(u.task);
+		const float jobV = (bt !is null && bt.buildDef !is null) ? Brain::Economist::MetalValue(bt.buildDef) : 0.f;
+		const float own = Brain::Economist::MetalValue(d);
+		const float stay = (1.f - P) * jobV - P * own;
+		const float safe = d.buildSpeed / bp * income * 20.f;  // its share of our spending over the job span (Guard timeout)
+		if (stay >= safe) continue;
+		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, 20 * SECOND));
+		if (g is null) continue;
+		safeTasks.insertLast(g);
+		aiBuilderMgr.AssignTask(u, g);
+		++builderEvacs;
+	}
+	for (int k = int(safeTasks.length()) - 1; k >= 0; --k)
+		if (safeTasks[k] is null || safeTasks[k].GetUnits().length() == 0) safeTasks.removeAt(k);
 }
 float GameValue()
 {
@@ -3501,6 +3555,8 @@ void Update()  // every 30 frames
 		Storage::Update();
 	if (F_COMMGUARD && ai.frame % (2 * SECOND) < SECOND)
 		CommGuardUpdate();
+	if (F_BUILDERSAFE && ai.frame % (2 * SECOND) < SECOND)
+		BuilderSafeUpdate();
 
 	if (ai.frame % MINUTE < SECOND) {
 		if (commander !is null) {
