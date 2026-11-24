@@ -2027,6 +2027,91 @@ index a16e2e21..56cfb9c9 100644
  		if (allFactories[aId].count < allFactories[bId].count) {
  			return true;
  		} else if (allFactories[aId].count > allFactories[bId].count) {
+diff --git a/src/circuit/unit/action/DGunAction.cpp b/src/circuit/unit/action/DGunAction.cpp
+index b35cc1bc..8a1b163b 100644
+--- a/src/circuit/unit/action/DGunAction.cpp
++++ b/src/circuit/unit/action/DGunAction.cpp
+@@ -11,6 +11,8 @@
+ #include "module/EconomyManager.h"
+ #include "CircuitAI.h"
+ #include "util/Utils.h"
++#include "util/AnarvaSwitches.h"
++#include "unit/CircuitWDef.h"
+ 
+ #include "spring/SpringCallback.h"
+ #include "spring/SpringMap.h"
+@@ -112,6 +114,58 @@ void CDGunAction::Update(CCircuitAI* circuit)
+ 		}
+ 	}
+ 
++	if (anarva::switches.decide && (bestTarget != nullptr)) {
++		/*
++		 * Anarva (Vritrasura108 #39/#75): the D-gun destroys everything along its line, and firing reveals a cloaked
++		 * commander. A shot is worth the enemy metal within its blast width along the line to each candidate; hold
++		 * while that value is still rising (enemies walking into the line), fire when it stops rising, or at once
++		 * when the commander is being hurt.
++		 */
++		const float width = (cdef->GetDGunDef() != nullptr) ? std::max(SQUARE_SIZE * 1.f, cdef->GetDGunDef()->GetAoe()) : SQUARE_SIZE * 2.f;
++		CEnemyInfo* lineTarget = nullptr;
++		float lineValue = 0.f;
++		for (int tId : enemies) {
++			CEnemyInfo* t = circuit->GetEnemyInfo(tId);
++			if ((t == nullptr) || t->NotInRadarAndLOS() || (t->GetCircuitDef() == nullptr) || ((t->GetCircuitDef()->GetCategory() & canTargetCat) == 0)) {
++				continue;
++			}
++			AIFloat3 dir = t->GetPos() - pos;
++			dir.y = 0.f;
++			if (dir.LengthNormalize() <= 0.f) {
++				continue;
++			}
++			float v = 0.f;
++			for (int oId : enemies) {
++				CEnemyInfo* o = circuit->GetEnemyInfo(oId);
++				if ((o == nullptr) || o->NotInRadarAndLOS() || (o->GetCircuitDef() == nullptr)) {
++					continue;
++				}
++				AIFloat3 d = o->GetPos() - pos;
++				const float along = d.x * dir.x + d.z * dir.z;
++				if ((along < 0.f) || (along > range)) {
++					continue;
++				}
++				const float side = std::fabs(d.x * dir.z - d.z * dir.x);
++				if (side <= width) {
++					v += o->GetCircuitDef()->GetCostM();
++				}
++			}
++			if (v > lineValue) {
++				lineValue = v;
++				lineTarget = t;
++			}
++		}
++		const float health = unit->GetUnit()->GetHealth();
++		const bool hurt = (prevHealth >= 0.f) && (health < prevHealth);
++		const bool rising = lineValue > prevValue;
++		prevValue = lineValue;
++		prevHealth = health;
++		if ((lineTarget == nullptr) || (rising && !hurt)) {
++			return;
++		}
++		bestTarget = lineTarget;
++		prevValue = 0.f;
++	}
+ 	if (bestTarget != nullptr) {
+ 		unit->ManualFire(bestTarget, frame + FRAMES_PER_SEC * 5);
+ 		unit->ClearTarget();
+diff --git a/src/circuit/unit/action/DGunAction.h b/src/circuit/unit/action/DGunAction.h
+index 834905fe..591df5f1 100644
+--- a/src/circuit/unit/action/DGunAction.h
++++ b/src/circuit/unit/action/DGunAction.h
+@@ -22,6 +22,8 @@ public:
+ private:
+ 	float range;
+ 	unsigned int updCount;
++	float prevValue = 0.f;   // Anarva: line value at the previous check (fire once it stops rising)
++	float prevHealth = -1.f; // Anarva: commander health at the previous check (fire at once when hurt)
+ };
+ 
+ } // namespace circuit
 diff --git a/src/circuit/util/AnarvaDecide.h b/src/circuit/util/AnarvaDecide.h
 new file mode 100644
 index 00000000..6e04da05
