@@ -46,6 +46,8 @@ const bool F_STAKE = false;     // trade estimate weighted by the army at stake 
 const bool F_COMMZONE = false;  // commander works only inside the zone where nothing of ours has died (with F_COMMSAFE)
 const bool F_REZ = false;       // rez-bot fleet sized to the wreck metal on the map
 const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
+const bool F_HOLD = false;      // just-in-time extractor defence: meet each incoming enemy group at the extractor it is heading for (C++ bridge)
+const bool F_COMMGUARD = false; // commander goes home when a known force it can't survive could reach it first (C++ bridge)
 
 CCircuitDef@ Def(const string& in name)
 {
@@ -200,6 +202,7 @@ void OnTaskAdded(IUnitTask@ task)
 void OnTaskRemoved(IUnitTask@ task)
 {
 	ForgetTask(task);
+	Hold::OnTaskRemoved(task);
 	IFighterTask@ f = cast<IFighterTask>(task);
 	if (f is null)
 		return;
@@ -309,6 +312,125 @@ void Update(bool jamAlert)
 }  // namespace Army
 
 /* ======================================================================== */
+// ---- Hold: just-in-time defence of extractors (needs the C++ bridge) ----
+// Each armed enemy is assigned to the extractor it is closing on soonest (its velocity says where it goes).
+// An extractor with incoming threat T gets a hold task sized to T, filled by the units that can be there
+// before the enemy, nearest first. If those units cannot reach T in time we do not commit: feeding units
+// one by one into a lost fight costs more than the extractor. When nothing is coming any more, release.
+namespace Hold {
+
+class SHold { CCircuitUnit@ mex; IUnitTask@ task; float need; }
+array<SHold@> holds;
+uint opened = 0, skipped = 0;
+
+float Power(const array<CCircuitUnit@>@ units)
+{
+	float p = 0.f;
+	for (uint i = 0; i < units.length(); ++i) p += units[i].circuitDef.power;
+	return p;
+}
+
+int Find(CCircuitUnit@ mex)
+{
+	for (uint i = 0; i < holds.length(); ++i) if (holds[i].mex is mex) return int(i);
+	return -1;
+}
+
+void OnTaskRemoved(IUnitTask@ task)
+{
+	for (uint i = 0; i < holds.length(); ++i) if (holds[i].task is task) { holds.removeAt(i); return; }
+}
+
+void Update()
+{
+	const array<CCircuitUnit@>@ mexes = Economist::mexes;
+	const uint M = mexes.length();
+	if (M == 0) return;
+	array<AIFloat3> mp(M);
+	for (uint m = 0; m < M; ++m) mp[m] = mexes[m].GetPos(ai.frame);
+
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	array<float> incoming(M, 0.f), eta(M, 1e9f);
+	for (uint i = 0; i < n; ++i) {
+		CCircuitDef@ d = ed[i];
+		if (d is null || !d.IsMobile() || d.threat <= 0.f) continue;
+		int best = -1; float bestEta = 1e9f;
+		for (uint m = 0; m < M; ++m) {
+			const float dist = ep[i].distance2D(mp[m]);
+			float t;
+			if (dist <= d.GetMaxRange()) t = 0.f;  // already shooting it
+			else {
+				const float closing = ((mp[m].x - ep[i].x) * ev[i].x + (mp[m].z - ep[i].z) * ev[i].z) / dist * 30.f;  // elmo/s
+				if (closing <= 0.f) continue;
+				t = (dist - d.GetMaxRange()) / closing;
+			}
+			if (t < bestEta) { bestEta = t; best = int(m); }
+		}
+		if (best < 0) continue;
+		incoming[best] += d.threat;
+		eta[best] = AiMin(eta[best], bestEta);
+	}
+
+	// release holds whose extractor is gone or no longer threatened
+	for (int h = int(holds.length()) - 1; h >= 0; --h) {
+		int m = -1;
+		for (uint k = 0; k < M; ++k) if (mexes[k] is holds[h].mex) { m = int(k); break; }
+		if (m < 0 || incoming[m] <= 0.f) {
+			aiMilitaryMgr.AbortTask(holds[h].task);  // OnTaskRemoved drops it from the list
+		}
+	}
+
+	// candidate responders: our armed ground/hover units on ordinary fighter tasks
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	array<CCircuitUnit@> free;
+	for (uint i = 0; i < all.length(); ++i) {
+		CCircuitUnit@ u = all[i];
+		const CCircuitDef@ d = u.circuitDef;
+		if (!d.IsMobile() || d.power <= 0.f || d.IsAbleToFly() || u is commander) continue;
+		if (d.IsRoleAny(Unit::Role::BUILDER.mask | Unit::Role::SCOUT.mask)) continue;
+		if (u.task is null || u.task.GetType() != Task::Type::FIGHTER) continue;
+		bool held = false;
+		for (uint h = 0; h < holds.length() && !held; ++h) held = holds[h].task is u.task;
+		if (!held) free.insertLast(u);
+	}
+
+	for (uint m = 0; m < M; ++m) {
+		if (incoming[m] <= 0.f) continue;
+		const int h = Find(mexes[m]);
+		float have = (h >= 0) ? Power(holds[h].task.GetUnits()) : 0.f;
+		if (have >= incoming[m]) continue;
+		// who can be there before the enemy, nearest first
+		array<float> arr; array<uint> idx;
+		for (uint i = 0; i < free.length(); ++i) {
+			if (free[i] is null) continue;
+			const float t = free[i].GetPos(ai.frame).distance2D(mp[m]) / AiMax(1.f, free[i].circuitDef.speed);
+			if (t > eta[m]) continue;
+			uint k = 0; while (k < arr.length() && arr[k] < t) ++k;
+			arr.insertAt(k, t); idx.insertAt(k, i);
+		}
+		float add = 0.f; uint take = 0;
+		while (take < idx.length() && have + add < incoming[m]) { add += free[idx[take]].circuitDef.power; ++take; }
+		if (have + add < incoming[m]) { ++skipped; continue; }  // cannot win it in time: do not feed units in
+		IUnitTask@ task;
+		if (h >= 0) @task = holds[h].task;
+		else {
+			@task = aiMilitaryMgr.EnqueueDefendAt(mp[m], incoming[m]);
+			SHold hd; @hd.mex = mexes[m]; @hd.task = task; hd.need = incoming[m];
+			holds.insertLast(hd); ++opened;
+		}
+		for (uint k = 0; k < take; ++k) {
+			aiMilitaryMgr.AssignTask(free[idx[k]], task);
+			@free[idx[k]] = null;
+		}
+	}
+}
+
+string Status() { return "holds=" + holds.length() + " opened=" + opened + " skipped=" + skipped; }
+
+}  // namespace Hold
+
+
 namespace Recycler {
 
 array<CCircuitDef@> lowEnergyDefs;   // solar / wind / tidal
@@ -732,8 +854,8 @@ void OnFinished(CCircuitUnit@ unit)
 // Smoke test of the C++ bridge (enemy list, groups, terrain, threat, height-aware range).
 void BridgeLog()
 {
-	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec; array<int> ef;
-	const uint n = AiGetEnemies(ep, ev, ed, ec, ef);
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
 	float known = 0.f; uint los = 0;
 	for (uint i = 0; i < n; ++i) { known += ec[i]; if ((ef[i] & 1) != 0) ++los; }
 	array<AIFloat3> gp; array<float> gc, gt;
@@ -743,7 +865,12 @@ void BridgeLog()
 	string s = "[ANV] bridge enemies=" + n + " los=" + los + " knownM=" + int(known) + " groups=" + g
 		+ " biggest=" + int(big) + "@(" + int(bigPos.x) + "," + int(bigPos.z) + ") own=" + AiGetTeamUnits().length()
 		+ " elev[min,max]=" + int(AiMinElevation()) + "," + int(AiMaxElevation());
-	if (HasBase()) s += " baseElev=" + int(AiGetElevation(basePos.x, basePos.z));
+	if (HasBase()) s += " baseElev=" + int(AiGetElevation(basePos.x, basePos.z)) + " baseLOS=" + AiIsInLOS(basePos);
+	array<AIFloat3> wp; array<float> wm; array<bool> wr;
+	const uint w = AiGetWrecks(wp, wm, wr);
+	float wreckM = 0.f; for (uint i = 0; i < w; ++i) wreckM += wm[i];
+	float hurt = 0.f; uint building = 0; for (uint i = 0; i < n; ++i) { hurt += 1.f - eh[i]; if (eb[i] < 1.f) ++building; }
+	s += " wrecks=" + w + " wreckM=" + int(wreckM) + " enemyHurt=" + F1(hurt) + " enemyBuilding=" + building;
 	CCircuitDef@ arty = ai.GetCircuitDef("armmart");
 	if (arty !is null) s += " mart range flat/+100/-100=" + int(arty.GetRangeAt(0)) + "/" + int(arty.GetRangeAt(-100)) + "/" + int(arty.GetRangeAt(100));
 	if (commander !is null) s += " commThreat=" + F1(aiThreat.GetThreatAt(commander, commander.GetPos(ai.frame)));
@@ -2433,6 +2560,15 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 	IBuilderTask@ bt = cast<IBuilderTask>(task);
 	if (bt is null)
 		return task;
+	if (F_COMMGUARD) {
+		const AIFloat3 bp = bt.GetBuildPos();
+		CCircuitUnit@ home = NearestFactory(bp);
+		const float tHome = home.GetPos(ai.frame).distance2D(bp) / AiMax(1.f, comm.circuitDef.speed);
+		if (CommExposure(bp, tHome) <= 0.f)
+			return task;
+		++commRedirects;
+		return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, NearestFactory(comm.GetPos(ai.frame)), true, 20 * SECOND));
+	}
 	if (F_COMMZONE) {
 		/*
 		 * The commander is the game. It only takes work closer to home than the nearest place where we
@@ -2460,6 +2596,65 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 	++commRedirects;
 	CCircuitUnit@ fac = Brain::Intel::allFactories[AiRandom(0, int(Brain::Intel::allFactories.length()) - 1)];
 	return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, 30 * SECOND));
+}
+
+/*
+ * Commander guard (C++ bridge). Losing the commander loses the game, so the only question is: could a
+ * known enemy force that out-guns what can protect it get to it before it gets home? Enemies count
+ * by their top speed, not their current heading (they can turn); protectors count when they can reach
+ * the commander in the same time. If danger exceeds protection the commander goes home now. The same
+ * test is run on a build site before the commander walks to it. No zone, no distance limit.
+ */
+IUnitTask@ commGuardTask = null;
+int commGuards = 0;
+
+CCircuitUnit@ NearestFactory(const AIFloat3& p)
+{
+	CCircuitUnit@ best = null; float bd = 1e9f;
+	for (uint i = 0; i < Brain::Intel::allFactories.length(); ++i) {
+		const float d = Brain::Intel::allFactories[i].GetPos(ai.frame).distance2D(p);
+		if (d < bd) { bd = d; @best = Brain::Intel::allFactories[i]; }
+	}
+	return best;
+}
+
+// enemy threat able to reach p within the commander's trip home from p, minus what can cover it there
+float CommExposure(const AIFloat3& p, float tHome)
+{
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	float danger = 0.f;
+	for (uint i = 0; i < n; ++i) {
+		CCircuitDef@ d = ed[i];
+		if (d is null || d.threat <= 0.f || (ef[i] & 4) != 0) continue;
+		const float reach = AiMax(0.f, ep[i].distance2D(p) - d.GetMaxRange());
+		if (!d.IsMobile()) { if (reach <= 0.f) danger += d.threat; continue; }
+		if (reach / AiMax(1.f, d.speed) <= tHome) danger += d.threat * eh[i];
+	}
+	float cover = commander.circuitDef.power;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) {
+		CCircuitUnit@ u = all[i];
+		const CCircuitDef@ d = u.circuitDef;
+		if (u is commander || d.power <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
+		const float dist = u.GetPos(ai.frame).distance2D(p);
+		if (d.IsMobile() ? (dist / AiMax(1.f, d.speed) <= tHome) : (dist <= d.GetMaxRange()))
+			cover += d.power;
+	}
+	return danger - cover;
+}
+
+void CommGuardUpdate()
+{
+	if (commander is null || Brain::Intel::allFactories.length() == 0) return;
+	if (commGuardTask !is null && commander.task is commGuardTask) return;
+	const AIFloat3 c = commander.GetPos(ai.frame);
+	CCircuitUnit@ home = NearestFactory(c);
+	const float tHome = home.GetPos(ai.frame).distance2D(c) / AiMax(1.f, commander.circuitDef.speed);
+	if (CommExposure(c, tHome) <= 0.f) return;
+	@commGuardTask = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, home, true, 20 * SECOND));
+	aiBuilderMgr.AssignTask(commander, commGuardTask);
+	++commGuards;
 }
 
 void OnUnitDestroyed(CCircuitUnit@ unit)
@@ -2510,18 +2705,23 @@ void Update()  // every 30 frames
 		Redirect::Update();
 	if (F_STRAT && ai.frame % (10 * SECOND) < SECOND)
 		Strategic::Update(Intel::jamAlert);
+	if (F_HOLD && ai.frame % (3 * SECOND) < SECOND)
+		Hold::Update();
+	if (F_COMMGUARD && ai.frame % (2 * SECOND) < SECOND)
+		CommGuardUpdate();
 
 	if (ai.frame % MINUTE < SECOND) {
 		if (commander !is null) {
 			const AIFloat3 cp = commander.GetPos(ai.frame);
 			AiLog("[ANV] commander at (" + int(cp.x) + "," + int(cp.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(cp) : -1.f)
-				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects);
+				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects + " guards=" + commGuards);
 		}
 		AiLog("[ANV] eco t=" + Minute() + "m workers=" + aiBuilderMgr.GetWorkerCount() + " mex=" + Economist::mexes.length()
 			+ " M inc=" + F1(aiEconomyMgr.metal.income) + " M " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
 			+ " E inc=" + F1(aiEconomyMgr.energy.income) + " E " + int(aiEconomyMgr.energy.current) + "/" + int(aiEconomyMgr.energy.storage)
 			+ " stall=" + aiEconomyMgr.isEnergyStalling + " expandWant=" + F1(Director::expandWant) + " bpTarget=" + F1(aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio));
 		Intel::BridgeLog();
+		if (F_HOLD) AiLog("[ANV] hold " + Hold::Status());
 
 		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | groundPow=" + F1(Army::groundPower) + " units=" + Army::ground.length()
 			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " waves=" + Army::waves + " recalls=" + Army::recalls + " ft=" + Army::Hist()
