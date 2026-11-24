@@ -1,6 +1,6 @@
 """Find and download high-skill public BAR replays that this install can play back.
 
-usage: python fetch_replays.py <out_dir> [--preset duel] [--min-skill 40] [--want 20] [--pages 60]
+usage: python fetch_replays.py <out_dir> [--preset duel|team|ffa|teamffa] [--team-size N] [--min-skill 40] [--want 20] [--pages 60]
 Keeps replays whose engine is installed locally and whose game version has a local rapid package,
 with every player's OpenSkill >= --min-skill. Writes <out_dir>/index.json.
 """
@@ -48,6 +48,7 @@ def main():
     ap.add_argument("--min-skill", type=float, default=40.0)
     ap.add_argument("--want", type=int, default=20)
     ap.add_argument("--pages", type=int, default=60)
+    ap.add_argument("--team-size", type=int, default=0, help="players per ally team (2 = 2v2, 8 = 8v8); 0 = any")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     engines, games = local_versions()
@@ -65,6 +66,8 @@ def main():
         for it in items:
             if it["id"] in have or it.get("durationMs", 0) < 8 * 60 * 1000:
                 continue
+            if args.team_size and any(len(a.get("Players", [])) != args.team_size for a in it.get("AllyTeams", [])):
+                continue  # the list already carries the teams: skip other sizes without a detail request
             checked += 1
             d = get_json(f"{API}/{it['id']}")
             time.sleep(0.25)
@@ -79,7 +82,9 @@ def main():
                 with urllib.request.urlopen(req, timeout=120) as r, open(dst, "wb") as f:
                     f.write(r.read())
             winners = [p["name"] for a in d["AllyTeams"] if a.get("winningTeam") for p in a["Players"]]
-            rec = {"id": d["id"], "file": d["fileName"], "map": d["Map"]["scriptName"], "minutes": round(d["durationMs"] / 60000, 1),
+            sizes = [len(a.get("Players", [])) for a in d.get("AllyTeams", [])]
+            fmt = ("ffa" if len(sizes) > 2 else "v".join(str(x) for x in sizes)) if sizes else "?"
+            rec = {"id": d["id"], "file": d["fileName"], "format": fmt, "map": d["Map"]["scriptName"], "minutes": round(d["durationMs"] / 60000, 1),
                    "players": [(p["name"], skill(p), p.get("faction")) for p in players], "winners": winners}
             index.append(rec)
             have.add(d["id"])

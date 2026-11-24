@@ -11,3 +11,4 @@ dist/
 build/
 runs/
 core-bin/
+ref/lib/**/*.sdfz
