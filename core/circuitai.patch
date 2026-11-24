@@ -4479,7 +4479,7 @@ index 981b94f9..16b5c6df 100644
  
  } // namespace circuit
 diff --git a/src/circuit/task/fighter/FighterTask.cpp b/src/circuit/task/fighter/FighterTask.cpp
-index 0400f8d6..230affac 100644
+index 0400f8d6..0e6c74af 100644
 --- a/src/circuit/task/fighter/FighterTask.cpp
 +++ b/src/circuit/task/fighter/FighterTask.cpp
 @@ -6,6 +6,8 @@
@@ -4518,7 +4518,8 @@ index 0400f8d6..230affac 100644
 +		if (cdef->IsRoleHeavy() && (healthPerc < 1.f) && !unit->IsAttrNoRepair()  /* Anarva: repair costs no metal; any damage */) {
  			circuit->GetBuilderManager()->Enqueue(TaskB::Repair(IBuilderTask::Priority::NOW, unit));
  		}
- 		if (healthPerc < cdef->GetSelfDHP()) {
+-		if (healthPerc < cdef->GetSelfDHP()) {
++		if ((healthPerc < cdef->GetSelfDHP()) || anarva::ShouldSelfD(circuit, unit)) {
  			unit->CmdSelfD(true);
  		}
  		return;
@@ -5365,7 +5366,7 @@ index 5f061310..bae1c185 100644
  }
  
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a922..0754015e 100644
+index a0f5a922..6a8a9bdf 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -5504,7 +5505,7 @@ index a0f5a922..0754015e 100644
  			if (mr > maxRange[static_cast<RangeT>(maxRangeType)]) {
  				maxRangeType = RangeType::LAND;
  			}
-@@ -568,6 +595,17 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -568,6 +595,26 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  	}
  
  	isAttacker = (airDps > .1f) || (surfDps > .1f) || (waterDps > .1f);
@@ -5518,11 +5519,20 @@ index a0f5a922..0754015e 100644
 +			delete dmg;
 +			delete dwd;
 +		}
++		WeaponDef* swd = def->GetSelfDExplosion();
++		if (swd != nullptr) {
++			selfdAoe = swd->GetAreaOfEffect();
++			Damage* dmg = swd->GetDamage();
++			const std::vector<float>& types = dmg->GetTypes();
++			selfdDamage = types.empty() ? 0.f : types[0];
++			delete dmg;
++			delete swd;
++		}
 +	}
  	if (IsMobile() && !IsAttacker()) {  // mobile bomb?
  		WeaponDef* wd = def->GetDeathExplosion();
  		aoe = wd->GetAreaOfEffect();
-@@ -619,11 +657,15 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -619,11 +666,15 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  	//       health /= def->GetArmoredMultiple();
  	const float dmg = std::max(std::max(waterDmg, surfDmg), airDmg);
  	const float dps = std::max(std::max(waterDps, surfDps), airDps);
@@ -5543,7 +5553,7 @@ index a0f5a922..0754015e 100644
  #if 0
  	circuit->LOG("THREAT %s | def=%f air=%f surf=%f water=%f", def->GetName(), defThreat,
  			airThrDmg * sqrtf(health + maxShield * SHIELD_MOD),
-@@ -843,3 +885,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
+@@ -843,3 +894,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
  }
  
  } // namespace circuit
@@ -5583,7 +5593,7 @@ index a0f5a922..0754015e 100644
 +
 +} // namespace circuit
 diff --git a/src/circuit/unit/CircuitDef.h b/src/circuit/unit/CircuitDef.h
-index 0247bcb8..fa83a192 100644
+index 0247bcb8..1fd38062 100644
 --- a/src/circuit/unit/CircuitDef.h
 +++ b/src/circuit/unit/CircuitDef.h
 @@ -249,6 +249,12 @@ public:
@@ -5612,13 +5622,15 @@ index 0247bcb8..fa83a192 100644
  
  private:
  	static RoleName* roleNames;
-@@ -414,11 +420,26 @@ private:
+@@ -414,11 +420,28 @@ private:
  	float waterThrDmg, waterThrMod;  // underwater enemy damage
  	ThrDmgArray thrDmgMod;  // mod by role
  	float aoe;  // radius
 +public:
 +	float deathAoe = 0.f;     // death explosion radius (elmos), every def
 +	float deathDamage = 0.f;  // death explosion default damage
++	float selfdAoe = 0.f;     // Anarva: self-destruct explosion radius
++	float selfdDamage = 0.f;  // Anarva: self-destruct explosion default damage
 +	float turnRate = 0.f;     // degrees per second (engine: angle units per frame)
 +	bool turnInPlace = true;  // false: turns along an arc while moving (most vehicles)
 +	float accel = 0.f;        // elmos per second^2
@@ -6140,10 +6152,10 @@ index 037c7d1a..7113094b 100644
  		return .0f;
 diff --git a/src/circuit/util/AnarvaDecide.h b/src/circuit/util/AnarvaDecide.h
 new file mode 100644
-index 00000000..203886eb
+index 00000000..f15cb817
 --- /dev/null
 +++ b/src/circuit/util/AnarvaDecide.h
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,175 @@
 +/*
 + * AnarvaDecide.h
 + *
@@ -6224,6 +6236,60 @@ index 00000000..203886eb
 +	return tKill > tHome;
 +}
 +
++
++// Enemy value a blast destroys around pos: enemies still inside the radius after `delay` seconds (they move by
++// speed x delay) each lose min(1, damage / health) of their metal; our own units inside count against it.
++inline float BlastValue(CCircuitAI* circuit, CCircuitUnit* self, const springai::AIFloat3& pos, float aoe, float damage, float delay)
++{
++	if ((aoe <= 0.f) || (damage <= 0.f)) {
++		return 0.f;
++	}
++	float v = 0.f;
++	for (auto& kv : circuit->GetEnemyInfos()) {
++		CEnemyInfo* e = kv.second;
++		CCircuitDef* ed = e->GetCircuitDef();
++		if ((ed == nullptr) || !e->IsInRadarOrLOS()) {
++			continue;
++		}
++		const float reach = aoe - ed->GetSpeed() * delay;
++		if ((reach > 0.f) && (e->GetPos().SqDistance2D(pos) <= reach * reach)) {
++			v += std::min(1.f, damage / std::max(1.f, e->GetHealth())) * ed->GetCostM();
++		}
++	}
++	const int frame = circuit->GetLastFrame();
++	for (auto& kv : circuit->GetTeamUnits()) {
++		CCircuitUnit* u = kv.second;
++		if ((u == self) || (u->GetPos(frame).SqDistance2D(pos) > aoe * aoe)) {
++			continue;
++		}
++		v -= std::min(1.f, damage / std::max(1.f, u->GetUnit()->GetHealth())) * u->GetCircuitDef()->GetCostM();
++	}
++	return v;
++}
++
++// Self-destruct (owner, #79: Fiends self-destruct for extra damage). Doomed (losing here and too slow to escape):
++// self-destruct when its self-d blast destroys more than its normal death blast would. Otherwise only when the blast
++// destroys more than what is left of the unit (its metal x health share).
++inline bool ShouldSelfD(CCircuitAI* circuit, CCircuitUnit* unit)
++{
++	CCircuitDef* cdef = unit->GetCircuitDef();
++	if ((cdef->selfdDamage <= 0.f) || !cdef->IsMobile()) {
++		return false;
++	}
++	const int frame = circuit->GetLastFrame();
++	const springai::AIFloat3& pos = unit->GetPos(frame);
++	const float selfd = BlastValue(circuit, unit, pos, cdef->selfdAoe, cdef->selfdDamage, float(cdef->GetSelfDCountdown()));
++	if (selfd <= 0.f) {
++		return false;
++	}
++	const float ours = circuit->GetInflMap()->GetAllyInflAt(pos);
++	const float theirs = circuit->GetInflMap()->GetEnemyInflAt(pos);
++	const bool doomed = (theirs >= ours) && !ShouldRetreat(circuit, unit);
++	if (doomed) {
++		return selfd > BlastValue(circuit, unit, pos, cdef->deathAoe, cdef->deathDamage, 0.f);
++	}
++	return selfd > cdef->GetCostM() * unit->GetHealthPercent();
++}
 +
 +// Reach of the cheapest armed structure this builder can make (what one turret holds), 0 if none
 +inline float CheapestTurretReach(CCircuitAI* circuit, const CCircuitDef* builder)

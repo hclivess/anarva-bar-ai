@@ -1245,7 +1245,8 @@ void OrderVision()
 	int best = -1;
 	float bestHeat = cost;
 	for (uint c = 0; c < heat.length(); ++c) {
-		if (heat[c] > bestHeat && !AiIsInLOS(CellCenter(int(c)))) {
+		// a cell whose camera order is still within its lifetime is already being served
+		if (heat[c] > bestHeat && !AiIsInLOS(CellCenter(int(c))) && ai.frame - lastEyesFrame[c] >= OrderLife(eyesDef, CellCenter(int(c)))) {
 			bestHeat = heat[c];
 			best = int(c);
 		}
