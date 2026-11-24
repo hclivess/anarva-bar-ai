@@ -2287,7 +2287,7 @@ index f210b3a1..7a8b88d7 100644
  		if (task != nullptr) {
  			task->AssignTo(unit);
 diff --git a/src/circuit/task/RetreatTask.cpp b/src/circuit/task/RetreatTask.cpp
-index fcc4c984..5e46a6b9 100644
+index fcc4c984..a53f604d 100644
 --- a/src/circuit/task/RetreatTask.cpp
 +++ b/src/circuit/task/RetreatTask.cpp
 @@ -6,6 +6,8 @@
@@ -2299,6 +2299,15 @@ index fcc4c984..5e46a6b9 100644
  #include "map/ThreatMap.h"
  #include "map/InfluenceMap.h"
  #include "module/BuilderManager.h"
+@@ -50,7 +52,7 @@ void CRetreatTask::AssignTo(CCircuitUnit* unit)
+ 	IUnitTask::AssignTo(unit);
+ 
+ 	if (unit->HasDGun()) {
+-		unit->PushDGunAct(new CDGunAction(unit, unit->GetDGunRange() * 0.9f));
++		unit->PushDGunAct(new CDGunAction(unit, unit->GetDGunRange()));
+ 	}
+ 
+ 	CCircuitAI* circuit = manager->GetCircuit();
 @@ -148,7 +150,7 @@ void CRetreatTask::Start(CCircuitUnit* unit)
  				endPos = circuit->GetSetupManager()->GetBasePos();
  			}
@@ -2442,6 +2451,32 @@ index 172d4c26..1e3fa3b2 100644
  					} break;
  					case SBuildInfo::Condition::ALWAYS:
  					default: break;
+diff --git a/src/circuit/task/builder/ConvertTask.cpp b/src/circuit/task/builder/ConvertTask.cpp
+index 1bffeeea..3d906636 100644
+--- a/src/circuit/task/builder/ConvertTask.cpp
++++ b/src/circuit/task/builder/ConvertTask.cpp
+@@ -39,7 +39,7 @@ void CBConvertTask::Update()
+ 	}
+ 
+ 	CEconomyManager* economyMgr = manager->GetCircuit()->GetEconomyManager();
+-	if (economyMgr->GetEnergyCur() < economyMgr->GetEnergyStore() * 0.55f) {
++	if (economyMgr->IsEnergyStalling()) {  // Anarva: a converter only pays from surplus energy (no 55% line)
+ 		manager->AbortTask(this);
+ 	}
+ }
+diff --git a/src/circuit/task/builder/DefenceTask.cpp b/src/circuit/task/builder/DefenceTask.cpp
+index 9d45eb06..ae9a2e78 100644
+--- a/src/circuit/task/builder/DefenceTask.cpp
++++ b/src/circuit/task/builder/DefenceTask.cpp
+@@ -66,7 +66,7 @@ void CBDefenceTask::Update()
+ 	isUrgent = isUnderEnemy;
+ 	if (isUnderEnemy) {
+ 		priority = IBuilderTask::Priority::HIGH;
+-		cost.metal *= 8.f;  // attract more builders
++		// Anarva: no x8 cost inflation; urgency is the HIGH priority rank
+ 	} else {
+ 		priority = IBuilderTask::Priority::NORMAL;
+ 		cost.metal = normalCostM;
 diff --git a/src/circuit/task/builder/EnergyTask.cpp b/src/circuit/task/builder/EnergyTask.cpp
 index 294fb76f..660256bb 100644
 --- a/src/circuit/task/builder/EnergyTask.cpp
@@ -2485,8 +2520,25 @@ index 294fb76f..660256bb 100644
  				if (circuit->GetTerrainManager()->CanBeBuiltAt(buildDef, newPos)) {
  					SetBuildPos(-RgtVector);
  					SetTaskPos(newPos);
+diff --git a/src/circuit/task/builder/GuardTask.cpp b/src/circuit/task/builder/GuardTask.cpp
+index a8950289..44137321 100644
+--- a/src/circuit/task/builder/GuardTask.cpp
++++ b/src/circuit/task/builder/GuardTask.cpp
+@@ -103,8 +103,10 @@ bool CBGuardTask::Execute(CCircuitUnit* unit)
+ //				unit->GetUnit()->RestoreArea(vip->GetPos(circuit->GetLastFrame()), 128.f);
+ //				options = UNIT_COMMAND_OPTION_SHIFT_KEY;
+ //			}
+-			if ((unit->GetCircuitDef()->GetBuildDistance() > 80.f) && (vipPos.SqDistance2D(unitPos) < SQUARE(48.f))) {
+-				AIFloat3 pos = vipPos + (unitPos - vipPos).Normalize2D() * 64.f;
++			// Anarva: standing on the vip (inside its radius) blocks it; step out to its edge when our reach allows (no 80/48/64)
++			const float clear = vip->GetCircuitDef()->GetRadius() + unit->GetCircuitDef()->GetRadius();
++			if ((unit->GetCircuitDef()->GetBuildDistance() > clear) && (vipPos.SqDistance2D(unitPos) < SQUARE(clear))) {
++				AIFloat3 pos = vipPos + (unitPos - vipPos).Normalize2D() * clear;
+ 				CTerrainManager::CorrectPosition(pos);
+ 				unit->CmdMoveTo(pos, options | UNIT_COMMAND_OPTION_RIGHT_MOUSE_KEY, frame + FRAMES_PER_SEC * 60);
+ 				options = UNIT_COMMAND_OPTION_SHIFT_KEY;
 diff --git a/src/circuit/task/builder/MexTask.cpp b/src/circuit/task/builder/MexTask.cpp
-index 602724e9..7c1ba7ea 100644
+index 602724e9..ce0a45f4 100644
 --- a/src/circuit/task/builder/MexTask.cpp
 +++ b/src/circuit/task/builder/MexTask.cpp
 @@ -60,7 +60,7 @@ bool CBMexTask::CanAssignTo(CCircuitUnit* unit) const
@@ -2498,6 +2550,15 @@ index 602724e9..7c1ba7ea 100644
  	{
  		return false;
  	}
+@@ -279,7 +279,7 @@ bool CBMexTask::CheckWaterBlock(CCircuitUnit* unit)
+ 	}
+ 
+ 	const float range = def->GetSonarRadius();
+-	const float testRange = range + 200.0f;  // 200 elmos
++	const float testRange = range;  // Anarva: the sonar's own radius (no +200)
+ 	const AIFloat3& pos = unit->GetPos(circuit->GetLastFrame());
+ 	const float sqPosDist = buildPos.SqDistance2D(pos);
+ 	if (sqPosDist > SQUARE(testRange)) {
 diff --git a/src/circuit/task/builder/RepairTask.cpp b/src/circuit/task/builder/RepairTask.cpp
 index 77c22dd9..352fd9ef 100644
 --- a/src/circuit/task/builder/RepairTask.cpp
@@ -2537,6 +2598,19 @@ index 77c22dd9..352fd9ef 100644
  
  	CAllyUnit* repTarget = (target != nullptr) ? target : circuit->GetFriendlyUnit(targetId);
  	if ((repTarget != nullptr) && (repTarget->GetUnit()->GetHealth() < repTarget->GetUnit()->GetMaxHealth())) {
+diff --git a/src/circuit/task/builder/TerraformTask.cpp b/src/circuit/task/builder/TerraformTask.cpp
+index 8c4b72e4..ca908500 100644
+--- a/src/circuit/task/builder/TerraformTask.cpp
++++ b/src/circuit/task/builder/TerraformTask.cpp
+@@ -67,7 +67,7 @@ void CBTerraformTask::Start(CCircuitUnit* unit)
+ 				return terrainMgr->CanReachAtSafe(unit, p, unit->GetCircuitDef()->GetBuildDistance());
+ 			};
+ 			CCircuitDef* cdef = circuit->GetBuilderManager()->GetTerraDef();
+-			buildPos = terrainMgr->FindBuildSite(cdef, position, 600.0f, facing, predicate);
++			buildPos = terrainMgr->FindBuildSite(cdef, position, unit->GetCircuitDef()->GetBuildDistance(), facing, predicate);  // Anarva: within reach (no 600)
+ 		}
+ 		if (!geom::is_valid(buildPos)) {
+ 			manager->DoneTask(this);
 diff --git a/src/circuit/task/builder/WaitTask.cpp b/src/circuit/task/builder/WaitTask.cpp
 index 7934b918..f180dd3f 100644
 --- a/src/circuit/task/builder/WaitTask.cpp
@@ -2559,6 +2633,19 @@ index 7934b918..f180dd3f 100644
  		if (healthPerc < cdef->GetSelfDHP()) {
  			unit->CmdSelfD(true);
  		}
+diff --git a/src/circuit/task/common/RepairTask.cpp b/src/circuit/task/common/RepairTask.cpp
+index d9c44e83..c0d6d4fb 100644
+--- a/src/circuit/task/common/RepairTask.cpp
++++ b/src/circuit/task/common/RepairTask.cpp
+@@ -177,7 +177,7 @@ CAllyUnit* IRepairTask::FindUnitToAssist(CCircuitUnit* unit)
+ 	const AIFloat3& pos = unit->GetPos(circuit->GetLastFrame());
+ 	float maxSpeed = unit->GetCircuitDef()->GetSpeed();
+ 	float radius = unit->GetCircuitDef()->GetBuildDistance() + maxSpeed * 30;
+-	maxSpeed = SQUARE(maxSpeed * 1.5f / FRAMES_PER_SEC);
++	maxSpeed = SQUARE(maxSpeed / FRAMES_PER_SEC);  // Anarva: catchable iff slower (no 1.5)
+ 
+ 	circuit->UpdateFriendlyUnits();
+ 	auto& units = circuit->GetCallback()->GetFriendlyUnitsIn(pos, radius);
 diff --git a/src/circuit/task/fighter/AntiAirTask.cpp b/src/circuit/task/fighter/AntiAirTask.cpp
 index 93297d2c..6f8e8b01 100644
 --- a/src/circuit/task/fighter/AntiAirTask.cpp
@@ -2781,7 +2868,7 @@ index a36c4e1b..cc6b7ef6 100644
  	void ApplySafePos(const CQueryPathMulti* query);
  	void Fallback(CCircuitUnit* unit, bool proceed);
 diff --git a/src/circuit/task/fighter/AttackTask.cpp b/src/circuit/task/fighter/AttackTask.cpp
-index 2f556d6d..a5a92827 100644
+index 2f556d6d..5419f6b7 100644
 --- a/src/circuit/task/fighter/AttackTask.cpp
 +++ b/src/circuit/task/fighter/AttackTask.cpp
 @@ -6,6 +6,8 @@
@@ -2848,7 +2935,8 @@ index 2f556d6d..a5a92827 100644
  	SArea* area = leader->GetArea();
  	CCircuitDef* cdef = leader->GetCircuitDef();
  	const bool isAntiStatic = cdef->IsAttrAntiStat();
- 	const float maxSpeed = SQUARE(highestSpeed * 1.01f / FRAMES_PER_SEC);
+-	const float maxSpeed = SQUARE(highestSpeed * 1.01f / FRAMES_PER_SEC);
++	const float maxSpeed = SQUARE(highestSpeed / FRAMES_PER_SEC);
  	const float maxPower = attackPower * powerMod;
 -	const float weaponRange = cdef->GetMaxRange() * 0.9f;
 +	const float weaponRange = cdef->GetMaxRange();  // Anarva: the reach itself (no 0.9)
@@ -3061,7 +3149,7 @@ index 981b94f9..16b5c6df 100644
  
  } // namespace circuit
 diff --git a/src/circuit/task/fighter/FighterTask.cpp b/src/circuit/task/fighter/FighterTask.cpp
-index 0400f8d6..4d9eb4a0 100644
+index 0400f8d6..8e799889 100644
 --- a/src/circuit/task/fighter/FighterTask.cpp
 +++ b/src/circuit/task/fighter/FighterTask.cpp
 @@ -6,6 +6,8 @@
@@ -3073,6 +3161,15 @@ index 0400f8d6..4d9eb4a0 100644
  #include "task/RetreatTask.h"
  #include "map/InfluenceMap.h"
  #include "map/ThreatMap.h"
+@@ -59,7 +61,7 @@ void IFighterTask::AssignTo(CCircuitUnit* unit)
+ 	}
+ 
+ 	if (unit->HasDGun()) {
+-		const float range = std::max(unit->GetDGunRange() * 1.1f, cdef->GetLosRadius());
++		const float range = std::max(unit->GetDGunRange(), cdef->GetLosRadius());
+ 		unit->PushDGunAct(new CDGunAction(unit, range));
+ 	}
+ }
 @@ -116,42 +118,28 @@ void IFighterTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
  
  	if (unit->HasShield()) {
@@ -3539,6 +3636,102 @@ index 154ce4bf..809979e3 100644
  				unit->Attack(newPos, GetTarget(), targetTile, isGround, isStatic, frame + FRAMES_PER_SEC * 60);
  			}
  
+diff --git a/src/circuit/task/static/ReclaimTask.cpp b/src/circuit/task/static/ReclaimTask.cpp
+index c89d4a41..f65c8587 100644
+--- a/src/circuit/task/static/ReclaimTask.cpp
++++ b/src/circuit/task/static/ReclaimTask.cpp
+@@ -62,7 +62,7 @@ void CSReclaimTask::Update()
+ 		CBuilderManager* builderMgr = circuit->GetBuilderManager();
+ 		CAllyUnit* repairTarget = nullptr;
+ 		circuit->UpdateFriendlyUnits();
+-		auto& us = circuit->GetCallback()->GetFriendlyUnitsIn(position, radius * 0.9f);
++		auto& us = circuit->GetCallback()->GetFriendlyUnitsIn(position, radius);
+ 		for (Unit* u : us) {
+ 			auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
+ 			if ((cand == nullptr)  // no self-check
+diff --git a/src/circuit/task/static/RecruitTask.cpp b/src/circuit/task/static/RecruitTask.cpp
+index a4ef0f95..ccdfb6b5 100644
+--- a/src/circuit/task/static/RecruitTask.cpp
++++ b/src/circuit/task/static/RecruitTask.cpp
+@@ -81,7 +81,7 @@ void CRecruitTask::Update()
+ 		return;
+ 	}
+ 
+-	bool hasMetal = economyMgr->GetAvgMetalIncome() * 2.0f > economyMgr->GetMetalPull();
++	bool hasMetal = !economyMgr->IsMetalEmpty() || (economyMgr->GetAvgMetalIncome() >= economyMgr->GetMetalPull());  // Anarva: no 2x
+ 	if (State::DISENGAGE == state) {
+ 		if (hasMetal) {
+ 			state = State::ROAM;  // Not wait
+diff --git a/src/circuit/task/static/RepairTask.cpp b/src/circuit/task/static/RepairTask.cpp
+index 2e79b9f9..95075ba7 100644
+--- a/src/circuit/task/static/RepairTask.cpp
++++ b/src/circuit/task/static/RepairTask.cpp
+@@ -70,13 +70,11 @@ void CSRepairTask::Update()
+ 		return;
+ 	}
+ 
+-	if ((economyMgr->GetAvgMetalIncome() < savedIncome.metal * 0.6f) || (economyMgr->GetAvgEnergyIncome() < savedIncome.energy * 0.6f)) {
+-		manager->AbortTask(this);
+-	} else if ((++updCount % 4 == 0) && !units.empty()) {
++	if ((++updCount % 4 == 0) && !units.empty()) {
+ 		const float radius = (*units.begin())->GetCircuitDef()->GetBuildDistance();
+ 		CAllyUnit* repTarget = circuit->GetFriendlyUnit(targetId);
+ 		if ((repTarget == nullptr)
+-			|| (position.SqDistance2D(repTarget->GetPos(circuit->GetLastFrame())) > SQUARE(radius * 0.9f)))
++			|| (position.SqDistance2D(repTarget->GetPos(circuit->GetLastFrame())) > SQUARE(radius)))
+ 		{
+ 			manager->AbortTask(this);
+ 			return;
+@@ -89,7 +87,7 @@ void CSRepairTask::Update()
+ 				// Check for damaged units
+ 				CBuilderManager* builderMgr = circuit->GetBuilderManager();
+ 				circuit->UpdateFriendlyUnits();
+-				auto& us = circuit->GetCallback()->GetFriendlyUnitsIn(position, radius * 0.9f);
++				auto& us = circuit->GetCallback()->GetFriendlyUnitsIn(position, radius);
+ 				for (Unit* u : us) {
+ 					auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
+ 					if ((cand == nullptr)  // no self-check
+@@ -117,7 +115,7 @@ void CSRepairTask::Update()
+ 			CBuilderManager* builderMgr = circuit->GetBuilderManager();
+ 			const float maxCost = MAX_BUILD_SEC * economyMgr->GetAvgMetalIncome() * economyMgr->GetEcoFactor();
+ 			circuit->UpdateFriendlyUnits();
+-			auto& us = circuit->GetCallback()->GetFriendlyUnitsIn(position, radius * 0.9f);
++			auto& us = circuit->GetCallback()->GetFriendlyUnitsIn(position, radius);
+ 			for (Unit* u : us) {
+ 				auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
+ 				if ((cand == nullptr)  // no self-check
+diff --git a/src/circuit/task/static/SuperTask.cpp b/src/circuit/task/static/SuperTask.cpp
+index 05974b1b..64cc1c31 100644
+--- a/src/circuit/task/static/SuperTask.cpp
++++ b/src/circuit/task/static/SuperTask.cpp
+@@ -12,6 +12,7 @@
+ #include "unit/enemy/EnemyUnit.h"
+ #include "unit/CircuitUnit.h"
+ #include "CircuitAI.h"
++#include "module/EconomyManager.h"
+ #include "util/Utils.h"
+ 
+ #include "spring/SpringMap.h"
+@@ -92,7 +93,7 @@ void CSuperTask::Update()
+ 	CInfluenceMap* inflMap = circuit->GetInflMap();
+ 	CMilitaryManager* militaryMgr = circuit->GetMilitaryManager();
+ 	const float maxSqRange = SQUARE(cdef->GetMaxRange());
+-	const float sqAoe = SQUARE(cdef->GetAoe() * 1.25f);
++	const float sqAoe = SQUARE(cdef->GetAoe());  // Anarva: the blast itself (no 1.25)
+ 	float cost = 0.f;
+ 	int groupIdx = -1;
+ 	const std::array<const std::set<IFighterTask*>*, 3> avoidTasks = {  // NOTE: ISquadTask only
+@@ -158,7 +159,9 @@ void CSuperTask::Update()
+ 			}
+ 		}
+ 	}
+-	const float maxCost = cdef->IsAttrStock() ? cdef->GetWeaponDef()->GetCostM() : cdef->GetCostM() * 0.01f;
++	// Anarva: a target is worth a shot when it is worth more than the shot costs (no 1% of the gun's cost)
++	const float maxCost = (cdef->GetWeaponDef() != nullptr)
++		? cdef->GetWeaponDef()->GetCostM() + cdef->GetWeaponDef()->GetCostE() * circuit->GetEconomyManager()->GetEcoEM() : 0.f;
+ 
+ 	if ((groupIdx < 0) || (cost < maxCost)) {
+ 		TRY_UNIT(circuit, unit,
 diff --git a/src/circuit/terrain/TerrainManager.cpp b/src/circuit/terrain/TerrainManager.cpp
 index 64571199..8dce664b 100644
 --- a/src/circuit/terrain/TerrainManager.cpp
@@ -3882,6 +4075,28 @@ index 0247bcb8..fa83a192 100644
  	std::array<int, static_cast<ThreatT>(ThreatType::_SIZE_)> threatRange;
  	float shieldRadius;
  	float maxShield;
+diff --git a/src/circuit/unit/CircuitUnit.cpp b/src/circuit/unit/CircuitUnit.cpp
+index 8416e294..193b5b70 100644
+--- a/src/circuit/unit/CircuitUnit.cpp
++++ b/src/circuit/unit/CircuitUnit.cpp
+@@ -240,7 +240,7 @@ float CCircuitUnit::GetDamage()
+ 		return 0.f;
+ 	}
+ 	if (unit->IsParalyzed() || IsDisarmed(manager->GetCircuit()->GetLastFrame())) {
+-		return 0.01f;
++		return 0.f;  // Anarva: a paralyzed or disarmed unit deals nothing
+ 	}
+ 	// TODO: Mind the slow down: dps * WeaponDef->GetReload / Weapon->GetReloadTime;
+ 	return dmg;
+@@ -271,7 +271,7 @@ float CCircuitUnit::GetDGunRange()
+ 
+ float CCircuitUnit::GetHealthPercent()
+ {
+-	return unit->GetHealth() / unit->GetMaxHealth() - unit->GetCaptureProgress() * 16.f;
++	return unit->GetHealth() / unit->GetMaxHealth() - unit->GetCaptureProgress();  // Anarva: capture progress = share already lost (no x16)
+ }
+ 
+ /*
 diff --git a/src/circuit/unit/FactoryData.cpp b/src/circuit/unit/FactoryData.cpp
 index a16e2e21..2956ec26 100644
 --- a/src/circuit/unit/FactoryData.cpp
@@ -3976,7 +4191,7 @@ index a16e2e21..2956ec26 100644
  	std::sort(availFacs.begin(), availFacs.end(), cmp);
  #if 0
 diff --git a/src/circuit/unit/action/DGunAction.cpp b/src/circuit/unit/action/DGunAction.cpp
-index b35cc1bc..bc0ff09f 100644
+index b35cc1bc..56bc05bd 100644
 --- a/src/circuit/unit/action/DGunAction.cpp
 +++ b/src/circuit/unit/action/DGunAction.cpp
 @@ -11,6 +11,8 @@
@@ -3988,6 +4203,15 @@ index b35cc1bc..bc0ff09f 100644
  
  #include "spring/SpringCallback.h"
  #include "spring/SpringMap.h"
+@@ -42,7 +44,7 @@ void CDGunAction::Update(CCircuitAI* circuit)
+ 	const int frame = circuit->GetLastFrame();
+ 	// NOTE: Paralyzer doesn't increase ReloadFrame beyond currentFrame, but disarmer does.
+ 	//       Also checking disarm is more expensive (because of UnitRulesParam).
+-	if (!unit->IsDGunReady(frame, circuit->GetEconomyManager()->GetEnergyCur() * 0.9f)
++	if (!unit->IsDGunReady(frame, circuit->GetEconomyManager()->GetEnergyCur())
+ 		|| unit->GetUnit()->IsParalyzed()/* || unit->IsDisarmed(frame)*/)
+ 	{
+ 		return;
 @@ -112,6 +114,58 @@ void CDGunAction::Update(CCircuitAI* circuit)
  		}
  	}
@@ -4060,6 +4284,32 @@ index 834905fe..591df5f1 100644
  };
  
  } // namespace circuit
+diff --git a/src/circuit/unit/action/FightAction.cpp b/src/circuit/unit/action/FightAction.cpp
+index fe66090b..21ff4c83 100644
+--- a/src/circuit/unit/action/FightAction.cpp
++++ b/src/circuit/unit/action/FightAction.cpp
+@@ -67,7 +67,7 @@ void CFightAction::Update(CCircuitAI* circuit)
+ 			const float sqJumpDist = nextPos.SqDistance2D(startPos);
+ 			bool isBadJump = sqJumpDist < SQUARE(range * 0.5f);
+ 			if (!isBadJump) {
+-				isBadJump = SQUARE(range * 1.2f) < sqJumpDist;
++				isBadJump = SQUARE(range) < sqJumpDist;
+ 				if (isBadJump) {
+ 					nextPos = startPos + (nextPos - startPos).Normalize2D() * range;
+ 				}
+diff --git a/src/circuit/unit/action/MoveAction.cpp b/src/circuit/unit/action/MoveAction.cpp
+index 1e4e049a..63ff7e25 100644
+--- a/src/circuit/unit/action/MoveAction.cpp
++++ b/src/circuit/unit/action/MoveAction.cpp
+@@ -67,7 +67,7 @@ void CMoveAction::Update(CCircuitAI* circuit)
+ 			const float sqJumpDist = nextPos.SqDistance2D(startPos);
+ 			bool isBadJump = sqJumpDist < SQUARE(range * 0.5f);
+ 			if (!isBadJump) {
+-				isBadJump = SQUARE(range * 1.2f) < sqJumpDist;
++				isBadJump = SQUARE(range) < sqJumpDist;
+ 				if (isBadJump) {
+ 					nextPos = startPos + (nextPos - startPos).Normalize2D() * range;
+ 				}
 diff --git a/src/circuit/unit/action/TravelAction.cpp b/src/circuit/unit/action/TravelAction.cpp
 index 96098603..ed7c57e3 100644
 --- a/src/circuit/unit/action/TravelAction.cpp
@@ -4106,6 +4356,54 @@ index 372f9c9f..8c9bf7ea 100644
  
  	const std::vector<SEnemyGroup>& GetEnemyGroups() const { return enemyGroups; }
  	const springai::AIFloat3& GetEnemyPos() const { return enemyPos; }
+diff --git a/src/circuit/unit/enemy/EnemyUnit.cpp b/src/circuit/unit/enemy/EnemyUnit.cpp
+index 037c7d1a..7113094b 100644
+--- a/src/circuit/unit/enemy/EnemyUnit.cpp
++++ b/src/circuit/unit/enemy/EnemyUnit.cpp
+@@ -19,8 +19,8 @@ using namespace terrain;
+ 
+ float SEnemyData::GetDefDamage() const
+ {
+-	if (cdef == nullptr) {  // unknown enemy is a threat
+-		return 0.1f;
++	if (cdef == nullptr) {  // Anarva: unknown enemies are priced in the threat map at the mean identified threat
++		return 0.f;
+ 	}
+ 	const float dmg = cdef->GetDefDamage();
+ 	if (dmg < 1e-3f) {
+@@ -35,8 +35,8 @@ float SEnemyData::GetDefDamage() const
+ 
+ float SEnemyData::GetAirDamage(CCircuitDef::RoleT type) const
+ {
+-	if (cdef == nullptr) {  // unknown enemy is a threat
+-		return 0.1f;
++	if (cdef == nullptr) {  // Anarva: unknown enemies are priced in the threat map at the mean identified threat
++		return 0.f;
+ 	}
+ 	if (cdef->GetDefDamage() < 1e-3f) {
+ 		return .0f;
+@@ -50,8 +50,8 @@ float SEnemyData::GetAirDamage(CCircuitDef::RoleT type) const
+ 
+ float SEnemyData::GetSurfDamage(CCircuitDef::RoleT type) const
+ {
+-	if (cdef == nullptr) {  // unknown enemy is a threat
+-		return 0.1f;
++	if (cdef == nullptr) {  // Anarva: unknown enemies are priced in the threat map at the mean identified threat
++		return 0.f;
+ 	}
+ 	if (cdef->GetDefDamage() < 1e-3f) {
+ 		return .0f;
+@@ -65,8 +65,8 @@ float SEnemyData::GetSurfDamage(CCircuitDef::RoleT type) const
+ 
+ float SEnemyData::GetWaterDamage(CCircuitDef::RoleT type) const
+ {
+-	if (cdef == nullptr) {  // unknown enemy is a threat
+-		return 0.1f;
++	if (cdef == nullptr) {  // Anarva: unknown enemies are priced in the threat map at the mean identified threat
++		return 0.f;
+ 	}
+ 	if (cdef->GetDefDamage() < 1e-3f) {
+ 		return .0f;
 diff --git a/src/circuit/util/AnarvaDecide.h b/src/circuit/util/AnarvaDecide.h
 new file mode 100644
 index 00000000..f86a776f
