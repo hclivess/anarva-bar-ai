@@ -177,7 +177,7 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
-index e4c1d126..24d0c11e 100644
+index e4c1d126..df977471 100644
 --- a/src/circuit/module/BuilderManager.cpp
 +++ b/src/circuit/module/BuilderManager.cpp
 @@ -6,6 +6,7 @@
@@ -228,7 +228,21 @@ index e4c1d126..24d0c11e 100644
  	for (const std::string& catName : build.getMemberNames()) {
  		auto it = buildNames.find(catName);
  		if (it == buildNames.end()) {
-@@ -941,7 +948,7 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
+@@ -856,11 +863,9 @@ bool CBuilderManager::IsBuilderInArea(CCircuitDef* buildDef, const AIFloat3& pos
+ 
+ bool CBuilderManager::HasFreeAssists(CCircuitUnit* builder) const
+ {
++	// Anarva: assisting competes with every other job on value (builder metric); no guard caps (half / 2 / assist_fac)
+ 	CCircuitDef* conDef = builder->GetCircuitDef();
+-	const auto conTaskCnt = GetTasks(IBuilderTask::BuildType::FACTORY).size() + GetTasks(IBuilderTask::BuildType::NANO).size();
+-	return (guardCount <= (conTaskCnt == 0 ? assistCount / 2 : 2))
+-			&& conDef->IsAbleToAssist() && !builder->IsAttrSolo()
+-			&& (!conDef->IsRoleComm() || ((int)assistCount <= circuit->GetSetupManager()->GetAssistFac()));
++	return conDef->IsAbleToAssist() && !builder->IsAttrSolo();
+ }
+ 
+ SBuildChain* CBuilderManager::GetBuildChain(IBuilderTask::BuildType buildType, CCircuitDef* cdef) const
+@@ -941,7 +946,7 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
  	const AIFloat3& pos = unit->GetPos(frame);
  
  	const CCircuitDef* cdef = unit->GetCircuitDef();
@@ -237,7 +251,7 @@ index e4c1d126..24d0c11e 100644
  	if ((cdef->GetPower() > THREAT_MIN)
  		&& (circuit->GetMilitaryManager()->FindBCombatTarget(unit, pos, POWER_MOD, true) != nullptr))
  	{
-@@ -966,30 +973,8 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
+@@ -966,30 +971,8 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
  
  	std::shared_ptr<CQueryCostMap> pQuery = std::static_pointer_cast<CQueryCostMap>(query);
  
@@ -270,7 +284,7 @@ index e4c1d126..24d0c11e 100644
  	return unit->IsAttrBase()
  			? MakeEnergizerTask(unit, pQuery.get())
  			: MakeBuilderTask(unit, pQuery.get());
-@@ -1020,7 +1005,6 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1020,7 +1003,6 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
@@ -278,7 +292,7 @@ index e4c1d126..24d0c11e 100644
  	float metric = std::numeric_limits<float>::max();
  
  	constexpr std::array<std::pair<IBuilderTask::BuildType, float>, (int)IBuilderTask::BuildType::_SIZE_> prioTasks = {
-@@ -1047,7 +1031,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1047,7 +1029,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	};
  
  	for (const std::pair<IBuilderTask::BuildType, float>& pair : prioTasks) {
@@ -287,7 +301,7 @@ index e4c1d126..24d0c11e 100644
  		for (const IBuilderTask* candidate : GetTasks(pair.first)) {
  			if (!candidate->CanAssignTo(unit)) {
  				continue;
-@@ -1090,32 +1074,23 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1090,32 +1072,23 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -332,7 +346,7 @@ index e4c1d126..24d0c11e 100644
  	}
  
  	if ((task == nullptr) &&
-@@ -1164,20 +1139,6 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1164,20 +1137,6 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
  	float metric = std::numeric_limits<float>::max();
  
@@ -353,7 +367,7 @@ index e4c1d126..24d0c11e 100644
  
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
-@@ -1234,27 +1195,20 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1234,27 +1193,20 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -393,7 +407,7 @@ index e4c1d126..24d0c11e 100644
  		}
  	}
  
-@@ -1352,7 +1306,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1352,7 +1304,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			float distCost;
  			const float rawSqDist = pos.SqDistance2D(buildPos);  // TODO: add target's radius to rawSqDist
@@ -401,7 +415,7 @@ index e4c1d126..24d0c11e 100644
  			if (rawSqDist < buildSqDistance) {
  				distCost = sqrtf(rawSqDist) / pathfinder->GetSquareSize() * COST_BASE * 0.5f;
  			} else {
-@@ -1364,28 +1317,20 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1364,28 +1315,20 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -442,7 +456,7 @@ index e4c1d126..24d0c11e 100644
  		}
  	}
  
-@@ -1420,10 +1365,13 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1420,10 +1363,13 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  	CMilitaryManager* militaryMgr = circuit->GetMilitaryManager();
  	const float energyIncome = ecoMgr->GetAvgEnergyIncome() * ecoMgr->GetEcoFactor();
  	const float metalIncome = std::min(ecoMgr->GetAvgMetalIncome() * ecoMgr->GetEcoFactor(), energyIncome);
@@ -1196,7 +1210,7 @@ index 54fef916..e596d461 100644
  	}
  	candidates.clear();
 diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
-index 719442f0..9679a2d4 100644
+index 719442f0..a52852b5 100644
 --- a/src/circuit/module/MilitaryManager.cpp
 +++ b/src/circuit/module/MilitaryManager.cpp
 @@ -6,6 +6,8 @@
@@ -1611,7 +1625,23 @@ index 719442f0..9679a2d4 100644
  float CMilitaryManager::ClampMobileCostRatio() const
  {
  	const float enemyMobileCost = circuit->GetEnemyManager()->GetEnemyMobileCost();
-@@ -1619,18 +1435,7 @@ CEnemyInfo* CMilitaryManager::FindBCombatTarget(CCircuitUnit* unit, const AIFloa
+@@ -1523,11 +1339,12 @@ CEnemyInfo* CMilitaryManager::FindBCombatTarget(CCircuitUnit* unit, const AIFloa
+ 	CCircuitDef* cdef = unit->GetCircuitDef();
+ 	const float maxSpeed = SQUARE(cdef->GetSpeed() / FRAMES_PER_SEC);
+ 	const float maxPower = threatMap->GetUnitPower(unit) * powerMod;
+-	const float weaponRange = cdef->GetMaxRange() * 0.9f;
++	const float weaponRange = cdef->GetMaxRange();
+ 	const int canTargetCat = cdef->GetTargetCategory();
+ 	const int noChaseCat = cdef->GetNoChaseCategory();
+-	const float sqCommRadBegin = SQUARE(GetCommDefRadBegin());
+-	float minSqDist = SQUARE(GetCommDefRad(pos.distance2D(basePos)));
++	// Anarva: a builder fights what is within its own reach (no comm_rad config ramp); it doesn't leave its job to chase
++	const float sqCommRadBegin = SQUARE(weaponRange);
++	float minSqDist = SQUARE(weaponRange);
+ 
+ 	CEnemyInfo* bestTarget = nullptr;
+ 	CEnemyInfo* worstTarget = nullptr;
+@@ -1619,18 +1436,7 @@ CEnemyInfo* CMilitaryManager::FindBCombatTarget(CCircuitUnit* unit, const AIFloa
  
  float CMilitaryManager::GetRangeUnitCountCompensatorScale()
  {
