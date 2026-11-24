@@ -145,7 +145,7 @@ index 54fef916..3ddb44de 100644
  		if (!candidates.empty()) {
  			buildDef = candidates[rand() % candidates.size()].first;
 diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
-index 719442f0..6ebb3012 100644
+index 719442f0..1d5f57d2 100644
 --- a/src/circuit/module/MilitaryManager.cpp
 +++ b/src/circuit/module/MilitaryManager.cpp
 @@ -6,6 +6,8 @@
@@ -175,7 +175,7 @@ index 719442f0..6ebb3012 100644
  	const float minFactor = amFac.get((unsigned)0, 2.0f).asFloat();
  	const float maxFactor = amFac.get((unsigned)1, 1.0f).asFloat();
  	const float minMap = amMap.get((unsigned)0, 8.0f).asFloat();
-@@ -614,37 +616,37 @@ IFighterTask* CMilitaryManager::Enqueue(const TaskF::SFightTask& ti)
+@@ -614,38 +616,38 @@ IFighterTask* CMilitaryManager::Enqueue(const TaskF::SFightTask& ti)
  		case IFighterTask::FightType::DEFEND: {
  			const AIFloat3& pos = circuit->GetSetupManager()->GetBasePos();
  			if (ti.check == IFighterTask::FightType::_SIZE_) {
@@ -188,23 +188,27 @@ index 719442f0..6ebb3012 100644
  		} break;
  		case IFighterTask::FightType::SCOUT: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+-			task = new CScoutTask(this, 0.75f / mod);
 +			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
- 			task = new CScoutTask(this, 0.75f / mod);
++			task = new CScoutTask(this, (anarva::switches.decide ? 1.0f : 0.75f) / mod);
  		} break;
  		case IFighterTask::FightType::RAID: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+-			task = new CRaidTask(this, raid.avg, 0.75f / mod);
 +			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
- 			task = new CRaidTask(this, raid.avg, 0.75f / mod);
++			task = new CRaidTask(this, raid.avg, (anarva::switches.decide ? 1.0f : 0.75f) / mod);
  		} break;
  		case IFighterTask::FightType::ATTACK: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+-			task = new CAttackTask(this, minAttackers, 0.8f / mod);
 +			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
- 			task = new CAttackTask(this, minAttackers, 0.8f / mod);
++			task = new CAttackTask(this, minAttackers, (anarva::switches.decide ? 1.0f : 0.8f) / mod);
  		} break;
  		case IFighterTask::FightType::BOMB: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+-			task = new CBombTask(this, 2.0f / mod);
 +			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
- 			task = new CBombTask(this, 2.0f / mod);
++			task = new CBombTask(this, (anarva::switches.decide ? 1.0f : 2.0f) / mod);
  		} break;
  		case IFighterTask::FightType::ARTY: {
  			task = new CArtilleryTask(this);
@@ -216,10 +220,12 @@ index 719442f0..6ebb3012 100644
  		} break;
  		case IFighterTask::FightType::AH: {
 -			const float mod = (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
+-			task = new CAntiHeavyTask(this, 2.0f / mod);
 +			const float mod = anarva::switches.decide ? attackMod.min + 0.5f * attackMod.len : (float)rand() / RAND_MAX * attackMod.len + attackMod.min;
- 			task = new CAntiHeavyTask(this, 2.0f / mod);
++			task = new CAntiHeavyTask(this, (anarva::switches.decide ? 1.0f : 2.0f) / mod);
  		} break;
  		case IFighterTask::FightType::SUPPORT: {
+ 			task = new CSupportTask(this);
 @@ -661,6 +663,17 @@ IFighterTask* CMilitaryManager::Enqueue(const TaskF::SFightTask& ti)
  	return task;
  }
@@ -1079,7 +1085,7 @@ index 2f556d6d..0ec7aa31 100644
  }
  
 diff --git a/src/circuit/task/fighter/DefendTask.cpp b/src/circuit/task/fighter/DefendTask.cpp
-index af382ba3..7544d2f7 100644
+index af382ba3..b88571ea 100644
 --- a/src/circuit/task/fighter/DefendTask.cpp
 +++ b/src/circuit/task/fighter/DefendTask.cpp
 @@ -21,6 +21,7 @@
@@ -1133,7 +1139,18 @@ index af382ba3..7544d2f7 100644
  			|| !terrainMgr->CanMoveToPos(area, ePos))
  		{
  			continue;
-@@ -368,7 +376,7 @@ void CDefendTask::FallbackBasePos()
+@@ -257,7 +265,9 @@ bool CDefendTask::FindTarget()
+ 		const float sqEBDist = basePos.SqDistance2D(ePos);
+ 		float checkPower = maxPower;
+ 		if (sqEBDist < sqBaseRange) {
+-			checkPower *= 4.0f - 3.0f / baseRange * sqrtf(sqEBDist);  // 400% near base
++			if (!anarva::switches.decide) {  // Anarva: no near-base boldness factor; engage where we out-power the threat
++				checkPower *= 4.0f - 3.0f / baseRange * sqrtf(sqEBDist);  // 400% near base
++			}
+ 		}
+ 		if (checkPower <= threatMap->GetThreatAt(ePos)) {
+ 			continue;
+@@ -368,7 +378,7 @@ void CDefendTask::FallbackBasePos()
  	CSetupManager* setupMgr = circuit->GetSetupManager();
  
  	const AIFloat3& startPos = leader->GetPos(circuit->GetLastFrame());
@@ -1193,7 +1210,7 @@ index 0400f8d6..d64db858 100644
  			circuit->GetBuilderManager()->Enqueue(TaskB::Repair(IBuilderTask::Priority::NOW, unit));
  		}
 diff --git a/src/circuit/task/fighter/RaidTask.cpp b/src/circuit/task/fighter/RaidTask.cpp
-index b62de532..9062ae67 100644
+index b62de532..44f629b5 100644
 --- a/src/circuit/task/fighter/RaidTask.cpp
 +++ b/src/circuit/task/fighter/RaidTask.cpp
 @@ -6,6 +6,8 @@
@@ -1217,6 +1234,19 @@ index b62de532..9062ae67 100644
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
+@@ -295,8 +298,10 @@ bool CRaidTask::FindTarget()
+ 		float checkPower = maxPower;
+ 		float checkSpeed = maxSpeed;
+ 		if (sqEBDist < sqBaseRange) {
+-			checkPower *= 2.0f - 1.0f / baseRange * sqrtf(sqEBDist);  // 200% near base
+-			checkSpeed *= 2.f;
++			if (!anarva::switches.decide) {  // Anarva: no near-base boldness factor
++				checkPower *= 2.0f - 1.0f / baseRange * sqrtf(sqEBDist);  // 200% near base
++				checkSpeed *= 2.f;
++			}
+ 		}
+ 		const float power = threatMap->GetThreatAt(ePos);
+ 		if (checkPower <= power) {
 diff --git a/src/circuit/task/fighter/SquadTask.cpp b/src/circuit/task/fighter/SquadTask.cpp
 index 154ce4bf..b477e183 100644
 --- a/src/circuit/task/fighter/SquadTask.cpp
