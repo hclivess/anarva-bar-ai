@@ -2,6 +2,59 @@
 {
 "building": {
 	"class_land": {
+		"fac_armaap": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 4 squares
+		"fac_armalab": {"type": ["rectangle", "factory"], "yard": [4, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits flr, largest unit 3 squares
+		"fac_armap": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 3 squares
+		"fac_armavp": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 4 squares
+		"fac_armhaapuw": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 3 squares
+		"fac_armhalab": {"type": ["rectangle", "factory"], "yard": [4, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits flr, largest unit 3 squares
+		"fac_armhavp": {"type": ["rectangle", "factory"], "yard": [4, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits flr, largest unit 4 squares
+		"fac_armhp": {"type": ["rectangle", "factory"], "yard": [0, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fb, largest unit 3 squares
+		"fac_armlab": {"type": ["rectangle", "factory"], "yard": [4, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits flr, largest unit 3 squares
+		"fac_armshltx": {"type": ["rectangle", "factory"], "yard": [6, 3], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits flr, largest unit 5 squares
+		"fac_armvp": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 3 squares
+		"fac_armamsub": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 3 squares
+		"fac_armasy": {"type": ["rectangle", "factory"], "yard": [8, 8], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 8 squares
+		"fac_armfhp": {"type": ["rectangle", "factory"], "yard": [4, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 3 squares
+		"fac_armhasy": {"type": ["rectangle", "factory"], "yard": [8, 8], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 8 squares
+		"fac_armplat": {"type": ["rectangle", "factory"], "yard": [4, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 3 squares
+		"fac_armshltxuw": {"type": ["rectangle", "factory"], "yard": [4, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits flr, largest unit 4 squares
+		"fac_armsy": {"type": ["rectangle", "factory"], "yard": [4, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 4 squares
+		"fac_coraap": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 4 squares
+		"fac_coralab": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 3 squares
+		"fac_corap": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 3 squares
+		"fac_coravp": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 4 squares
+		"fac_corgant": {"type": ["rectangle", "factory"], "yard": [0, 4], "offset": [0, 2], "ignore": ["none"]},  // yardmap exits f, largest unit 7 squares
+		"fac_corhaap": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 4 squares
+		"fac_corhaapuw": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 3 squares
+		"fac_corhalab": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 4 squares
+		"fac_corhavp": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 4 squares
+		"fac_corhp": {"type": ["rectangle", "factory"], "yard": [0, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fb, largest unit 3 squares
+		"fac_corlab": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fb, largest unit 2 squares
+		"fac_corvp": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 3 squares
+		"fac_coramsub": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 3 squares
+		"fac_corasy": {"type": ["rectangle", "factory"], "yard": [8, 8], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 8 squares
+		"fac_corfhp": {"type": ["rectangle", "factory"], "yard": [4, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 3 squares
+		"fac_corgantuw": {"type": ["rectangle", "factory"], "yard": [0, 3], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 6 squares
+		"fac_corplat": {"type": ["rectangle", "factory"], "yard": [4, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 3 squares
+		"fac_corsy": {"type": ["rectangle", "factory"], "yard": [0, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fb, largest unit 4 squares
+		"fac_legaap": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 4 squares
+		"fac_legadvshipyard": {"type": ["rectangle", "factory"], "yard": [8, 8], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 8 squares
+		"fac_legalab": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 4 squares
+		"fac_legamphlab": {"type": ["rectangle", "factory"], "yard": [0, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits f, largest unit 3 squares
+		"fac_legap": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 3 squares
+		"fac_legfhp": {"type": ["rectangle", "factory"], "yard": [4, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 3 squares
+		"fac_leggant": {"type": ["rectangle", "factory"], "yard": [8, 4], "offset": [0, 2], "ignore": ["none"]},  // yardmap exits flr, largest unit 7 squares
+		"fac_leggantuw": {"type": ["rectangle", "factory"], "yard": [8, 4], "offset": [0, 2], "ignore": ["none"]},  // yardmap exits flr, largest unit 7 squares
+		"fac_leghalab": {"type": ["rectangle", "factory"], "yard": [6, 3], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits flr, largest unit 5 squares
+		"fac_leghavp": {"type": ["rectangle", "factory"], "yard": [4, 2], "offset": [0, 1], "ignore": ["none"]},  // yardmap exits flr, largest unit 4 squares
+		"fac_leghp": {"type": ["rectangle", "factory"], "yard": [0, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fb, largest unit 3 squares
+		"fac_leglab": {"type": ["rectangle", "factory"], "yard": [0, 1], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits f, largest unit 2 squares
+		"fac_legsplab": {"type": ["rectangle", "factory"], "yard": [4, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fblr, largest unit 4 squares
+		"fac_legsy": {"type": ["rectangle", "factory"], "yard": [0, 4], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits fb, largest unit 4 squares
+		"fac_armapt3": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 6 squares
+		"fac_corapt3": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 6 squares
+		"fac_legapt3": {"type": ["rectangle", "factory"], "yard": [0, 0], "offset": [0, 0], "ignore": ["none"]},  // yardmap exits none, largest unit 8 squares
 		"fac_land_t1": {
 			// "type": [<blocker_shape>, <structure_type>]
 			// Available blocker_shape: rectangle, circle.
@@ -187,11 +240,64 @@
 	//	}
 	//},
 	"instance": {
-		"fac_land_t2": ["armalab", "armavp", "coralab", "coravp", "legalab", "legavp"],
-		"fac_land_t1": ["armlab", "armvp", "armhp", "corlab", "corvp", "corhp", "leglab", "legvp", "leghp"],
-		"fac_water": ["armsy", "armasy", "corsy", "corasy", "legsy", "legadvshipyard"],
-		"fac_air":["armap","armaap", "corap", "coraap", "legap", "legaap"],
-		"fac_strider": ["armshltx", "armshltxuw", "corgant", "corgantuw", "leggant", "leggantuw"],
+		"fac_armaap": ["armaap"],
+		"fac_armalab": ["armalab"],
+		"fac_armap": ["armap"],
+		"fac_armavp": ["armavp"],
+		"fac_armhaapuw": ["armhaapuw"],
+		"fac_armhalab": ["armhalab"],
+		"fac_armhavp": ["armhavp"],
+		"fac_armhp": ["armhp"],
+		"fac_armlab": ["armlab"],
+		"fac_armshltx": ["armshltx"],
+		"fac_armvp": ["armvp"],
+		"fac_armamsub": ["armamsub"],
+		"fac_armasy": ["armasy"],
+		"fac_armfhp": ["armfhp"],
+		"fac_armhasy": ["armhasy"],
+		"fac_armplat": ["armplat"],
+		"fac_armshltxuw": ["armshltxuw"],
+		"fac_armsy": ["armsy"],
+		"fac_coraap": ["coraap"],
+		"fac_coralab": ["coralab"],
+		"fac_corap": ["corap"],
+		"fac_coravp": ["coravp"],
+		"fac_corgant": ["corgant"],
+		"fac_corhaap": ["corhaap"],
+		"fac_corhaapuw": ["corhaapuw"],
+		"fac_corhalab": ["corhalab"],
+		"fac_corhavp": ["corhavp"],
+		"fac_corhp": ["corhp"],
+		"fac_corlab": ["corlab"],
+		"fac_corvp": ["corvp"],
+		"fac_coramsub": ["coramsub"],
+		"fac_corasy": ["corasy"],
+		"fac_corfhp": ["corfhp"],
+		"fac_corgantuw": ["corgantuw"],
+		"fac_corplat": ["corplat"],
+		"fac_corsy": ["corsy"],
+		"fac_legaap": ["legaap"],
+		"fac_legadvshipyard": ["legadvshipyard"],
+		"fac_legalab": ["legalab"],
+		"fac_legamphlab": ["legamphlab"],
+		"fac_legap": ["legap"],
+		"fac_legfhp": ["legfhp"],
+		"fac_leggant": ["leggant"],
+		"fac_leggantuw": ["leggantuw"],
+		"fac_leghalab": ["leghalab"],
+		"fac_leghavp": ["leghavp"],
+		"fac_leghp": ["leghp"],
+		"fac_leglab": ["leglab"],
+		"fac_legsplab": ["legsplab"],
+		"fac_legsy": ["legsy"],
+		"fac_armapt3": ["armapt3"],
+		"fac_corapt3": ["corapt3"],
+		"fac_legapt3": ["legapt3"],
+		"fac_land_t2": ["legavp"],
+		"fac_land_t1": ["legvp"],
+		"fac_water": ["legsy"],
+		"fac_air":["legap"],
+		"fac_strider": ["leggantuw"],
 		"solar": ["armsolar", "corsolar", "legsolar"],
 		"advsolar":["armadvsol", "coradvsol", "legadvsol"],
 		"wind": ["armwin", "corwin", "armtide", "cortide", "legwin", "legtide"],
