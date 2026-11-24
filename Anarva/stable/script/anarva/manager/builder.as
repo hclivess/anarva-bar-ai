@@ -9,9 +9,7 @@ CCircuitUnit@ energizer2 = null;
 IUnitTask@ AiMakeTask(CCircuitUnit@ unit)
 {
 	IUnitTask@ task = aiBuilderMgr.DefaultMakeTask(unit);
-	if (Brain::F_CONVERT)
-		@task = Brain::Convert::Substitute(unit, task);
-	if ((Brain::F_COMMSAFE || Brain::F_COMMGUARD) && unit.circuitDef.IsRoleAny(Unit::Role::COMM.mask))
+	if (unit.circuitDef.IsRoleAny(Unit::Role::COMM.mask))
 		return Brain::CommanderTask(unit, task);
 	return task;
 }

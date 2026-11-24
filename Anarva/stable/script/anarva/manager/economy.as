@@ -55,8 +55,7 @@ void AiUpdateEconomy()
 	aiEconomyMgr.isEnergyStalling = TimeToEmpty(energy) < LeadTime(cheapEnergy);
 	aiEconomyMgr.isEnergyFull = energy.current + (energy.income - energy.pull) * dt > MM_LEVEL * energy.storage;
 
-	aiFactoryMgr.isAssistRequired = (!aiEconomyMgr.isMetalEmpty && !aiEconomyMgr.isEnergyStalling)
-		|| Brain::Waste::metalOverflow;  // never let income spill: assist factories
+	aiFactoryMgr.isAssistRequired = !aiEconomyMgr.isMetalEmpty && !aiEconomyMgr.isEnergyStalling;
 }
 
 }  // namespace Economy

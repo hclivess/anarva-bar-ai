@@ -14,69 +14,6 @@
 
 namespace Brain {
 
-// Feature flags: tools/install.ps1 -Flags "F_PROD=true,..." flips them in an installed copy so each
-// module can be A/B-tested head-to-head against the first-gen build. A module ships ON only after it\n// has measurably won; defaults below are the best-measured configuration (bisect round 4: 5-3 vs first-gen).
-const bool F_WAVES = false;     // script-owned wave/pack gathering
-const bool F_RECALL = true;     // broken-squad recall
-const bool F_PROD = true;       // capability-based production chooser (incl. rez bots)
-const bool F_SCALE = true;      // Director drives buildpowerRatio
-const bool F_ECOGATE = false;   // moho energy-headroom gate
-const bool F_RECYCLE = true;    // eco recycling + T1 salvage
-const bool F_STRAT = true;      // strategic structures + AA counter
-const bool F_FORTIFY = false;   // turrets + teeth at hot fronts
-const bool F_WASTE = false;     // overflow: nanos + converters
-const bool F_TECH = false;      // payback-based tech gate
-const bool F_REDIRECT = false;  // assist factories by army deficit
-const bool F_INTEL = true;      // eyes, scouting, phantom threat
-const bool F_QUOTA = false;     // attack/raid quotas sized from needed power
-const bool F_OPENER = true;     // constructor-rich T1 opener (false = BARb hard opener)
-const bool F_SCOUT = false;     // scout quota >=3 and timed scout recruits (keep sight)
-const bool F_AA = false;        // static AA counter
-const bool F_FUSREC = false;    // recycle fusions once AFUS carry the grid
-const bool F_NEWRECALL = false; // need-based recall (false = first-gen 40%-of-peak rule)
-const bool F_MAPECO = false;    // constructor share from free extractor spots (map analysis)
-const bool F_COMMSAFE = false;  // commander only works inside the zone our army protects
-const bool F_DETAIL = false;    // 1vN: defeat in detail - size against one opponent's army, not their sum
-const bool F_TERRAIN = true;    // fortify the choke from the high ground (map analysis)
-const bool F_CONVERT = false;   // wasted energy -> converters, chosen by payback incl. build time
-const bool F_EXPAND = false;    // constructors from the free extractor spots (marginal value), not from income
-const bool F_DEFSIZE = false;   // terrain defence sized to the metal deficit (false: one turret per attack)
-const bool F_ENERGY = false;    // energy decided live (with profile anarva_e, where the fixed curve is off)
-const bool F_STAKE = false;     // trade estimate weighted by the army at stake (no all-in on a few kills)
-const bool F_COMMZONE = false;  // commander works only inside the zone where nothing of ours has died (with F_COMMSAFE)
-const bool F_REZ = true;        // rez-bot fleet sized to the wreck metal on the map (measured via the bridge)
-const bool F_BOOM = false;      // scale on pressure, not presence (human playbook vs BARbs)
-const bool F_HOLD = true;       // just-in-time extractor defence: meet each incoming enemy group at the extractor it is heading for (C++ bridge)
-const bool F_ARTYHIGH = true;   // core switch: artillery fires from the spot it reaches soonest, height-aware range (C++)
-const bool F_HEIGHTSQUAD = true;  // core switch: squad units stand at their range from the height of their spot (C++)
-const bool F_ZONES = false;     // trade measured on our side vs theirs (kills located via the bridge); attacks/raids sized by the away trade
-const bool F_COMMGUARD = true;  // commander goes home when a known force it can't survive could reach it first (C++ bridge)
-const bool F_COMMFOG = true;    // commander danger also counts the enemy strength we believe exists but can't see, from their centre
-const bool F_NANOS = true;      // reclaim caretakers whose metal is worth more than the build power they actually apply
-const bool F_ECORECLAIM = true;  // reclaim the energy plant whose metal now is worth more than its energy over the horizon (no fixed gates)
-const bool F_STRAFE = true;     // core switch: units sidestep dodgeable shots (flight time x our speed > blast radius)
-const bool F_FOCUS = true;      // core switch: each unit focuses the visible enemy in range with the highest threat per remaining health
-const bool F_REZLAB = true;     // no factory can make rez bots (e.g. a vehicle opening): build a bot lab when the wreck metal beats lab + one rez bot
-const bool F_ECOPOS = true;     // Vritrasura108 #41: economically behind -> economy; in surplus -> accumulate army (no new constructors)
-const bool F_MEXPORC = true;    // Vritrasura108 #43: a turret on an outer extractor when the metal lost around it beats the turret and it would survive
-const bool F_DECIDE = true;     // core switch: every dice roll in the core replaced by a computed choice (unit/role pick, constructor, retreat, superweapon, chance, map points)
-const bool F_RAIDRESP = true;   // answer raids already in progress: the 'arrive before the enemy' test can never pass once they are there
-const bool F_RECLAIM = true;    // constructors and rez bots reclaim/revive wreck fields when the metal, minus walk and risk, beats their current job
-const bool F_DEFRISK = true;    // a turret is built only where it is more likely to survive than not (cover vs the danger that can reach it)
-const bool F_BUILDERSAFE = true;  // constructors leave a job when (1-P) x job - P x own cost is worth less than assisting a factory
-const bool F_HOLDALL = true;    // the just-in-time defence covers every constructor and structure, not only extractors
-const bool F_STORAGE = true;    // reclaims only start when the metal fits; metal storage built when held-back reclaims are worth more than it costs
-const bool F_ENGAGE = true;     // core switch: gathering squads fight enemies inside their own sight that they can beat (owner saw a raider pace past a lone pawn)
-const bool F_TURN = true;       // travel times include turning (turn rate, arcs) and acceleration, not distance/top speed
-const bool F_SCOUTMAP = true;   // scouts go where vision is worth most: our assets an unseen enemy could have reached since we last looked (C++ switch)
-const bool F_MOHO = true;       // T2 lab builds T2 constructors while one more saves more on the extractor-upgrade queue than it costs
-const bool F_COMMFWD = true;    // (with F_COMMRISK) commander claims the free extractor spot with the best gain - risk, anywhere: the human front-builder pattern
-const bool F_COMMRISK = true;   // commander takes any job whose value beats P(death) x everything we own (Lanchester), else the safest productive job; never idle
-const bool F_COMMSPOT = false;  // commander retreats to the safe spot where its death explosion would destroy least (not into the eco)
-const bool F_JIT = false;       // build-power scale from the ratio at each enemy arrival time (just in time), not from everything at once
-const bool F_POWERALL = true;   // our power = every armed mobile unit that can hit the surface (bridge), not only the gather pool
-
-
 /*
  * Travel time with the unit's real motion: turn to face the target, accelerate, cruise. Vehicles turn slowly
  * and on an arc (no turn in place); distance/top speed makes them look as agile as bots, which overstates how
@@ -86,7 +23,6 @@ const float EXPECTED_TURN = 90.f;  // mean of a uniform 0..180 deg turn (heading
 float MoveTime(const CCircuitDef@ d, float dist)
 {
 	const float v = AiMax(1.f, d.speed);
-	if (!F_TURN) return dist / v;
 	const float tTurn = d.turnRate > 0.f ? EXPECTED_TURN / d.turnRate : 0.f;
 	float tMove;
 	if (d.accel > 0.f) {
@@ -114,53 +50,12 @@ CCircuitUnit@ FactoryReachedSoonestIn(const array<CCircuitUnit@>@ facs, const AI
 	return best;
 }
 
-// Where an extra builder adds the most: the factory whose current production delivers the most value per second
-// of build time, divided by the build power already working on it (its own plus the assists we sent there).
-CCircuitUnit@ FactoryMostWorthAssisting(const array<IUnitTask@>@ sent)
-{
-	CCircuitUnit@ best = null; float bv = -1.f;
-	for (uint i = 0; i < Brain::Intel::allFactories.length(); ++i) {
-		CCircuitUnit@ f = Brain::Intel::allFactories[i];
-		IBuilderTask@ bt = cast<IBuilderTask>(f.task);
-		if (bt is null || bt.buildDef is null) continue;  // idle factory: nothing to speed up
-		float power = f.circuitDef.buildSpeed;
-		for (uint k = 0; k < sent.length(); ++k) {
-			if (sent[k] is null) continue;
-			const array<CCircuitUnit@>@ us = sent[k].GetUnits();
-			for (uint j = 0; j < us.length(); ++j) power += us[j].circuitDef.buildSpeed * (us[j].GetPos(ai.frame).distance2D(f.GetPos(ai.frame)) < us[j].circuitDef.losRadius ? 1.f : 0.f);
-		}
-		const float v = Brain::Economist::MetalValue(bt.buildDef) / AiMax(1.f, bt.buildDef.buildTime) / AiMax(1.f, power);
-		if (v > bv) { bv = v; @best = f; }
-	}
-	return best;
-}
-
-// The factory with the fewest caretakers, each caretaker counted for the factory nearest to it.
-CCircuitUnit@ FactoryWithFewestNanos(const CCircuitDef@ nanoDef)
-{
-	const array<CCircuitUnit@>@ facs = Brain::Intel::allFactories;
-	if (facs.length() == 0) return null;
-	array<int> n(facs.length(), 0);
-	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
-	for (uint i = 0; i < all.length(); ++i) {
-		if (all[i].circuitDef !is nanoDef) continue;
-		const AIFloat3 p = all[i].GetPos(ai.frame);
-		int k = -1; float bd = 1e30f;
-		for (uint j = 0; j < facs.length(); ++j) { const float d = facs[j].GetPos(ai.frame).distance2D(p); if (d < bd) { bd = d; k = int(j); } }
-		if (k >= 0) ++n[k];
-	}
-	int best = 0;
-	for (uint j = 1; j < facs.length(); ++j) if (n[j] < n[best]) best = int(j);
-	return facs[best];
-}
-
 
 // A turret alone at the front dies without trading (owner: "absolutely not covered, gets destroyed"). Build it only
 // where it is more likely to survive than not: (1-P) x cost > P x cost, P from the same fight-and-escape estimate,
 // at the turret's health, against everything that can reach it while it is being built.
 bool TurretSurvives(const CCircuitDef@ tur, const AIFloat3& in pos)
 {
-	if (!F_DEFRISK) return true;
 	CCircuitUnit@ ref = commander;
 	if (ref is null) { const array<CCircuitUnit@>@ all = AiGetTeamUnits(); if (all.length() > 0) @ref = all[0]; }
 	if (ref is null) return true;
@@ -213,33 +108,17 @@ void RemoveUnit(array<CCircuitUnit@>@ list, CCircuitUnit@ unit)
 /* ======================================================================== */
 namespace Army {
 
-float baseAttack = 60.f;
-float baseRaidMin = 6.f;
-uint baseScout = 2;
-float raiderPower = 0.f;
-
 array<CCircuitUnit@> ground;   // units that end up in defend->attack squads
 array<CCircuitUnit@> scouts;
-float groundPower = 0.f;
 
 uint excludeMask = 0;
 
 void Init()
 {
-	baseAttack  = aiMilitaryMgr.quota.attack;
-	baseRaidMin = aiMilitaryMgr.quota.raid.min;
-	baseScout   = aiMilitaryMgr.quota.scout;
-
 	excludeMask = Unit::Role::SCOUT.mask | Unit::Role::RAIDER.mask | Unit::Role::AA.mask
 		| Unit::Role::ARTY.mask | Unit::Role::SUPPORT.mask | Unit::Role::BUILDER.mask
 		| Unit::Role::COMM.mask | Unit::Role::MINE.mask | Unit::Role::TRANS.mask
 		| Unit::Role::BOMBER.mask | Unit::Role::AS.mask;
-
-	array<CCircuitDef@> raiders = Defs({"armflash", "armpw", "corgator", "corak", "leggob", "legmrv", "armfav", "corfav"});
-	float sum = 0.f;
-	for (uint i = 0; i < raiders.length(); ++i)
-		sum += raiders[i].power;
-	raiderPower = (raiders.length() > 0) ? sum / raiders.length() : 0.f;
 
 	{
 		array<string> probe = {"armflash", "armstump", "armbull", "armpw", "armham", "armzeus", "corgator", "corak"};
@@ -251,8 +130,6 @@ void Init()
 		}
 		AiLog(s);
 	}
-	AiLog("[ANV] Army init: attack=" + F1(baseAttack) + " raidMin=" + F1(baseRaidMin)
-		+ " scout=" + baseScout + " raiderPower=" + F1(raiderPower));
 }
 
 bool IsGround(const CCircuitDef@ d)
@@ -266,7 +143,6 @@ bool IsRaider(const CCircuitDef@ d)
 }
 
 array<CCircuitUnit@> raiders;
-float raiderPoolPower = 0.f;
 
 void OnAdded(CCircuitUnit@ unit)
 {
@@ -276,25 +152,15 @@ void OnAdded(CCircuitUnit@ unit)
 	}
 	if (IsGround(d)) {
 		ground.insertLast(unit);
-		groundPower += d.power;
 	} else if (IsRaider(d)) {
 		raiders.insertLast(unit);
-		raiderPoolPower += d.power;
 	}
 }
 
 void OnRemoved(CCircuitUnit@ unit)
 {
-	int idx = ground.findByRef(unit);
-	if (idx >= 0) {
-		ground.removeAt(idx);
-		groundPower = AiMax(0.f, groundPower - unit.circuitDef.power);
-	}
-	idx = raiders.findByRef(unit);
-	if (idx >= 0) {
-		raiders.removeAt(idx);
-		raiderPoolPower = AiMax(0.f, raiderPoolPower - unit.circuitDef.power);
-	}
+	RemoveUnit(ground, unit);
+	RemoveUnit(raiders, unit);
 	RemoveUnit(scouts, unit);
 }
 
@@ -333,7 +199,6 @@ void OnTaskAdded(IUnitTask@ task)
 
 void OnTaskRemoved(IUnitTask@ task)
 {
-	ForgetTask(task);
 	Hold::OnTaskRemoved(task);
 	IFighterTask@ f = cast<IFighterTask>(task);
 	if (f is null)
@@ -344,47 +209,6 @@ void OnTaskRemoved(IUnitTask@ task)
 		squadPeak.removeAt(idx);
 		squadStart.removeAt(idx);
 	}
-}
-
-/*
- * Wave control. The core sizes each gathering squad as max(quota, enemy's 2nd-biggest group threat);
- * once the enemy has any big blob that bar is unreachable and the army never launches, then gets
- * ground down at home. Instead we keep ONE gathering task per kind, sized by the Director, and put
- * every new unit into it. When it reaches its size the core promotes it to an attack/raid and we
- * start the next wave.
- */
-IUnitTask@ waveTask = null;
-IUnitTask@ packTask = null;
-float waveSize = 0.f;
-int waves = 0;
-
-IUnitTask@ MakeTask(CCircuitUnit@ unit)
-{
-	if (!F_WAVES)
-		return null;
-	const CCircuitDef@ d = unit.circuitDef;
-	if (IsGround(d) && !d.IsRoleAny(Unit::Role::RIOT.mask | Unit::Role::SUPER.mask)) {
-		if (waveTask is null) {
-			waveSize = AiMax(baseAttack, aiMilitaryMgr.quota.attack);
-			@waveTask = aiMilitaryMgr.Enqueue(TaskF::Defend(Task::FightType::ATTACK, waveSize));
-			++waves;
-		}
-		return waveTask;
-	}
-	if (IsRaider(d)) {
-		if (packTask is null)
-			@packTask = aiMilitaryMgr.Enqueue(TaskF::Defend(Task::FightType::RAID, aiMilitaryMgr.quota.raid.min));
-		return packTask;
-	}
-	return null;
-}
-
-void ForgetTask(IUnitTask@ task)
-{
-	if (task is waveTask)
-		@waveTask = null;
-	if (task is packTask)
-		@packTask = null;
 }
 
 float SquadPower(IFighterTask@ task)
@@ -398,8 +222,6 @@ float SquadPower(IFighterTask@ task)
 
 void CheckSquads()
 {
-	if (!F_RECALL)
-		return;
 	for (int i = int(squads.length()) - 1; i >= 0; --i) {
 		IFighterTask@ task = squads[i];
 		const float p = SquadPower(task);
@@ -424,22 +246,6 @@ void CheckSquads()
 			task.Abort();
 		}
 	}
-}
-
-void Update(bool jamAlert)
-{
-	// A wave must be able to win what it will meet (Director: needed power, incl. jammer guesses).
-	// If we can't reach it, the wave doesn't launch: the gathered army defends at home, where trades are better.
-	aiMilitaryMgr.quota.attack = AiMax(baseAttack, F_ZONES ? Brain::Director::needPowerAway : Brain::Director::needPower);
-
-	// A raid pack must beat the raiders that will answer it (their raider threat at our trade rate).
-	float raidMin = AiMax(baseRaidMin, aiEnemyMgr.GetEnemyThreat(RT::RAIDER) / AiMax(0.25f, F_ZONES ? Brain::Assess::tradeAway : Brain::Assess::trade));	aiMilitaryMgr.quota.raid.min = raidMin;
-	// raid.avg caps how big a raid may grow by joining; never below the gather size
-	aiMilitaryMgr.quota.raid.avg = AiMax(aiMilitaryMgr.quota.raid.avg, raidMin * 1.5f);
-
-	CheckSquads();
-
-	aiMilitaryMgr.quota.scout = jamAlert ? baseScout + 3 : baseScout;
 }
 
 }  // namespace Army
@@ -473,7 +279,6 @@ void Block(float m) { blockedMax = AiMax(blockedMax, Incoming() + m - Free()); }
 
 void Update()
 {
-	if (!F_STORAGE) return;
 	if (storeDef is null) @storeDef = Strategic::Side("armmstor", "cormstor", "legmstor");
 	const float want = blockedMax;
 	blockedMax = 0.f;
@@ -510,7 +315,7 @@ namespace RezLab {
 int ordered = 0, orderFrame = -10 * MINUTE;
 void Update()
 {
-	if (!F_REZLAB || !HasBase()) return;
+	if (!HasBase()) return;
 	const array<CCircuitUnit@>@ facs = Intel::allFactories;
 	for (uint i = 0; i < facs.length(); ++i) {
 		const array<string> opts = Facts::BuildOptions(facs[i].circuitDef.GetName());
@@ -537,7 +342,6 @@ float ours = 0.f, theirs = 0.f;
 bool behind = true;
 void Update()
 {
-	if (!F_ECOPOS) return;
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
 	uint enemyMex = 0;
@@ -568,10 +372,8 @@ void Update()
 	theirs = (float(enemyMex) + unseen) * perMex;
 	behind = ours < theirs;
 	// the core's constructor rule (decide): builds constructors while build power < income x ratio
-	if (F_DECIDE) {
-		aiFactoryMgr.buildpowerRatio = behind ? 1e9f
-			: aiBuilderMgr.GetBuildPower() / AiMax(1e-3f, aiEconomyMgr.metal.income);  // ahead: hold constructors where they are
-	}
+	aiFactoryMgr.buildpowerRatio = behind ? 1e9f
+		: aiBuilderMgr.GetBuildPower() / AiMax(1e-3f, aiEconomyMgr.metal.income);  // ahead: hold constructors where they are
 }
 string Status() { return "ecoPos " + (behind ? "behind" : "ahead") + " ours=" + int(ours) + " theirs~" + int(theirs); }
 }  // namespace EcoPos
@@ -586,7 +388,7 @@ int orders = 0;
 dictionary guarded;  // mex id -> frame ordered
 void Update()
 {
-	if (!F_MEXPORC || !HasBase()) return;
+	if (!HasBase()) return;
 	CCircuitDef@ tur = Strategic::BestTurret();
 	if (tur is null || !tur.IsAvailable(ai.frame)) return;
 	const float cost = Economist::MetalValue(tur);
@@ -637,7 +439,6 @@ void Init()
 
 void Update()
 {
-	if (!F_SCOUTMAP) return;
 	const int n = Intel::gw * Intel::gh;
 	if (int(lastSeen.length()) != n) Init();
 	for (int c = 0; c < n; ++c)
@@ -781,15 +582,15 @@ void OnTaskRemoved(IUnitTask@ task)
 
 void Update()
 {
-	// assets to defend: extractors, or (F_HOLDALL) every constructor and structure of ours
+	// assets to defend: every constructor and structure of ours
 	array<CCircuitUnit@> mexes;
-	if (F_HOLDALL) {
+	{
 		const array<CCircuitUnit@>@ own = AiGetTeamUnits();
 		for (uint k = 0; k < own.length(); ++k) {
 			const CCircuitDef@ d = own[k].circuitDef;
 			if (!d.IsMobile() || (d.IsRoleAny(Unit::Role::BUILDER.mask) && own[k] !is commander)) mexes.insertLast(own[k]);
 		}
-	} else mexes = Economist::mexes;
+	}
 	const uint M = mexes.length();
 	if (M == 0) return;
 	array<AIFloat3> mp(M);
@@ -855,7 +656,7 @@ void Update()
 		for (uint i = 0; i < free.length(); ++i) {
 			if (free[i] is null) continue;
 			const float t = MoveTime(free[i].circuitDef, free[i].GetPos(ai.frame).distance2D(mp[m]));
-			if (F_RAIDRESP && eta[m] <= 0.f) {
+			if (eta[m] <= 0.f) {
 				float stake = 0.f;
 				for (uint k = 0; k < M; ++k) if (mp[k].distance2D(mp[m]) <= raidSpeed * t + mexes[k].circuitDef.GetMaxRange()) stake += mexes[k].circuitDef.costM;
 				if (stake <= 0.f) continue;
@@ -891,7 +692,6 @@ array<CCircuitDef@> lowEnergyDefs;   // solar / wind / tidal
 array<CCircuitDef@> midEnergyDefs;   // advanced solar
 array<CCircuitDef@> bigEnergyDefs;   // fusion-tier + geo
 array<CCircuitDef@> afusDefs;
-array<CCircuitDef@> fusDefs;     // plain fusions, recycled once advanced fusions carry the grid
 array<CCircuitDef@> lowMakerDefs;
 array<CCircuitDef@> highMakerDefs;
 
@@ -919,7 +719,6 @@ void Init()
 		"armafus", "corafus", "legafus", "armgeo", "corgeo", "leggeo", "armageo", "corageo", "legageo",
 		"armgmm"});
 	afusDefs = Defs({"armafus", "corafus", "legafus"});
-	fusDefs = Defs({"armfus", "corfus", "legfus", "armckfus"});
 	lowMakerDefs = Defs({"armmakr", "cormakr", "legeconv", "armfmkr", "corfmkr", "legfeconv"});
 	highMakerDefs = Defs({"armmmkr", "cormmkr", "legadveconv", "armuwmmm", "coruwmmm"});
 	origMax.resize(ai.GetDefCount() + 1);
@@ -974,8 +773,6 @@ float BigMake()
 	return sum;
 }
 
-bool HasAfus() { return AfusCount() > 0; }
-
 int AfusCount()
 {
 	int n = 0;
@@ -984,26 +781,6 @@ int AfusCount()
 			++n;
 	}
 	return n;
-}
-
-float AfusMake()
-{
-	float sum = 0.f;
-	for (uint i = 0; i < bigEnergy.length(); ++i) {
-		if (InList(afusDefs, bigEnergy[i].circuitDef))
-			sum += EnergyMake(bigEnergy[i].circuitDef);
-	}
-	return sum;
-}
-
-array<CCircuitUnit@> Fusions()
-{
-	array<CCircuitUnit@> res;
-	for (uint i = 0; i < bigEnergy.length(); ++i) {
-		if (InList(fusDefs, bigEnergy[i].circuitDef))
-			res.insertLast(bigEnergy[i]);
-	}
-	return res;
 }
 
 /*
@@ -1031,12 +808,8 @@ bool IsObsoleteT1(CCircuitUnit@ u)
 
 void Salvage()
 {
-	if (F_STORAGE) {
-		// obsolete once we have advanced labs; the metal must fit (Reclaim checks), no clock or income bar
-		if (advFactories <= 0 || salvagePending.length() >= 2 || ai.frame - lastSalvageFrame < 15 * SECOND)
-			return;
-	} else if (ai.frame < 22 * MINUTE || advFactories <= 0 || aiEconomyMgr.metal.income < 30.f
-		|| aiEconomyMgr.isMetalFull || salvagePending.length() >= 2 || ai.frame - lastSalvageFrame < 15 * SECOND)
+	// obsolete once we have advanced labs; the metal must fit (Reclaim checks), no clock or income bar
+	if (advFactories <= 0 || salvagePending.length() >= 2 || ai.frame - lastSalvageFrame < 15 * SECOND)
 		return;
 	array<CCircuitUnit@>@ pools = Brain::Army::raiders;
 	CCircuitUnit@ cand = null;
@@ -1122,7 +895,7 @@ CCircuitUnit@ PickCandidate(const array<CCircuitUnit@>& in list)
 void Reclaim(CCircuitUnit@ u)
 {
 	// Metal that comes back into full storage is thrown away: only start when it fits (else ask for storage)
-	if (F_STORAGE && !Brain::Storage::Fits(u.circuitDef.costM)) {
+	if (!Brain::Storage::Fits(u.circuitDef.costM)) {
 		Brain::Storage::Block(u.circuitDef.costM);
 		return;
 	}
@@ -1143,7 +916,6 @@ void Reclaim(CCircuitUnit@ u)
 int ecoReclaims = 0;
 void EcoReclaimUpdate()
 {
-	if (!F_ECORECLAIM) return;
 	const SResourceInfo@ e = aiEconomyMgr.energy;
 	const float epm = AiMax(1e-3f, Brain::Economist::energyPerMetal);
 	const float H = Brain::Economist::Horizon();
@@ -1180,7 +952,6 @@ dictionary nanoUse;   // unit id -> utilisation 0..1
 int nanoLastFrame = 0, nanoReclaims = 0;
 void NanoUpdate()
 {
-	if (!F_NANOS) return;
 	const float dt = float(ai.frame - nanoLastFrame) / SECOND;
 	nanoLastFrame = ai.frame;
 	const float H = AiMax(1.f, Brain::Economist::Horizon());
@@ -1231,39 +1002,6 @@ void Update()
 
 	if (int(pending.length()) >= MAX_PENDING)
 		return;
-
-	// --- energy ---
-	if (!F_ECORECLAIM && bigMake > 0.f && bigMake >= 0.6f * income && !aiEconomyMgr.isEnergyStalling && fill > 0.5f) {  // fixed gates: replaced by EcoReclaimUpdate when F_ECORECLAIM
-		CCircuitUnit@ cand = PickCandidate(lowEnergy);
-		if (cand is null && (HasAfus() || bigMake >= 3000.f))
-			@cand = PickCandidate(midEnergy);
-		if (cand !is null) {
-			float pendingMake = 0.f;
-			for (uint i = 0; i < pending.length(); ++i)
-				pendingMake += EnergyMake(pending[i].circuitDef);
-			const float m = EnergyMake(cand.circuitDef);
-			const float surplus = income - pendingMake - m - e.pull;
-			if (surplus > AiMax(0.08f * income, 40.f)) {
-				Retire(cand.circuitDef);
-				Reclaim(cand);
-				return;
-			}
-		}
-	}
-
-	// --- plain fusions once 2+ advanced fusions carry the grid ---
-	if (!F_ECORECLAIM && F_FUSREC && AfusCount() >= 2 && AfusMake() >= 0.7f * income && fill > 0.6f && !aiEconomyMgr.isEnergyStalling) {
-		CCircuitUnit@ cand = PickCandidate(Fusions());
-		if (cand !is null) {
-			const float surplus = income - EnergyMake(cand.circuitDef) - e.pull;
-			if (surplus > AiMax(0.1f * income, 200.f)) {
-				Retire(cand.circuitDef);
-				Reclaim(cand);
-				AiLog("[ANV] Recycler: recycling fusion " + cand.circuitDef.GetName() + " (afus carry the grid)");
-				return;
-			}
-		}
-	}
 
 	Salvage();
 
@@ -1460,10 +1198,9 @@ void Update()
 		OrderVision();
 
 	// Real line of sight beats radar dots: a blip has no type, so no real threat, counter or target.
-	// Keep eyes on the enemy: planes on a timer, more when blind or jammed; ground scouts as fallback.
+	// Keep eyes on the enemy when blind or jammed: planes on a timer; ground scouts as fallback.
 	const bool blind = Brain::Director::blind;
-	const int interval = (jamAlert || blind) ? 90 * SECOND : (F_SCOUT ? 3 * MINUTE : 1 << 30);
-	if (ai.frame - lastScoutFrame > interval && Brain::Army::scouts.length() < uint((jamAlert || blind) ? 4 : 2)) {
+	if ((jamAlert || blind) && ai.frame - lastScoutFrame > 90 * SECOND && Brain::Army::scouts.length() < 4) {
 		array<CCircuitUnit@>@ facs = airFactories.length() > 0 ? airFactories : allFactories;
 		if (facs.length() > 0) {
 			CCircuitUnit@ fac = FactoryReachedSoonestIn(facs, basePos, null);
@@ -1472,7 +1209,7 @@ void Update()
 				aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::FIREPOWER, Task::Priority::HIGH,
 					scout, fac.GetPos(ai.frame), 64.f));
 				lastScoutFrame = ai.frame;
-				AiLog("[ANV] Intel: scouting with " + scout.GetName() + (jamAlert ? " (jammers)" : (blind ? " (blind)" : " (keep sight)")));
+				AiLog("[ANV] Intel: scouting with " + scout.GetName() + (jamAlert ? " (jammers)" : " (blind)"));
 			}
 		}
 	}
@@ -1557,7 +1294,6 @@ void Init()
 	tacDefs    = Defs({"armemp", "cortron", "legperdition"});
 	siloDefs   = Defs({"armsilo", "corsilo", "legsilo"});
 	shieldDefs = Defs({"armgate", "corgate", "legdeflector"});
-	InitCounter();
 	InitFortify();
 }
 
@@ -1584,7 +1320,7 @@ float NukeRisk()
 	if (amdDef is null || siloDef is null)
 		return 0.f;
 	const float workers = float(AiMax(1, aiBuilderMgr.GetWorkerCount()));
-	const float L = AMD_BUILDTIME / (Brain::Convert::CON_WORK * AiMax(1.f, workers * 0.5f)) + AMD_STOCKPILE_S;
+	const float L = AMD_BUILDTIME / (CON_WORK * AiMax(1.f, workers * 0.5f)) + AMD_STOCKPILE_S;
 	float feasible = 1.f;
 	if (aiEnemyMgr.GetEnemyCost(RT::NUKE) <= 0.f) {
 		if (ourT2Frame < 0)
@@ -1599,6 +1335,7 @@ float NukeRisk()
 	return feasible * InfraValue() / AiMax(1.f, Brain::Economist::MetalValue(amdDef));
 }
 const float AMD_BUILDTIME = 60000.f, AMD_STOCKPILE_S = 90.f, SILO_STOCKPILE_S = 180.f, SILO_MISSILE_M = 1000.f;
+const float CON_WORK = 85.f;  // T1 constructor workertime (unit facts), the rate one builder adds
 
 void OnFinished(CCircuitUnit@ u)
 {
@@ -1608,7 +1345,6 @@ void OnFinished(CCircuitUnit@ u)
 	else if (InList(tacDefs, d))    tacs.insertLast(u);
 	else if (InList(siloDefs, d))   silos.insertLast(u);
 	else if (InList(shieldDefs, d)) shields.insertLast(u);
-	else if (InList(aaDefs, d))     aaTowers.insertLast(u);
 	if (!d.IsMobile() && d.costM >= 250.f && !InList(shieldDefs, d))
 		infra.insertLast(u);
 }
@@ -1616,7 +1352,7 @@ void OnFinished(CCircuitUnit@ u)
 void OnDestroyed(CCircuitUnit@ u)
 {
 	RemoveUnit(junos, u); RemoveUnit(amds, u); RemoveUnit(tacs, u);
-	RemoveUnit(silos, u); RemoveUnit(shields, u); RemoveUnit(infra, u); RemoveUnit(aaTowers, u);
+	RemoveUnit(silos, u); RemoveUnit(shields, u); RemoveUnit(infra, u);
 }
 
 // No cooldown clock: a kind is ready when no order of it is still outstanding (one more exists, or the build task
@@ -1678,7 +1414,6 @@ void Update(bool jamAlert)
 {
 	if (!HasBase())
 		return;
-	CounterUpdate();
 	Fortify();
 	const float m = aiEconomyMgr.metal.income;
 	const float e = aiEconomyMgr.energy.income;
@@ -1728,66 +1463,8 @@ void Update(bool jamAlert)
 }
 
 /*
- * Counter: react to what we've scouted. Air -> static AA over infrastructure (T1 missile towers,
- * then flak, then long-range AA), scaled to the enemy's seen air metal. The core's response
- * system already shifts mobile AA production; this covers the assets bombers go for.
- */
-CCircuitDef@ aaT1, aaT2, aaT3;
-array<CCircuitDef@> aaDefs;
-array<CCircuitUnit@> aaTowers;
-int lastAAOrder = 0;
-
-void InitCounter()
-{
-	@aaT1 = Side("armrl", "corrl", "legrl");
-	@aaT2 = Side("armflak", "corflak", "legflak");
-	@aaT3 = Side("armmercury", "corscreamer", "leglraa");
-	aaDefs = Defs({"armrl", "corrl", "legrl", "armflak", "corflak", "legflak", "armmercury", "corscreamer", "leglraa",
-		"armcir", "cormadsam", "armferret", "corerad"});
-}
-
-void CounterUpdate()
-{
-	if (!F_AA)
-		return;
-	const float air = aiEnemyMgr.GetEnemyCost(RT::AIR);
-	if (air < 300.f || infra.length() == 0 || ai.frame - lastAAOrder < 20 * SECOND)
-		return;
-	const uint want = uint(AiMin(14.f, air / 350.f));
-	if (aaTowers.length() >= want)
-		return;
-	const float m = aiEconomyMgr.metal.income;
-	CCircuitDef@ d = (m >= 60.f && aaT3 !is null && aaT3.IsAvailable(ai.frame) && aaTowers.length() % 4 == 3) ? aaT3
-		: ((m >= 25.f && aaT2 !is null && aaT2.IsAvailable(ai.frame)) ? aaT2 : aaT1);
-	if (d is null || !d.IsAvailable(ai.frame))
-		return;
-	// cover the infra unit with the fewest AA towers nearby
-	CCircuitUnit@ best = null;
-	int bestCount = 1 << 20;
-	for (uint i = 0; i < infra.length(); ++i) {
-		const AIFloat3 p = infra[i].GetPos(ai.frame);
-		int c = 0;
-		for (uint k = 0; k < aaTowers.length(); ++k) {
-			if (aaTowers[k].GetPos(ai.frame).distance2D(p) < 600.f)
-				++c;
-		}
-		if (c < bestCount) {
-			bestCount = c;
-			@best = infra[i];
-		}
-	}
-	if (best is null)
-		return;
-	lastAAOrder = ai.frame;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, d, best.GetPos(ai.frame),
-		SQUARE_SIZE * 20, true, 3 * MINUTE));
-	AiLog("[ANV] Counter: enemy air " + F1(air) + "m seen -> " + d.GetName() + " (" + aaTowers.length() + "/" + want + ")");
-}
-
-/*
- * Fortify (HOLD/TURTLE): when outnumbered, fight where the enemy has to come to us. The loss
- * heatmap shows where fights happen; we put a turret there (tier by income) with a short row of
- * dragon's teeth in front of it, toward the threat, so attackers stall under fire.
+ * Fortify: fight where the enemy has to come to us. The choke from the map analysis first (TerrainFortify);
+ * otherwise the loss heatmap shows where fights happen and a turret covers the hottest cell (Fortify).
  */
 CCircuitDef@ turT1, turT2, turT3, wallDef;
 int lastFortify = 0, forts = 0;
@@ -1796,14 +1473,7 @@ int lastFortify = 0, forts = 0;
 int terrainBuilt = 0;
 float terrainHit = 0.f, hitAtLastOrder = -1.f;
 CCircuitDef@ terrainDef = null;
-float terrainPower = 0.f;            // power of the turrets standing at our choke
-float terrainMetal = 0.f;            // metal in them
 float armyMetal = 0.f;               // our armed mobile units (not builders), metal
-float EnemyArmyMetal()               // known enemy ground army, metal (the core remembers what it saw)
-{
-	return aiEnemyMgr.GetEnemyCost(RT::RAIDER) + aiEnemyMgr.GetEnemyCost(RT::ASSAULT) + aiEnemyMgr.GetEnemyCost(RT::SKIRM)
-		+ aiEnemyMgr.GetEnemyCost(RT::RIOT) + aiEnemyMgr.GetEnemyCost(RT::HEAVY) + aiEnemyMgr.GetEnemyCost(RT::ARTY);
-}
 CCircuitDef@ mlvDef, mineDef;        // minelayer vehicle and its light land mine
 int minelayers = 0, mlvOrderedAt = -10000;
 void OnTerrainLoss(const AIFloat3& in pos, float costM)
@@ -1871,28 +1541,22 @@ bool TerrainFortify()
 	if ((Brain::Director::ratio >= 1.f && !outnumbered) || ai.frame - lastFortify < 30 * SECOND)
 		return true;  // handled (nothing to do now)
 	/*
-	 * How much defence: when the enemy comes to us, defence is the cheaper form of war (Clausewitz), so
-	 * the choke takes turrets while the army can't cover what we need: deficit = power needed - army
-	 * power - turret power already standing there. Plus one more whenever something came at us since
+	 * How much defence: one turret at the first order, then one more whenever something came at us since
 	 * the last order (the measured pressure). Humans vs several BARbs put ~20 light turrets and ~30 mines
 	 * on the lanes in the first 8 minutes (Edict, Comet Catcher 1v2).
 	 */
 	const float hit = terrainHit + Brain::Assess::lostNearTotal;
-	// in metal, which is what both sides actually spend: the known enemy army against our army plus the
-	// turrets already standing at the choke (a turret holding ground is worth at least its cost)
-	const float deficit = F_DEFSIZE ? EnemyArmyMetal() - armyMetal - terrainMetal : 0.f;
-	if (forts > 0 && deficit <= 0.f && hit <= hitAtLastOrder)
+	if (forts > 0 && hit <= hitAtLastOrder)
 		return true;
 	// the turret that holds the most ground per metal we can build now (live, from the defs)
 	CCircuitDef@ tur = BestTurret();
 	if (tur is null || !tur.IsAvailable(ai.frame))
 		return true;
-	// orders still unbuilt (tasks live 3 min) count against the deficit; expired ones are forgotten
+	// orders still unbuilt (tasks live 3 min) count against the one wanted; expired ones are forgotten
 	if (ai.frame - lastFortify >= 3 * MINUTE)
 		terrainBuilt = forts;
 	const int pending = forts - terrainBuilt;
-	const int need = (deficit > 0.f) ? int(ceil(deficit / AiMax(1.f, tur.costM))) : 1;
-	const int n = AiMin(need - pending, AiMax(1, aiBuilderMgr.GetWorkerCount()));
+	const int n = AiMin(1 - pending, AiMax(1, aiBuilderMgr.GetWorkerCount()));
 	if (n < 1)
 		return true;
 	lastFortify = ai.frame;
@@ -1922,90 +1586,40 @@ bool TerrainFortify()
 				choke + dir * (96.f + 48.f * (forts % 3)) + side * (64.f * k), 0.f, true, 3 * MINUTE));
 	}
 	AiLog("[ANV] Terrain: " + n + "x " + tur.GetName() + " on high ground (+" + int(m.gain[myStart]) + ")" + (forts % 2 == 1 ? " + teeth across the choke" : "")
-		+ (minelayers > 0 ? " + mines" : "") + " deficit=" + int(deficit));
+		+ (minelayers > 0 ? " + mines" : ""));
 	return true;
 }
 
 void Fortify()
 {
-	if (!F_FORTIFY && !F_TERRAIN)
+	if (TerrainFortify())
 		return;
-	if (F_TERRAIN && TerrainFortify())
-		return;
-	if (F_DECIDE) {
-		// Audit S1: no fallback constants. The cell where we lost the most metal gets a turret when that loss beats the
-		// turret and it would survive; it stands on our side of the cell by its own range, so it covers the cell. One
-		// order at a time, for the order's lifetime (3 min, below).
-		if (ai.frame - lastFortify < 3 * MINUTE) return;
-		CCircuitDef@ tur = BestTurret();
-		if (tur is null || !tur.IsAvailable(ai.frame) || !HasBase()) return;
-		int best = -1;
-		float bestHeat = Economist::MetalValue(tur);
-		for (uint c = 0; c < Brain::Intel::heat.length(); ++c)
-			if (Brain::Intel::heat[c] > bestHeat) { bestHeat = Brain::Intel::heat[c]; best = int(c); }
-		if (best < 0) return;
-		const AIFloat3 hot = Brain::Intel::CellCenter(best);
-		AIFloat3 dir = hot - basePos;
-		dir.y = 0.f;
-		const float len = AiMax(1.f, dir.Length2D());
-		const AIFloat3 tpos = basePos + dir / len * AiMax(0.f, len - tur.GetMaxRange());
-		if (!TurretSurvives(tur, tpos)) return;
-		lastFortify = ai.frame;
-		++forts;
-		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, tpos, SQUARE_SIZE * 8, true, 3 * MINUTE));
-		AiLog("[ANV] Fortify: " + tur.GetName() + " covering the cell where we lost " + int(bestHeat) + " metal");
-		return;
-	}
-	const int p = Brain::Director::posture;
-	if ((p != Brain::Director::HOLD && p != Brain::Director::TURTLE) || ai.frame < 5 * MINUTE
-		|| ai.frame - lastFortify < 30 * SECOND)
-		return;
-	const float m = aiEconomyMgr.metal.income;
-	if (forts >= int(4.f + m / 6.f))
-		return;
-	// hottest cell that is a real front: not our base core, not deep in enemy land
+	// Audit S1: no fallback constants. The cell where we lost the most metal gets a turret when that loss beats the
+	// turret and it would survive; it stands on our side of the cell by its own range, so it covers the cell. One
+	// order at a time, for the order's lifetime (3 min, below).
+	if (ai.frame - lastFortify < 3 * MINUTE) return;
+	CCircuitDef@ tur = BestTurret();
+	if (tur is null || !tur.IsAvailable(ai.frame) || !HasBase()) return;
 	int best = -1;
-	float bestHeat = 150.f;
-	for (uint c = 0; c < Brain::Intel::heat.length(); ++c) {
-		const float h = Brain::Intel::heat[c];
-		if (h <= bestHeat)
-			continue;
-		const float d = Brain::Intel::CellCenter(c).distance2D(basePos);
-		if (d < 600.f || d > 2600.f)
-			continue;
-		bestHeat = h;
-		best = int(c);
-	}
-	if (best < 0)
-		return;
-	CCircuitDef@ tur = (m >= 45.f && turT3 !is null && turT3.IsAvailable(ai.frame)) ? turT3
-		: ((m >= 18.f && turT2 !is null && turT2.IsAvailable(ai.frame)) ? turT2 : turT1);
-	if (tur is null || !tur.IsAvailable(ai.frame))
-		return;
+	float bestHeat = Economist::MetalValue(tur);
+	for (uint c = 0; c < Brain::Intel::heat.length(); ++c)
+		if (Brain::Intel::heat[c] > bestHeat) { bestHeat = Brain::Intel::heat[c]; best = int(c); }
+	if (best < 0) return;
 	const AIFloat3 hot = Brain::Intel::CellCenter(best);
 	AIFloat3 dir = hot - basePos;
 	dir.y = 0.f;
 	const float len = AiMax(1.f, dir.Length2D());
-	dir = dir / len;
-	// turret a bit on our side of the hotspot
-	const AIFloat3 tpos = basePos + dir * AiMax(500.f, len - 250.f);
+	const AIFloat3 tpos = basePos + dir / len * AiMax(0.f, len - tur.GetMaxRange());
 	if (!TurretSurvives(tur, tpos)) return;
 	lastFortify = ai.frame;
 	++forts;
 	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::HIGH, tur, tpos, SQUARE_SIZE * 8, true, 3 * MINUTE));
-	if (wallDef !is null && wallDef.IsAvailable(ai.frame)) {
-		const AIFloat3 side(-dir.z, 0.f, dir.x);
-		for (int k = -2; k <= 2; ++k) {
-			const AIFloat3 wpos = tpos + dir * 140.f + side * (48.f * k);
-			aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, wallDef, wpos, 0.f, true, 3 * MINUTE));
-		}
-	}
-	AiLog("[ANV] Fortify: " + tur.GetName() + " + teeth at (" + int(tpos.x) + "," + int(tpos.z) + ") facing heat " + F1(bestHeat));
+	AiLog("[ANV] Fortify: " + tur.GetName() + " covering the cell where we lost " + int(bestHeat) + " metal");
 }
 
 string Status()
 {
-	return "forts=" + forts + " aa=" + aaTowers.length() + " juno=" + junos.length() + " amd=" + amds.length() + " tac=" + tacs.length() + " silo=" + silos.length()
+	return "forts=" + forts + " juno=" + junos.length() + " amd=" + amds.length() + " tac=" + tacs.length() + " silo=" + silos.length()
 		+ " shield=" + shields.length() + " infra=" + infra.length() + " orders=" + orders;
 }
 
@@ -2038,13 +1652,6 @@ void Init()
 		built[i] = 0;
 }
 
-// The core's own rule: build power should be income * buildpowerRatio (the Director sets the ratio).
-// A T1 constructor brings ~85 workertime = ~4.25 build_speed units (unit facts), so that many workers.
-const float BUILD_SPEED_PER_WORKER = 4.25f;
-const int CORE_BUILDER_SHARE = 30;  // percent: mean constructor weight in factory.json T1/T2 tiers (config fact)
-// Constructor share of factory decisions. With map analysis: free extractor spots on our side
-// (map extractors / players - extractors we own) over (free spots + constructors): high when there is
-// much to claim and few hands, falling to zero once the map is taken. Without it: the core's config share.
 MapFacts::SMap@ mapInfo = null;
 void LookAtMap()  // pre-match map study (tools/analyze_maps.py)
 {
@@ -2052,22 +1659,6 @@ void LookAtMap()  // pre-match map study (tools/analyze_maps.py)
 	@mapInfo = MapFacts::Get(ai.GetMapName());
 	AiLog("[ANV] Map: " + ai.GetMapName() + (mapInfo is null ? " (not analysed)" : (" mex=" + mapInfo.mex + " path=" + int(mapInfo.basePath) + " straight=" + int(mapInfo.straight) + " choke=" + int(mapInfo.choke) + " water=" + F1(mapInfo.water))));
 }
-int BuilderSharePercent()
-{
-	if (!F_MAPECO || mapInfo is null)
-		return CORE_BUILDER_SHARE;
-	const float players = float(AiMax(2, ai.GetEnemyTeamSize() + 1));
-	const float free = AiMax(0.f, float(mapInfo.mex) / players - float(Brain::Economist::mexes.length()));
-	const float workers = float(aiBuilderMgr.GetWorkerCount());
-	return int(100.f * free / AiMax(1.f, free + workers));
-}
-
-bool NeedBuilder()
-{
-	const float want = aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio / BUILD_SPEED_PER_WORKER;
-	return float(aiBuilderMgr.GetWorkerCount()) < want;
-}
-
 // Our current army, as the candidates would join it (Lanchester: strength ~ total damage x total health).
 float armyH = 0.f, armyD = 0.f, armyCost = 0.f, armyRange = 0.f, armyLos = 0.f, armySpeed = 0.f, wArty = 0.f, wStaticCost = 0.f;
 // how much less the enemy can shoot aircraft than ground units: (their surface damage + 1) / (their air damage + 1)
@@ -2186,35 +1777,9 @@ CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 	return null;
 }
 
-// Constructors the expansion rule asks for, recruited directly: the core gates its own constructor
-// choice behind a coin flip once a factory is "active", which throttles expansion exactly when it pays.
-array<string> T1_CONS = {"armck", "armcv", "corck", "corcv", "legck", "legcv", "armcs", "corcs", "legnavyconship"};
-int expandOrders = 0;
-IUnitTask@ ExpandTask(CCircuitUnit@ fac)
-{
-	if (!F_EXPAND || Brain::Assess::pushedBack || aiEconomyMgr.isEnergyStalling)
-		return null;
-	const float income = aiEconomyMgr.metal.income;
-	const float want = Brain::Director::expandWant + income * Brain::Director::baseBP / BUILD_SPEED_PER_WORKER;
-	if (float(aiBuilderMgr.GetWorkerCount()) >= want)
-		return null;
-	const array<string>@ opts = Facts::BuildOptions(fac.circuitDef.GetName());
-	for (uint i = 0; i < opts.length(); ++i) {
-		if (T1_CONS.find(opts[i]) < 0)
-			continue;
-		CCircuitDef@ con = ai.GetCircuitDef(opts[i]);
-		if (con is null || !con.IsAvailable(ai.frame))
-			continue;
-		++expandOrders;
-		return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, con,
-			fac.GetPos(ai.frame), 64.f));
-	}
-	return null;
-}
-
 IUnitTask@ MineLayerTask(CCircuitUnit@ fac)
 {
-	if (!F_TERRAIN || Strategic::myStart < 0 || Strategic::minelayers > 0 || Strategic::mlvDef is null
+	if (Strategic::myStart < 0 || Strategic::minelayers > 0 || Strategic::mlvDef is null
 		|| ai.frame - Strategic::mlvOrderedAt < 2 * MINUTE || !Strategic::mlvDef.IsAvailable(ai.frame)
 		|| Facts::BuildOptions(fac.circuitDef.GetName()).find(Strategic::mlvDef.GetName()) < 0)
 		return null;
@@ -2237,7 +1802,6 @@ int mohoCons = 0;
 string mohoWhy = "";
 IUnitTask@ MohoConTask(CCircuitUnit@ fac)
 {
-	if (!F_MOHO) return null;
 	CCircuitDef@ t2 = Brain::Economist::mexT2;
 	if (t2 is null || !t2.IsAvailable(ai.frame)) return null;
 	const array<string>@ opts = Facts::BuildOptions(fac.circuitDef.GetName());
@@ -2272,7 +1836,7 @@ IUnitTask@ MohoConTask(CCircuitUnit@ fac)
 
 IUnitTask@ MakeTask(CCircuitUnit@ fac)
 {
-	if (F_REZ && !fac.circuitDef.IsMobile()) {
+	if (!fac.circuitDef.IsMobile()) {
 		CCircuitDef@ rez = RezToBuild(fac.circuitDef);
 		if (rez !is null) {
 			++rezOrders;
@@ -2286,12 +1850,9 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	IUnitTask@ mc = MohoConTask(fac);
 	if (mc !is null)
 		return mc;
-	IUnitTask@ ex = ExpandTask(fac);
-	if (ex !is null)
-		return ex;
-	if (!F_PROD || aiEconomyMgr.isEnergyStalling)
+	if (aiEconomyMgr.isEnergyStalling)
 		return null;  // energy stall: the core's first answer is energy; don't queue power-hungry units
-	// (no opener window: production decides from the first unit; the fixed opener lists aren't queued with F_PROD)
+	// (no opener window: production decides from the first unit; no fixed opener lists are queued)
 	const CCircuitDef@ fdef = fac.circuitDef;
 	if (fdef.IsMobile())
 		return null;
@@ -2301,7 +1862,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// constructor: income it adds now vs its cost and the horizon.)
 	// constructor share as a quota, not a dice roll: a constructor whenever builders so far are below their share
 	// A constructor while income goes unspent (we can't spend what we earn); otherwise the metal is worth more as army.
-	if (aiEconomyMgr.metal.pull < aiEconomyMgr.metal.income && (!F_ECOPOS || EcoPos::behind)) {
+	if (aiEconomyMgr.metal.pull < aiEconomyMgr.metal.income && EcoPos::behind) {
 		++builders;
 		return null;
 	}
@@ -2388,346 +1949,6 @@ string Status() { return "moho=" + mohoCons + "(" + mohoWhy + ") prod=" + choice
 
 /* ======================================================================== */
 /*
- * Eco gate: reasoning, not imitation. A moho/exploiter gives ~+6 m/s over a T1 extractor but costs
- * ~+17-20 E/s upkeep to run (T1: 3 E/s). An energy stall slows every factory and constructor, so an
- * upgrade is only worth starting if energy headroom can carry it. We cap concurrent advanced
- * extractors at (current count + what the headroom carries) by adjusting maxThisUnit; the cap lifts
- * as energy comes online.
- */
-namespace Eco {
-
-array<CCircuitDef@> mohoDefs;
-array<int> mohoOrigMax;
-const float MOHO_UPKEEP = 22.f;  // 20 E/s upkeep + margin
-int gated = 0;
-
-void Init()
-{
-	mohoDefs = Defs({"armmoho", "cormoho", "legmoho", "cormexp", "armuwmme", "coruwmme", "leguwmme"});
-	for (uint i = 0; i < mohoDefs.length(); ++i)
-		mohoOrigMax.insertLast(mohoDefs[i].maxThisUnit);
-}
-
-void Update()
-{
-	const SResourceInfo@ e = aiEconomyMgr.energy;
-	const float fill = (e.storage > 0.f) ? e.current / e.storage : 0.f;
-	// Headroom: spare income, plus a little credit for a healthy storage buffer.
-	float headroom = e.income - e.pull + (fill > 0.5f ? 0.02f * e.current : 0.f);
-	if (aiEconomyMgr.isEnergyStalling)
-		headroom = AiMin(headroom, 0.f);
-	const int allowed = AiMax(0, int(headroom / MOHO_UPKEEP));
-	gated = 0;
-	for (uint i = 0; i < mohoDefs.length(); ++i) {
-		CCircuitDef@ d = mohoDefs[i];
-		const int cap = AiMin(mohoOrigMax[i], d.count + allowed);
-		if (cap < mohoOrigMax[i])
-			++gated;
-		d.maxThisUnit = cap;
-	}
-}
-
-string Status()
-{
-	return "mohoGate=" + (gated > 0 ? "on" : "off");
-}
-
-}  // namespace Eco
-
-/* ======================================================================== */
-/*
- * Waste: income that hits full storage is thrown away.
- *  - metal overflowing  -> we lack spending power: more constructors (Director scale), factory assist,
- *                          and nanos at a factory.
- *  - energy overflowing -> convert it: metal makers turn energy into metal (T1 ~70 E per 1 M, T2
- *                          better) and only run while energy storage is high, so surplus is their fuel.
- */
-namespace Waste {
-
-int metalSec = 0, energySec = 0;
-bool metalOverflow = false, energyOverflow = false;
-int lastNano = 0, lastMaker = 0, nanos = 0, makers = 0;
-CCircuitDef@ nanoDef, makerT1, makerT2;
-
-void Init()
-{
-	@nanoDef = Brain::Strategic::Side("armnanotc", "cornanotc", "legnanotc");
-	@makerT1 = Brain::Strategic::Side("armmakr", "cormakr", "legeconv");
-	@makerT2 = Brain::Strategic::Side("armmmkr", "cormmkr", "legadveconv");
-}
-
-void Update()  // every second
-{
-	const SResourceInfo@ m = aiEconomyMgr.metal;
-	const SResourceInfo@ e = aiEconomyMgr.energy;
-	metalSec = (m.storage > 0.f && m.current >= 0.95f * m.storage && m.income > m.pull) ? metalSec + 1 : 0;
-	energySec = (e.storage > 0.f && e.current >= 0.92f * e.storage && e.income > e.pull) ? energySec + 1 : 0;
-	const bool wasM = metalOverflow, wasE = energyOverflow;
-	metalOverflow = metalSec >= 8;
-	energyOverflow = energySec >= 15;
-	if (metalOverflow && !wasM)
-		AiLog("[ANV] Waste: metal overflowing (" + int(m.income - m.pull) + " m/s spare): more build power + assist");
-	if (energyOverflow && !wasE)
-		AiLog("[ANV] Waste: energy overflowing (" + int(e.income - e.pull) + " E/s spare): convert it");
-	if (!HasBase() || Brain::Intel::allFactories.length() == 0)
-		return;
-
-	if (metalOverflow && ai.frame - lastNano > 45 * SECOND && nanoDef !is null && nanoDef.IsAvailable(ai.frame)) {
-		lastNano = ai.frame;
-		++nanos;
-		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::NANO, Task::Priority::HIGH, nanoDef,
-			FactoryWithFewestNanos(nanoDef).GetPos(ai.frame), SQUARE_SIZE * 12, true, 2 * MINUTE));
-	}
-	if (energyOverflow && !metalOverflow && ai.frame - lastMaker > 30 * SECOND) {
-		const float spare = e.income - e.pull;
-		CCircuitDef@ mk = (aiEconomyMgr.metal.income >= 35.f && makerT2 !is null && makerT2.IsAvailable(ai.frame)) ? makerT2 : makerT1;
-		if (mk !is null && mk.IsAvailable(ai.frame) && spare > 70.f) {
-			lastMaker = ai.frame;
-			const int n = AiMin(4, int(spare / (mk is makerT2 ? 600.f : 70.f)) + 1);
-			for (int i = 0; i < n; ++i)
-				aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::CONVERT, Task::Priority::NORMAL, mk, basePos,
-					SQUARE_SIZE * 40, true, 2 * MINUTE));
-			makers += n;
-			AiLog("[ANV] Waste: +" + n + " " + mk.GetName() + " to convert " + int(spare) + " E/s surplus");
-		}
-	}
-}
-
-string Status()
-{
-	return "waste(m/e)=" + metalSec + "/" + energySec + "s nanos+" + nanos + " makers+" + makers;
-}
-
-}  // namespace Waste
-
-/* ======================================================================== */
-/*
- * Convert: energy that hits full storage is thrown away; a converter turns it into metal. Which
- * converter, and how many, is a live comparison, not a rule:
- *  - spare  = energy income - pull - what converters already ordered will consume
- *  - for each converter we can build (facts from the unit files: E/s capacity, metal per E, cost,
- *    build time): n = how many the spare runs, gain = n * capacity * efficiency (M/s),
- *    time to repay = n * cost (metal + energy priced at the converter rate) / gain
- *                    + time to finish (build time at one constructor's work rate: nothing pays until built)
- *  - build the quickest-repaying one, if it repays within the planning horizon.
- * Cheap T1 converters win when space and build time are free; dense T2 ones when the spare is large.
- */
-namespace Convert {
-
-array<CCircuitDef@> defs;
-array<Facts::SConv@> facts;
-float pendingE = 0.f;
-int pendingUntil = 0, ordered = 0, built = 0, lastLog = 0;
-const float CON_WORK = 85.f;  // T1 constructor workertime (unit facts), the rate one builder adds
-
-void Init()
-{
-	Facts::InitConverters();
-	array<string> names = {"armmakr", "cormakr", "legeconv", "armmmkr", "cormmkr", "legadveconv"};
-	for (uint i = 0; i < names.length(); ++i) {
-		CCircuitDef@ d = ai.GetCircuitDef(names[i]);
-		Facts::SConv@ c = Facts::Converter(names[i]);
-		if (d !is null && c !is null) {
-			defs.insertLast(d);
-			facts.insertLast(c);
-		}
-	}
-}
-
-void OnFinished(CCircuitUnit@ u)
-{
-	for (uint i = 0; i < defs.length(); ++i)
-		if (u.circuitDef is defs[i]) {
-			pendingE = AiMax(0.f, pendingE - facts[i].capE);
-			++built;
-		}
-}
-
-void Update()  // every second
-{
-	if (!HasBase() || ai.frame % (5 * SECOND) != 0)
-		return;
-	if (ai.frame > pendingUntil)
-		pendingE = 0.f;  // orders expired or were dropped
-	const SResourceInfo@ e = aiEconomyMgr.energy;
-	// energy is wasted only when storage is (nearly) full and still not drained
-	if (!aiEconomyMgr.isEnergyFull || aiEconomyMgr.isMetalFull)
-		return;
-	const float spare = e.income - e.pull - pendingE;
-	if (spare <= 0.f)
-		return;
-	int best = -1, bestN = 0;
-	float bestPay = 1e9f;
-	for (uint i = 0; i < defs.length(); ++i) {
-		if (!defs[i].IsAvailable(ai.frame))
-			continue;
-		const int n = int(spare / facts[i].capE);
-		if (n < 1)
-			continue;
-		const float gain = n * facts[i].capE * facts[i].eff;
-		const float cost = n * (facts[i].costM + facts[i].costE / Economist::energyPerMetal);
-		const float pay = cost / gain + facts[i].buildTime / CON_WORK;
-		if (pay < bestPay) {
-			bestPay = pay;
-			best = int(i);
-			bestN = n;
-		}
-	}
-	if (best < 0)
-		return;
-	const float horizon = Economist::Horizon();
-	if (bestPay >= horizon)
-		return;
-	// order what the spare can run, but no more at once than builders that could take it
-	const int n = AiMin(bestN, AiMax(1, aiBuilderMgr.GetWorkerCount()));
-	for (int k = 0; k < n; ++k)
-		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::CONVERT, Task::Priority::NORMAL, defs[best], basePos,
-			SQUARE_SIZE * 48, true, 2 * MINUTE));
-	pendingE += n * facts[best].capE;
-	pendingUntil = ai.frame + 2 * MINUTE;
-	ordered += n;
-	AiLog("[ANV] Convert: +" + n + " " + defs[best].GetName() + " (spare " + int(spare) + " E/s, repays in "
-		+ int(bestPay) + "s < horizon " + int(horizon) + "s)");
-}
-
-// The core sizes energy to a fixed multiple of metal income (economy.json "factor", 20x-60x), so it keeps
-// assigning power plants while energy already overflows. At that moment a plant's marginal value is zero
-// (its output is thrown away) and it costs metal; a T1 converter costs ~1 metal and turns the surplus into
-// metal. So the builder takes the converter instead. Self-limiting: converters drain the storage, the
-// overflow stops, and plants come back when energy is short again.
-int swaps = 0;
-IUnitTask@ Substitute(CCircuitUnit@ unit, IUnitTask@ task)
-{
-	if (task is null || task.GetType() != Task::Type::BUILDER || !HasBase())
-		return task;
-	IBuilderTask@ bt = cast<IBuilderTask>(task);
-	if (bt is null || bt.GetBuildType() != Task::BuildType::ENERGY)
-		return task;
-	const SResourceInfo@ e = aiEconomyMgr.energy;
-	if (!aiEconomyMgr.isEnergyFull || e.income <= e.pull || aiEconomyMgr.isMetalFull)
-		return task;
-	// cheapest converter by metal: the surplus is free, metal is what's short
-	int best = -1;
-	for (uint i = 0; i < defs.length(); ++i)
-		if (defs[i].IsAvailable(ai.frame) && Facts::BuildOptions(unit.circuitDef.GetName()).find(defs[i].GetName()) >= 0
-			&& (best < 0 || facts[i].costM < facts[best].costM))
-			best = int(i);
-	if (best < 0 || bt.buildDef is null || facts[best].costM >= bt.buildDef.costM)
-		return task;
-	++swaps;
-	if (swaps % 10 == 1)
-		AiLog("[ANV] Convert: energy overflowing, " + defs[best].GetName() + " instead of " + bt.buildDef.GetName() + " (swaps " + swaps + ")");
-	return aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::CONVERT, Task::Priority::NORMAL, defs[best], basePos,
-		SQUARE_SIZE * 48, true, MINUTE));
-}
-
-}  // namespace Convert
-
-/* ======================================================================== */
-/*
- * Energy, decided live. BARb sizes energy to a fixed multiple of metal income (20x-60x by the clock);
- * that curve is switched off in profile anarva_e, and this decides instead:
- *  - WHEN: a plant takes time to finish, and nothing pays until it's done. Watch net energy
- *    (income - pull) and the trend of pull. If, by the time a plant ordered now would be finished, the
- *    stock would already be empty, order now. Starving energy collapses everything (build power stops,
- *    extractors and converters stop), so the lead time is what matters, not the current balance.
- *  - WHICH: the plant with the lowest metal-equivalent cost per E/s whose build lead time still fits
- *    before the stock runs out; if none fits, the quickest one (stop the bleeding first).
- *  - HOW MANY: enough to cover the projected deficit.
- *  Surplus is not built for its own sake: real surplus goes to converters (Brain::Convert).
- */
-namespace Energy {
-
-array<CCircuitDef@> plants;
-float prevPull = 0.f, trend = 0.f;   // E/s per second, smoothed
-float pendingE = 0.f;
-int pendingUntil = 0, orders = 0, lastLog = 0;
-
-void Init()
-{
-	array<string> names = {"armsolar", "corsolar", "legsolar", "armadvsol", "coradvsol", "legadvsol",
-		"armfus", "corfus", "legfus", "armafus", "corafus", "legafus"};
-	for (uint i = 0; i + 2 < names.length(); i += 3) {
-		CCircuitDef@ d = Brain::Strategic::Side(names[i], names[i + 1], names[i + 2]);  // our faction only
-		if (d !is null && aiEconomyMgr.GetEnergyMake(d) > 0.f)
-			plants.insertLast(d);
-	}
-}
-
-const float MM_LEVEL = 0.75f;  // game fact: converters run while energy storage is above 75% (mmLevel)
-
-void Update()  // every second
-{
-	const SResourceInfo@ e = aiEconomyMgr.energy;
-	trend = 0.95f * trend + 0.05f * (e.pull - prevPull);   // ~20 s smoothing of how fast demand grows
-	prevPull = e.pull;
-	if (!HasBase() || ai.frame % (5 * SECOND) != 0)
-		return;
-	if (ai.frame > pendingUntil)
-		pendingE = 0.f;
-	// above the converters' threshold the game already treats energy as surplus: no plant is needed
-	if (e.current > MM_LEVEL * e.storage)
-		return;
-	const int workers = AiMax(1, aiBuilderMgr.GetWorkerCount());
-	CCircuitDef@ best = null;
-	float bestCost = 1e9f, quickLead = 1e9f, need = 0.f;
-	CCircuitDef@ quick = null;
-	// lead time: build time at the build power that would take it (a share of our builders)
-	for (uint i = 0; i < plants.length(); ++i) {
-		const float lead = BuildTime(plants[i]) / (Brain::Convert::CON_WORK * AiMax(1.f, float(workers) * 0.5f));
-		if (plants[i].IsAvailable(ai.frame) && lead < quickLead) { quickLead = lead; @quick = plants[i]; }
-	}
-	for (uint i = 0; i < plants.length(); ++i) {
-		CCircuitDef@ d = plants[i];
-		if (!d.IsAvailable(ai.frame))
-			continue;
-		const float lead = BuildTime(d) / (Brain::Convert::CON_WORK * AiMax(1.f, float(workers) * 0.5f));
-		const float net = e.income + pendingE - e.pull - AiMax(0.f, trend) * lead;
-		const float toEmpty = net < 0.f ? e.current / -net : 1e9f;
-		// not yet: the stock outlasts this plant's lead plus the time the fastest plant needs to cover a miss
-		if (toEmpty > lead + quickLead)
-			continue;
-		const float make = aiEconomyMgr.GetEnergyMake(d);
-		const float cost = Brain::Economist::MetalValue(d) / make;
-		if (toEmpty >= lead && cost < bestCost) {
-			bestCost = cost;
-			@best = d;
-			need = -net;
-		} else if (best is null && need <= 0.f) {
-			need = -net;
-		}
-	}
-	if (need <= 0.f)
-		return;
-	if (best is null)
-		@best = quick;  // nothing finishes in time: the fastest plant first
-	if (best is null)
-		return;
-	const float make = aiEconomyMgr.GetEnergyMake(best);
-	const int n = AiMin(AiMax(1, int(ceil(need / make))), workers);
-	for (int k = 0; k < n; ++k)
-		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::ENERGY, Task::Priority::HIGH, best, basePos, SQUARE_SIZE * 40, true, 2 * MINUTE));
-	pendingE += n * make;
-	pendingUntil = ai.frame + 2 * MINUTE;
-	orders += n;
-	AiLog("[ANV] Energy: +" + n + " " + best.GetName() + " (net " + int(e.income - e.pull) + " E/s, trend +" + F1(trend) + "/s, stock "
-		+ int(e.current) + ")");
-}
-
-// build time from the unit facts (the API doesn't expose it): solar ~2600, adv solar ~8000, fusion ~55000, afus ~320000
-float BuildTime(const CCircuitDef@ d)
-{
-	const string n = d.GetName();
-	if (n.findFirst("afus") >= 0) return 320000.f;
-	if (n.findFirst("fus") >= 0) return 56000.f;
-	if (n.findFirst("advsol") >= 0) return 8000.f;
-	return 2700.f;
-}
-
-}  // namespace Energy
-
-/* ======================================================================== */
-/*
  * Economist: the shared valuation every decision uses. No hand-picked cutoffs: investments are judged
  * by payback time against a planning horizon derived from the live situation, and energy is priced in
  * metal at the exchange rate of the converters we can build (read from their defs).
@@ -2804,48 +2025,6 @@ float MohoPayback(const CCircuitDef@ lab)
 
 /* ======================================================================== */
 /*
- * Redirect build power: the share of constructor build power that should serve the army equals the
- * army deficit (1 - ours/needed). Those builders get guard (assist) tasks on factories, so production
- * speeds up exactly as much as the deficit demands; with a surplus they return to eco work.
- */
-namespace Redirect {
-
-array<IUnitTask@> guards;
-array<int> guardUntil;
-int issued = 0;
-const int GUARD_SPAN = 45 * SECOND;  // re-evaluated every update; this is only the task lifetime
-
-void Update()
-{
-	for (int i = int(guards.length()) - 1; i >= 0; --i) {
-		if (ai.frame > guardUntil[i]) {
-			guards.removeAt(i);
-			guardUntil.removeAt(i);
-		}
-	}
-	const array<CCircuitUnit@>@ facs = Brain::Intel::allFactories;
-	if (facs.length() == 0 || aiEconomyMgr.isMetalEmpty || aiEconomyMgr.isEnergyStalling)
-		return;  // assisting with an empty bank (or no energy) only slows everything down
-	const float deficit = AiMax(0.f, 1.f - Brain::Director::ratio);
-	const int want = int(float(aiBuilderMgr.GetWorkerCount()) * deficit + 0.5f);
-	while (int(guards.length()) < want) {
-		CCircuitUnit@ fac = FactoryMostWorthAssisting(guards);
-		if (fac is null) break;  // nothing in production worth speeding up
-		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, GUARD_SPAN));
-		if (g is null)
-			break;
-		guards.insertLast(g);
-		guardUntil.insertLast(ai.frame + GUARD_SPAN);
-		++issued;
-	}
-}
-
-string Status() { return "assist=" + guards.length() + "/" + issued; }
-
-}  // namespace Redirect
-
-/* ======================================================================== */
-/*
  * Tech gate: T2/T3 is an investment that pays later and costs army now. Weighed against the
  * situation and the clock: income able to carry the tier, not being pushed back, holding parity,
  * game time, and whether the enemy has teched already (then we must follow).
@@ -2889,14 +2068,13 @@ bool Allowed(const CCircuitDef@ facDef)
 		// our T1 army is losing value and teching becomes a necessity, not an investment.
 		const float payback = Brain::Economist::MohoPayback(facDef);
 		const bool forced = aiEnemyMgr.GetEnemyCost(RT::HEAVY) > 0.f && Brain::Director::ratio < 1.f;
-		ok = payback < H || forced || Brain::Waste::metalOverflow;
+		ok = payback < H || forced;
 		why = "payback " + int(payback) + "s vs horizon " + int(H) + "s" + (forced ? ", enemy teched" : "");
 	} else {
-		// T3: when T2 production can no longer absorb our income (it overflows), or the enemy fields
-		// super units while we're not ahead and must answer in kind.
+		// T3: when the enemy fields super units while we're not ahead and must answer in kind.
 		const bool enemySuper = aiEnemyMgr.GetEnemyCost(RT::SUPER) > 0.f && Brain::Director::ratio < 1.f;
-		ok = Brain::Waste::metalOverflow || enemySuper;
-		why = Brain::Waste::metalOverflow ? "income overflows T2 production" : (enemySuper ? "enemy fields super units" : "T2 still absorbs our income");
+		ok = enemySuper;
+		why = enemySuper ? "enemy fields super units" : "no super units to answer";
 	}
 	if (ai.frame - lastLog > MINUTE || ok) {
 		lastLog = ai.frame;
@@ -2928,7 +2106,7 @@ float trade = 1.f;
 // Where exchanges happen (C++ bridge): our side of the map = closer to our base than to any known enemy
 // building, the live midpoint of the territory (no distance constant). Kills are located: an enemy that
 // leaves the core's list died, at its last known spot.
-float killedHome = 0.f, killedAway = 0.f, tradeHome = 1.f, tradeAway = 1.f;
+float killedHome = 0.f, killedAway = 0.f;
 dictionary seen;  // enemy id -> last spot and cost
 class SSeen { AIFloat3 pos; float cost; }
 array<AIFloat3> enemyStatics;
@@ -2982,8 +2160,7 @@ void OnLoss(CCircuitUnit@ unit)
 	if (!d.IsMobile() && d.defDmg <= 0.f && aiEconomyMgr.GetEnergyMake(d) > 0.f)
 		return;
 	const float dist = HasBase() ? basePos.distance2D(unit.GetPos(ai.frame)) : 0.f;
-	if (F_TERRAIN)
-		Brain::Strategic::OnTerrainLoss(unit.GetPos(ai.frame), d.costM);
+	Brain::Strategic::OnTerrainLoss(unit.GetPos(ai.frame), d.costM);
 	const bool home = OnOurSide(unit.GetPos(ai.frame));  // our side: closer to our assets than to theirs (no 1500-elmo ring)
 	if (home) {
 		lostNear += d.costM;
@@ -3014,8 +2191,6 @@ void Update()  // every second
 	// Evidence weighted by the army at stake: exchanges small next to what we'd risk can't swing the estimate.
 	const float stake = AiMax(1.f, Brain::Strategic::armyMetal);
 	trade = (killed + stake) / (lost + stake);
-	tradeHome = (killedHome + stake) / (lostNear + stake);
-	tradeAway = (killedAway + stake) / (lostFar + stake);
 	// Pushed back = home losses
 	// over that window exceed what our income replaces in it; pushing = our losses happen mostly away from home.
 	const float window = H;  // the evidence window is the horizon (see decay above)
@@ -3033,7 +2208,7 @@ void Update()  // every second
 string Status()
 {
 	return (pushedBack ? "PUSHED-BACK" : (pushing ? "PUSHING" : "holding")) + " trade=" + F1(trade)
-		+ " home/away trade=" + F1(tradeHome) + "/" + F1(tradeAway) + " kill(h/a)=" + int(killedHome) + "/" + int(killedAway)
+		+ " kill(h/a)=" + int(killedHome) + "/" + int(killedAway)
 		+ " lost(n/f)=" + int(lostNear) + "/" + int(lostFar) + " front=" + int(frontDist) + " growth3m=" + int(growth * 100.f) + "%";
 }
 
@@ -3041,267 +2216,51 @@ string Status()
 
 /* ======================================================================== */
 /*
- * Director: every few seconds, ask "what is the next reasonable move?". It weighs our army against
- * the enemy's known mobile threat, our economy and the clock, picks a posture, and logs why.
- * The other modules read the posture.
+ * Director: every second it weighs our army against the enemy's known mobile threat at our trade rate.
+ * The other modules read the ratio (ours / needed) and the needed power.
  */
 namespace Director {
 
-enum Posture { BOOM = 0, HOLD, BALANCED, PRESSURE, ALLIN, TURTLE }
-array<string> names = {"BOOM", "HOLD", "BALANCED", "PRESSURE", "ALLIN", "TURTLE"};
-
-Posture posture = BOOM;
-Posture pending = BOOM;
-int pendingSince = 0;
-float waveFrac = 0.30f;
 float ratio = 1.f;
-float baseBP = -1.f;     // core's constructor-vs-army knob (economy.buildpower)
-float scale = 1.f;       // multiplier we apply to it
-/*
- * Expansion demand. The core sizes build power to income, a loop that keeps a small economy small.
- * The real question: is one more constructor worth its cost? n constructors take F free extractor spots
- * in F*t/n seconds (t = one trip: walk the spot spacing + build the extractor). The metal a spot yields
- * while still unclaimed is lost, so the expansion loss is about s*F^2*t/(2n) (s = one spot's income).
- * One more constructor cuts it by s*F^2*t/(2n^2); that beats its cost c while n < F*sqrt(s*t/(2c)).
- * Every input is a game fact or a live measurement: spots from the map analysis (our fair share =
- * map extractors / players), speed and cost from the constructor's def, s from our own extractors.
- */
-float expandWant = 0.f;
-void Expand()
-{
-	MapFacts::SMap@ m = Brain::Production::mapInfo;
-	CCircuitDef@ con = Brain::Strategic::Side("armck", "corck", "legck");
-	const float income = aiEconomyMgr.metal.income;
-	if (m is null || m.mex <= 0 || con is null || income <= 0.f)
-		return;
-	const float ours = float(Brain::Economist::mexes.length());
-	// Free spots, counted live (C++ bridge): open (not ours, not queued), not under a known enemy
-	// extractor, and safe for a constructor right now. No "fair share": a free spot is worth the same
-	// whether we hold a third of the map or half of it.
-	const float F = FreeSpots(con);
-	if (F <= 0.f) {
-		expandWant = 0.f;
-		return;
-	}
-	float speed = con.speed;               // elmos per frame in the core
-	if (speed < 10.f) speed *= SECOND;     // -> elmos per second
-	const float spacing = AiMax(1.f, m.straight) / sqrt(float(m.mex));
-	const float t = spacing / AiMax(1.f, speed) + MEX_BUILDTIME / (Brain::Production::BUILD_SPEED_PER_WORKER * 20.f);
-	const float s = ours > 0.f ? AiMax(0.5f, income / ours) : 1.f;  // upper bound: includes reclaim/makers
-	const float c = Brain::Economist::MetalValue(con);
-	expandWant = F * sqrt(s * t / (2.f * c));
-	// (danger is already per spot: threatened spots are not counted as free)
-	// the core adds a constructor while workers' build power < income * ratio
-	const float coreWorkers = income * aiFactoryMgr.buildpowerRatio / Brain::Production::BUILD_SPEED_PER_WORKER;
-	const float want = AiMax(coreWorkers, expandWant + income * baseBP / Brain::Production::BUILD_SPEED_PER_WORKER);
-	aiFactoryMgr.buildpowerRatio = want * Brain::Production::BUILD_SPEED_PER_WORKER / income;
-}
-const float MEX_BUILDTIME = 1800.f;  // T1 extractor buildtime (unit facts)
-
-uint freeSpots = 0, enemySpots = 0, unsafeSpots = 0;
-float FreeSpots(CCircuitDef@ con)
-{
-	array<AIFloat3> sp; array<float> si; array<bool> so;
-	const uint n = AiGetMetalSpots(sp, si, so);
-	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
-	const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
-	array<AIFloat3> emex, estatic;
-	for (uint i = 0; i < ne; ++i) {
-		if (ed[i] is null || ed[i].IsMobile()) continue;
-		estatic.insertLast(ep[i]);
-		const string nm = ed[i].GetName();
-		if (nm.findFirst("mex") >= 0 || nm.findFirst("moho") >= 0) emex.insertLast(ep[i]);
-	}
-	if (estatic.length() == 0) estatic.insertLast(aiEnemyMgr.GetEnemyPos());  // the core's estimate of where they are
-	// How holdable a spot is: the share of the way from the nearest enemy building to us that lies on
-	// their side, dE/(dU+dE). Our half of the map counts most, their doorstep almost nothing; more enemy
-	// bases shrink our side by themselves. No cutoff.
-	freeSpots = 0; enemySpots = 0; unsafeSpots = 0;
-	float holdable = 0.f;
-	for (uint k = 0; k < n; ++k) {
-		if (!so[k]) continue;
-		bool held = false;
-		for (uint j = 0; j < emex.length() && !held; ++j) held = emex[j].distance2D(sp[k]) < 64.f;  // an extractor sits on its spot
-		if (held) { ++enemySpots; continue; }
-		if (aiThreat.GetThreatAt(con, sp[k]) > 0.f) { ++unsafeSpots; continue; }
-		++freeSpots;
-		const float dU = basePos.distance2D(sp[k]);
-		float dE = 1e9f;
-		for (uint j = 0; j < estatic.length(); ++j) dE = AiMin(dE, estatic[j].distance2D(sp[k]));
-		holdable += dE / AiMax(1.f, dU + dE);
-	}
-	return holdable;
-}
-
-string scaleWhy = "";
 bool blind = false;
-string reason = "start";
 
-float PoolPower() { return Brain::Army::groundPower + Brain::Army::raiderPoolPower; }
 // Everything of ours that fights on the surface. The gather pool alone drops every unit with a support,
 // artillery or AA secondary role, which is most of a mixed army: measured 48 vs ~11k metal fielded.
-float allPower = 0.f, allCost = 0.f, allSpeed = 0.f;
+float allPower = 0.f, allSpeed = 0.f;
 int allPowerFrame = -1;
 float MeasuredPower()
 {
 	if (allPowerFrame == ai.frame) return allPower;
 	allPowerFrame = ai.frame;
-	allPower = 0.f; allCost = 0.f; allSpeed = 0.f; uint cnt = 0;
+	allPower = 0.f; allSpeed = 0.f; uint cnt = 0;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	for (uint i = 0; i < all.length(); ++i) {
 		const CCircuitDef@ d = all[i].circuitDef;
 		if (!d.IsMobile() || d.power <= 0.f || d.surfThrDmg <= 0.f || all[i] is commander) continue;
 		if (d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
 		allPower += d.power;
-		allCost += d.costM;
 		allSpeed += d.speed; ++cnt;
 	}
 	if (cnt > 0) allSpeed /= float(cnt);
 	return allPower;
 }
-float OurPower() { return F_POWERALL ? MeasuredPower() : PoolPower(); }
+float OurPower() { return MeasuredPower(); }
 
-/*
- * Just in time (STRATEGY 29). An army that is far away is no threat yet: what matters is whether we can
- * have the answer by the time it gets here. Each armed enemy reaches our nearest asset at
- * t = (distance - its range) / its speed (worst case: it heads straight for us). Unseen strength arrives
- * from the enemy's centre. At every arrival time we compare what we'll have (our power now plus what our
- * income can still turn into army by then) with what has arrived (at our trade rate). The worst moment
- * is the ratio that decides how much goes into the economy now.
- */
-float jitRatio = 0.f, jitWorstT = 0.f;
-float JitRatio(float ours, float theirs, float trade)
-{
-	array<AIFloat3> assets;
-	if (HasBase()) assets.insertLast(basePos);
-	const array<CCircuitUnit@>@ mx = Brain::Economist::mexes;
-	for (uint m = 0; m < mx.length(); ++m) assets.insertLast(mx[m].GetPos(ai.frame));
-	const array<CCircuitUnit@>@ fa = Brain::Intel::allFactories;
-	for (uint f = 0; f < fa.length(); ++f) assets.insertLast(fa[f].GetPos(ai.frame));
-	if (assets.length() == 0) return ours / AiMax(1.f, theirs / trade);
-
-	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
-	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
-	array<float> ts, th;
-	float seen = 0.f, speedSum = 0.f; uint moving = 0;
-	for (uint i = 0; i < n; ++i) {
-		CCircuitDef@ d = ed[i];
-		if (d is null || !d.IsMobile() || d.threat <= 0.f || (ef[i] & 4) != 0) continue;
-		float dmin = 1e9f;
-		for (uint a = 0; a < assets.length(); ++a) dmin = AiMin(dmin, ep[i].distance2D(assets[a]));
-		const float t = MoveTime(d, AiMax(0.f, dmin - d.GetMaxRange()));
-		uint k = 0; while (k < ts.length() && ts[k] < t) ++k;
-		ts.insertAt(k, t); th.insertAt(k, d.threat);
-		seen += d.threat; speedSum += d.speed; ++moving;
-	}
-	// what we believe exists but don't see: from their centre at their mean speed
-	const float hidden = AiMax(0.f, theirs - seen);
-	if (hidden > 0.f) {
-		const AIFloat3 ec0 = aiEnemyMgr.GetEnemyPos();
-		float dmin = 1e9f;
-		for (uint a = 0; a < assets.length(); ++a) dmin = AiMin(dmin, ec0.distance2D(assets[a]));
-		const float sp = moving > 0 ? speedSum / moving : AiMax(1.f, allSpeed);
-		const float t = dmin / AiMax(1.f, sp);
-		uint k = 0; while (k < ts.length() && ts[k] < t) ++k;
-		ts.insertAt(k, t); th.insertAt(k, hidden);
-	}
-	// how fast income turns into power: our own army's power per metal
-	MeasuredPower();
-	const float perMetal = allCost > 0.f ? allPower / allCost : 0.f;
-	const float rate = aiEconomyMgr.metal.income * perMetal;  // power per second at full army production
-	float worst = 1e9f, cum = 0.f;
-	jitWorstT = 0.f;
-	for (uint k = 0; k < ts.length(); ++k) {
-		cum += th[k];
-		const float r = (ours + rate * ts[k]) / AiMax(1.f, cum / trade);
-		if (r < worst) { worst = r; jitWorstT = ts[k]; }
-	}
-	return worst < 1e9f ? worst : ours / AiMax(1.f, theirs / trade);
-}
-
-
-float needPowerAway = 0.f;
 float needPower = 0.f;   // army power needed to win against what we know (and guess) is out there
 
 void Update()
 {
 	const float ours = OurPower();
-	if (baseBP < 0.f)
-		baseBP = aiFactoryMgr.buildpowerRatio;
 	const float enemyStatic = aiEnemyMgr.GetEnemyCost(RT::STATIC);
 	blind = aiEnemyMgr.mobileThreat <= 1.f && enemyStatic <= 0.f;
 
 	// What we must be able to beat: the known (or, when blind, assumed) enemy army plus the army we
 	// guess is hidden under seen jammers, divided by how efficiently we are actually trading.
-	float theirs = Brain::Economist::EnemyThreat() + aiEnemyMgr.GetEnemyThreat(RT::JAMMER);
-	// Napoleon: several enemies are several armies. Beat them one at a time before they combine.
-	if (F_DETAIL)
-		theirs /= float(AiMax(1, ai.GetEnemyTeamSize()));
+	const float theirs = Brain::Economist::EnemyThreat() + aiEnemyMgr.GetEnemyThreat(RT::JAMMER);
 	needPower = theirs / AiMax(1e-3f, Brain::Assess::trade);  // numeric guard only
-	needPowerAway = theirs / AiMax(1e-3f, Brain::Assess::tradeAway);  // what an attack must bring, at the trade we get away
 	ratio = ours / AiMax(1.f, needPower);
-
-	/*
-	 * Constructors vs army, continuously: surplus power over what we need goes into scaling, a deficit
-	 * into army. The factory adds a constructor while buildpower < income * buildpowerRatio.
-	 * Income spilling out of full storage means we lack spending power: more builders.
-	 */
-	// A deficit far from home is no reason to starve the economy (the only way back); only a deficit at
-	// home is. So we cut scaling only while pushed back, and add to it with surplus.
-	if (Brain::Assess::pushedBack) {
-		scale = AiMin(1.f, AiMax(0.35f, ratio));
-		scaleWhy = "pushed back with a deficit: army first";
-	} else if (F_BOOM) {
-		/*
-		 * Humans beat several hard BARbs by booming: BARb armies gather at home and don't punish
-		 * greed, so an army sitting in their base is no threat to us. What matters is force projected
-		 * AT us: metal we lose near home, relative to what we earn. Pressure p = home losses /
-		 * (home losses + a minute of income); scale toward eco by (1 - p).
-		 */
-		const float income60 = aiEconomyMgr.metal.income * 60.f;
-		const float p = Brain::Assess::lostNear / AiMax(1.f, Brain::Assess::lostNear + income60);
-		scale = AiMin(2.f, AiMax(1.f, ratio) * (1.f + (1.f - p)));
-		scaleWhy = "boom: home pressure " + int(p * 100.f) + "%";
-	} else {
-		if (F_JIT) {
-			jitRatio = JitRatio(ours, theirs, AiMax(0.25f, Brain::Assess::trade));
-			scale = AiMin(2.f, AiMax(1.f, jitRatio));
-		} else
-			scale = AiMin(2.f, AiMax(1.f, ratio));
-		scaleWhy = blind ? "blind: assume enemy kept pace" : (ratio >= 1.f ? "surplus power: scale" : "deficit away from home: keep the economy growing");
-	}
-	if (Brain::Waste::metalOverflow) {
-		scale = AiMin(2.f, AiMax(scale, 1.f) * (1.f + float(Brain::Waste::metalSec) / 60.f));
-		scaleWhy = "metal overflowing: more build power";
-	}
-	if (F_ECOPOS) {
-		// EcoPos alone sets the constructor rule (behind: economy; ahead: army)
-	} else if (F_DECIDE)
-		aiFactoryMgr.buildpowerRatio = 1e9f;  // no cap or band: the core's constructor rule is 'only while income goes unspent'
-	else if (F_SCALE)
-		aiFactoryMgr.buildpowerRatio = baseBP * scale;
-	if (F_EXPAND && !Brain::Assess::pushedBack)
-		Expand();
-	if (F_SCOUT)
-		aiMilitaryMgr.quota.scout = AiMax(int(aiMilitaryMgr.quota.scout), blind ? 4 : 3);
-
-	// (see Expand)
-	// Waves are sized to win: the gather completes when it holds the power needed.
-	waveFrac = (Brain::Army::groundPower > 0.f) ? AiMin(1.f, needPower / Brain::Army::groundPower) : 1.f;
-
-	// Posture is now only a label for the logs (and "can't win an open fight" for Fortify).
-	Posture want = ratio < 0.5f ? TURTLE : (ratio < 1.f ? HOLD : (ratio < 1.5f ? BALANCED : (ratio < 3.f ? PRESSURE : ALLIN)));
-	if (want != pending) {
-		pending = want;
-		pendingSince = ai.frame;
-	}
-	if (want != posture && ai.frame - pendingSince >= 10 * SECOND) {  // log hygiene only
-		AiLog("[ANV] Director: " + names[posture] + " -> " + names[want] + " (power " + int(ours) + " vs needed " + int(needPower)
-			+ ", trade " + F1(Brain::Assess::trade) + (Brain::Assess::pushedBack ? ", pushed back" : "") + (blind ? ", blind" : "") + ")");
-		posture = want;
-	}
 }
-string Status() { return names[posture] + " r=" + F1(ratio) + (F_JIT ? " jit=" + F1(jitRatio) + "@" + int(jitWorstT) + "s" : "") + " wave=" + F1(waveFrac) + " bp=" + F1(scale) + "(" + scaleWhy + ")"; }
+string Status() { return "r=" + F1(ratio) + " need=" + int(needPower) + (blind ? " blind" : ""); }
 
 }  // namespace Director
 
@@ -3334,13 +2293,9 @@ void Init()
 	Recycler::Init();
 	Intel::Init();
 	Strategic::Init();
-	Eco::Init();
 	Production::Init();
 	Production::LookAtMap();
-	Waste::Init();
 	Economist::Init();
-	Convert::Init();
-	Energy::Init();
 }
 
 void OnFactoryAdded(CCircuitUnit@ unit)
@@ -3370,28 +2325,22 @@ void OnUnitFinished(CCircuitUnit@ unit)
 	Recycler::OnFinished(unit);
 	Intel::OnFinished(unit);
 	Strategic::OnFinished(unit);
-	if (F_TERRAIN && Strategic::terrainDef !is null && unit.circuitDef is Strategic::terrainDef) {
+	if (Strategic::terrainDef !is null && unit.circuitDef is Strategic::terrainDef)
 		++Strategic::terrainBuilt;
-		Strategic::terrainPower += unit.circuitDef.power;
-		Strategic::terrainMetal += unit.circuitDef.costM;
-	}
 	if (IsArmy(unit.circuitDef))
 		Strategic::armyMetal += unit.circuitDef.costM;
 	if (Strategic::mlvDef !is null && unit.circuitDef is Strategic::mlvDef)
 		++Strategic::minelayers;
 	Economist::OnFinished(unit);
 	Production::OnFinished(unit);
-	if (F_CONVERT) Convert::OnFinished(unit);
 }
 
 CCircuitUnit@ commander = null;
 int commRedirects = 0;
 
 /*
- * The commander is the win condition: a far-off building gains a little metal, losing the commander
- * loses the game. So it only takes work inside the zone our army can protect, measured from where
- * fights actually happen (half the distance to the front; the map's base-to-base path early on).
- * Work outside stays queued for cheap constructors; the commander assists a factory at home instead.
+ * The commander is the win condition: it takes a job only when the job's value beats P(death) there x
+ * everything we own (CommWorth, see Commander risk below); otherwise it takes the safest productive job.
  */
 IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 {
@@ -3400,57 +2349,16 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 	IBuilderTask@ bt = cast<IBuilderTask>(task);
 	if (bt is null)
 		return task;
-	if (F_COMMRISK) {
-		if (CommWorth(bt.GetBuildPos(), JobValue(bt)))
-			return task;
-		++commRedirects;
-		IUnitTask@ safe = CommSafeJob(comm.GetPos(ai.frame));
-		return safe is null ? task : safe;
-	}
-	if (F_COMMGUARD) {
-		const AIFloat3 bp = bt.GetBuildPos();
-		CCircuitUnit@ home = NearestFactory(bp);
-		const float tHome = home.GetPos(ai.frame).distance2D(bp) / AiMax(1.f, comm.circuitDef.speed);
-		if (CommExposure(bp, tHome) <= 0.f)
-			return task;
-		++commRedirects;
-		return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, F_COMMSPOT ? CommRefuge(comm.GetPos(ai.frame)) : NearestFactory(comm.GetPos(ai.frame)), true, 20 * SECOND));
-	}
-	if (F_COMMZONE) {
-		/*
-		 * The commander is the game. It only takes work closer to home than the nearest place where we
-		 * have lost anything recently (the loss heat map; a cell counts while at least one metal of losses
-		 * there hasn't decayed away), and never inside such a cell. Where nothing has died, nothing has
-		 * reached. Work beyond stays queued for constructors, which are cheap to lose.
-		 */
-		const AIFloat3 bp = bt.GetBuildPos();
-		const float d = basePos.distance2D(bp);
-		float danger = 1e9f;
-		for (uint c = 0; c < Brain::Intel::heat.length(); ++c)
-			if (Brain::Intel::heat[c] >= 1.f)
-				danger = AiMin(danger, Brain::Intel::CellCenter(int(c)).distance2D(basePos) - Brain::Intel::CELL);
-		if (d < danger && Brain::Intel::heat[Brain::Intel::CellOf(bp)] < 1.f)
-			return task;
-	} else {
-		float front = Brain::Assess::frontDist;
-		if (front <= 0.f && Brain::Production::mapInfo !is null && Brain::Production::mapInfo.basePath > 0.f)
-			front = Brain::Production::mapInfo.basePath * 0.5f;
-		if (front <= 0.f)
-			return task;  // no idea where the fighting is yet (opening): let it build
-		if (basePos.distance2D(bt.GetBuildPos()) <= 0.5f * front)
-			return task;
-	}
+	if (CommWorth(bt.GetBuildPos(), JobValue(bt)))
+		return task;
 	++commRedirects;
-	CCircuitUnit@ fac = FactoryReachedSoonest(comm.GetPos(ai.frame), comm.circuitDef);
-	return aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, 30 * SECOND));
+	IUnitTask@ safe = CommSafeJob(comm.GetPos(ai.frame));
+	return safe is null ? task : safe;
 }
 
 /*
- * Commander guard (C++ bridge). Losing the commander loses the game, so the only question is: could a
- * known enemy force that out-guns what can protect it get to it before it gets home? Enemies count
- * by their top speed, not their current heading (they can turn); protectors count when they can reach
- * the commander in the same time. If danger exceeds protection the commander goes home now. The same
- * test is run on a build site before the commander walks to it. No zone, no distance limit.
+ * Commander guard (C++ bridge): every 2 s the commander's current job is weighed by the same risk test
+ * (CommGuardUpdate); when it isn't worth it the commander moves to the safest productive job.
  */
 IUnitTask@ commGuardTask = null;
 int commGuards = 0;
@@ -3465,63 +2373,6 @@ CCircuitUnit@ NearestFactory(const AIFloat3& in p)
 	return best;
 }
 
-
-/*
- * Chain loss: metal of ours destroyed if something with a death explosion (radius R, damage D) dies at p.
- * A unit at distance d takes ~D*(1-d/R); if that exceeds its health it dies and its own explosion
- * propagates. Converters, fusions, nanos and commanders packed together are one bomb.
- */
-float ChainLoss(const AIFloat3& in p, float R, float D, CCircuitUnit@ skip)
-{
-	if (R <= 0.f || D <= 0.f) return 0.f;
-	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
-	const uint n = all.length();
-	array<bool> dead(n, false);
-	array<AIFloat3> qp = {p}; array<float> qr = {R}, qd = {D};
-	float loss = 0.f;
-	for (uint q = 0; q < qp.length() && q < 64; ++q) {
-		for (uint i = 0; i < n; ++i) {
-			if (dead[i] || all[i] is skip) continue;
-			const float d = all[i].GetPos(ai.frame).distance2D(qp[q]);
-			if (d >= qr[q]) continue;
-			const CCircuitDef@ u = all[i].circuitDef;
-			if (qd[q] * (1.f - d / qr[q]) < u.health) continue;
-			dead[i] = true;
-			loss += u.costM;
-			if (u.deathAoe > 0.f && u.deathDamage > 0.f) {
-				qp.insertLast(all[i].GetPos(ai.frame)); qr.insertLast(u.deathAoe); qd.insertLast(u.deathDamage);
-			}
-		}
-	}
-	return loss;
-}
-
-// Where the commander should wait out danger: something of ours to guard (factory or defence) that it can
-// reach before an enemy that out-guns the cover there, and where its own death would cost the least.
-CCircuitUnit@ CommRefuge(const AIFloat3& in from)
-{
-	CCircuitUnit@ best = null, leastBad = null;
-	float bestLoss = 1e9f, bestT = 1e9f, leastExp = 1e9f;
-	const float R = commander.circuitDef.deathAoe, D = commander.circuitDef.deathDamage;
-	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
-	for (uint i = 0; i < all.length(); ++i) {
-		CCircuitUnit@ g = all[i];
-		const CCircuitDef@ d = g.circuitDef;
-		if (d.IsMobile() || g is commander) continue;
-		if (!d.IsRoleAny(Unit::Role::STATIC.mask) && Brain::Intel::allFactories.findByRef(g) < 0) continue;
-		if (Brain::Intel::allFactories.findByRef(g) < 0 && d.power <= 0.f) continue;  // defences and factories only
-		const AIFloat3 q = g.GetPos(ai.frame);
-		const float t = q.distance2D(from) / AiMax(1.f, commander.circuitDef.speed);
-		const float exp = CommExposure(q, t);
-		if (exp < leastExp) { leastExp = exp; @leastBad = g; }
-		if (exp > 0.f) continue;
-		const float loss = ChainLoss(q, R, D, commander);
-		if (loss < bestLoss || (loss == bestLoss && t < bestT)) { bestLoss = loss; bestT = t; @best = g; }
-	}
-	if (best !is null) { lastRefugeLoss = bestLoss; return best; }
-	return leastBad !is null ? leastBad : NearestFactory(from);
-}
-float lastRefugeLoss = 0.f;
 
 
 /*
@@ -3540,7 +2391,6 @@ float lastRefugeLoss = 0.f;
 // commander walking into the far half of the map meets exactly this.
 float CommFog(const AIFloat3& in p, float tHome, float seenThreat, float seenSpeed, uint seenN)
 {
-	if (!F_COMMFOG) return 0.f;
 	const float hidden = AiMax(0.f, Brain::Economist::EnemyThreat() - seenThreat);
 	if (hidden <= 0.f) return 0.f;
 	Director::MeasuredPower();
@@ -3560,7 +2410,6 @@ int reclaimOrders = 0;
 array<IUnitTask@> reclaimTasks;
 void ReclaimUpdate()
 {
-	if (!F_RECLAIM) return;
 	array<AIFloat3> wp; array<float> wm; array<bool> wr;
 	const uint w = AiGetWrecks(wp, wm, wr);
 	if (w == 0) return;
@@ -3668,7 +2517,6 @@ int builderEvacs = 0;
 array<IUnitTask@> safeTasks;
 void BuilderSafeUpdate()
 {
-	if (!F_BUILDERSAFE) return;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	const float income = aiEconomyMgr.metal.income;
 	const float bp = AiMax(1.f, aiBuilderMgr.GetBuildPower());
@@ -3777,7 +2625,7 @@ int commFwd = 0, fwdCalls = 0, fwdBusy = 0, fwdNone = 0; float fwdBestSeen = 0.f
 void OnBuilderTaskRemoved(IUnitTask@ task) { if (task is commFwdTask) @commFwdTask = null; if (task is commGuardTask) @commGuardTask = null; }
 IUnitTask@ CommForward(const AIFloat3& in from, float curScore)
 {
-	if (!F_COMMFWD || Brain::Economist::mexT1 is null) return null;
+	if (Brain::Economist::mexT1 is null) return null;
 	++fwdCalls;
 	if (commFwdTask !is null) {
 		// one claim at a time; whoever builds it (the commander or a constructor nearby), the spot is ours
@@ -3828,71 +2676,27 @@ bool CommWorth(const AIFloat3& in p, float gain)
 	return gain > lastRisk;
 }
 
-// enemy threat able to reach p within the commander's trip home from p, minus what can cover it there
-float CommExposure(const AIFloat3& in p, float tHome)
-{
-	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
-	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
-	float danger = 0.f;
-	for (uint i = 0; i < n; ++i) {
-		CCircuitDef@ d = ed[i];
-		if (d is null || d.threat <= 0.f || (ef[i] & 4) != 0) continue;
-		const float reach = AiMax(0.f, ep[i].distance2D(p) - d.GetMaxRange());
-		if (!d.IsMobile()) { if (reach <= 0.f) danger += d.threat; continue; }
-		if (MoveTime(d, reach) <= tHome) danger += d.threat * eh[i];
-	}
-	if (F_COMMFOG) {
-		float seenT = 0.f, seenS = 0.f; uint seenN = 0;
-		for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile() && ed[i].threat > 0.f) { seenT += ed[i].threat; seenS += ed[i].speed; ++seenN; }
-		danger += CommFog(p, tHome, seenT, seenS, seenN);
-	}
-	float cover = commander.circuitDef.power;
-	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
-	for (uint i = 0; i < all.length(); ++i) {
-		CCircuitUnit@ u = all[i];
-		const CCircuitDef@ d = u.circuitDef;
-		if (u is commander || d.power <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
-		const float dist = u.GetPos(ai.frame).distance2D(p);
-		if (d.IsMobile() ? (MoveTime(d, dist) <= tHome) : (dist <= d.GetMaxRange()))
-			cover += d.power;
-	}
-	return danger - cover;
-}
-
 void CommGuardUpdate()
 {
 	if (commander is null || Brain::Intel::allFactories.length() == 0) return;
 	if (commGuardTask !is null && commander.task is commGuardTask) return;
 	const AIFloat3 c = commander.GetPos(ai.frame);
-	if (F_COMMRISK) {
-		IBuilderTask@ cur = cast<IBuilderTask>(commander.task);
-		if (CommWorth(c, JobValue(cur))) {
-			IUnitTask@ fwd = CommForward(c, lastGain - lastRisk);
-			if (fwd !is null) { aiBuilderMgr.AssignTask(commander, fwd); return; }
-			// worth staying; but an assist or nothing is the commander's weakest use: is a wreck field better?
-			if (cur is null || cur.buildDef is null) {
-				IUnitTask@ better = CommBestJob(c, lastGain - lastRisk);
-				if (better !is null) { @commGuardTask = better; aiBuilderMgr.AssignTask(commander, better); }
-			}
-			return;
+	IBuilderTask@ cur = cast<IBuilderTask>(commander.task);
+	if (CommWorth(c, JobValue(cur))) {
+		IUnitTask@ fwd = CommForward(c, lastGain - lastRisk);
+		if (fwd !is null) { aiBuilderMgr.AssignTask(commander, fwd); return; }
+		// worth staying; but an assist or nothing is the commander's weakest use: is a wreck field better?
+		if (cur is null || cur.buildDef is null) {
+			IUnitTask@ better = CommBestJob(c, lastGain - lastRisk);
+			if (better !is null) { @commGuardTask = better; aiBuilderMgr.AssignTask(commander, better); }
 		}
-		@commGuardTask = CommSafeJob(c);
-		if (commGuardTask is null) return;
-		aiBuilderMgr.AssignTask(commander, commGuardTask);
-		++commGuards;
-		AiLog("[ANV] CommRisk: leaving job, risk " + int(lastRisk) + " > gain " + int(lastGain) + " (danger " + F1(commDanger) + " cover " + F1(commCover) + " dps " + F1(commDps) + " V " + int(lastV) + ")");
 		return;
 	}
-	CCircuitUnit@ home = NearestFactory(c);
-	const float tHome = MoveTime(commander.circuitDef, home.GetPos(ai.frame).distance2D(c));
-	if (CommExposure(c, tHome) <= 0.f) return;
-	if (F_COMMSPOT) {
-		@home = CommRefuge(c);
-		AiLog("[ANV] CommGuard: refuge " + home.circuitDef.GetName() + " chainLoss=" + int(lastRefugeLoss) + " commBlast=" + int(commander.circuitDef.deathAoe) + "/" + int(commander.circuitDef.deathDamage));
-	}
-	@commGuardTask = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, home, true, 20 * SECOND));
+	@commGuardTask = CommSafeJob(c);
+	if (commGuardTask is null) return;
 	aiBuilderMgr.AssignTask(commander, commGuardTask);
 	++commGuards;
+	AiLog("[ANV] CommRisk: leaving job, risk " + int(lastRisk) + " > gain " + int(lastGain) + " (danger " + F1(commDanger) + " cover " + F1(commCover) + " dps " + F1(commDps) + " V " + int(lastV) + ")");
 }
 
 void OnUnitDestroyed(CCircuitUnit@ unit)
@@ -3900,16 +2704,11 @@ void OnUnitDestroyed(CCircuitUnit@ unit)
 	if (unit.circuitDef.IsRoleAny(Unit::Role::COMM.mask)) {
 		const AIFloat3 p = unit.GetPos(ai.frame);
 		AiLog("[ANV] COMMANDER LOST at (" + int(p.x) + "," + int(p.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(p) : -1.f)
-			+ " task=" + (unit.task is null ? -1 : int(unit.task.GetType())) + " t=" + Minute() + "m posture=" + Director::names[Director::posture]);
+			+ " task=" + (unit.task is null ? -1 : int(unit.task.GetType())) + " t=" + Minute() + "m");
 		@commander = null;
 	}
 	if (Strategic::mlvDef !is null && unit.circuitDef is Strategic::mlvDef)
 		Strategic::minelayers = AiMax(0, Strategic::minelayers - 1);
-	if (F_TERRAIN && Strategic::terrainDef !is null && unit.circuitDef is Strategic::terrainDef)
-	{
-		Strategic::terrainPower = AiMax(0.f, Strategic::terrainPower - unit.circuitDef.power);
-		Strategic::terrainMetal = AiMax(0.f, Strategic::terrainMetal - unit.circuitDef.costM);
-	}
 	if (IsArmy(unit.circuitDef))
 		Strategic::armyMetal = AiMax(0.f, Strategic::armyMetal - unit.circuitDef.costM);
 	const bool recycled = Recycler::OnDestroyed(unit);
@@ -3927,57 +2726,47 @@ void OnUnitDestroyed(CCircuitUnit@ unit)
 
 void Update()  // every 30 frames
 {
-	aiSwitchHighGroundArty = F_ARTYHIGH;
-	aiSwitchHeightSquads = F_HEIGHTSQUAD;
-	aiSwitchScoutMap = F_SCOUTMAP;
-	aiSwitchEngageSeen = F_ENGAGE;
-	aiSwitchDecide = F_DECIDE;
-	aiSwitchFocusFire = F_FOCUS;
-	aiSwitchStrafe = F_STRAFE;
-	if (F_INTEL) Intel::Update();
+	aiSwitchHighGroundArty = true;
+	aiSwitchHeightSquads = true;
+	aiSwitchScoutMap = true;
+	aiSwitchEngageSeen = true;
+	aiSwitchDecide = true;
+	aiSwitchFocusFire = true;
+	aiSwitchStrafe = true;
+	Intel::Update();
 	Assess::Update();
-	if (F_WASTE) Waste::Update();
-	if (F_CONVERT) Convert::Update();
-	if (F_ENERGY) Energy::Update();
 	Director::Update();
-	if (F_DECIDE) {
-		// no config floors (quota.attack 60, raid min): an attack launches with the power needed to beat what we know of
-		// the enemy at our trade rate; a raid with what beats the raiders that will answer it
-		aiMilitaryMgr.quota.attack = Director::needPower;
-		aiMilitaryMgr.quota.raid.min = aiEnemyMgr.GetEnemyThreat(RT::RAIDER) / AiMax(1e-3f, Assess::trade);
-		aiMilitaryMgr.quota.raid.avg = AiMax(aiMilitaryMgr.quota.raid.avg, aiMilitaryMgr.quota.raid.min);
-		Army::CheckSquads();
-	} else if (F_QUOTA) Army::Update(Intel::jamAlert);
-	else Army::CheckSquads();
-	if (ai.frame % (2 * SECOND) < SECOND) {
-		if (F_RECYCLE) Recycler::Update();
-		if (F_ECOGATE) Eco::Update();
-	}
-	if (F_REDIRECT && ai.frame % (5 * SECOND) < SECOND)
-		Redirect::Update();
-	if (F_STRAT && ai.frame % (10 * SECOND) < SECOND)
+	// no config floors (quota.attack 60, raid min): an attack launches with the power needed to beat what we know of
+	// the enemy at our trade rate; a raid with what beats the raiders that will answer it
+	aiMilitaryMgr.quota.attack = Director::needPower;
+	aiMilitaryMgr.quota.raid.min = aiEnemyMgr.GetEnemyThreat(RT::RAIDER) / AiMax(1e-3f, Assess::trade);
+	aiMilitaryMgr.quota.raid.avg = AiMax(aiMilitaryMgr.quota.raid.avg, aiMilitaryMgr.quota.raid.min);
+	Army::CheckSquads();
+	if (ai.frame % (2 * SECOND) < SECOND)
+		Recycler::Update();
+	if (ai.frame % (10 * SECOND) < SECOND)
 		Strategic::Update(Intel::jamAlert);
-	if (F_HOLD && ai.frame % (3 * SECOND) < SECOND)
+	if (ai.frame % (3 * SECOND) < SECOND)
 		Hold::Update();
-	if (F_SCOUTMAP && ai.frame % (3 * SECOND) < SECOND)
+	if (ai.frame % (3 * SECOND) < SECOND)
 		Scout::Update();
-	if (F_ECOPOS && ai.frame % (2 * SECOND) < SECOND)
+	if (ai.frame % (2 * SECOND) < SECOND)
 		EcoPos::Update();
-	if (F_REZLAB && ai.frame % (10 * SECOND) < SECOND)
+	if (ai.frame % (10 * SECOND) < SECOND)
 		RezLab::Update();
-	if (F_MEXPORC && ai.frame % (5 * SECOND) < SECOND)
+	if (ai.frame % (5 * SECOND) < SECOND)
 		MexPorc::Update();
-	if (F_STORAGE && ai.frame % (5 * SECOND) < SECOND)
+	if (ai.frame % (5 * SECOND) < SECOND)
 		Storage::Update();
-	if (F_COMMGUARD && ai.frame % (2 * SECOND) < SECOND)
+	if (ai.frame % (2 * SECOND) < SECOND)
 		CommGuardUpdate();
-	if (F_BUILDERSAFE && ai.frame % (2 * SECOND) < SECOND)
+	if (ai.frame % (2 * SECOND) < SECOND)
 		BuilderSafeUpdate();
-	if (F_RECLAIM && ai.frame % (5 * SECOND) < SECOND)
+	if (ai.frame % (5 * SECOND) < SECOND)
 		ReclaimUpdate();
-	if (F_ECORECLAIM && ai.frame % (5 * SECOND) < SECOND)
+	if (ai.frame % (5 * SECOND) < SECOND)
 		Recycler::EcoReclaimUpdate();
-	if (F_NANOS && ai.frame % (5 * SECOND) < SECOND)
+	if (ai.frame % (5 * SECOND) < SECOND)
 		Recycler::NanoUpdate();
 
 	if (ai.frame % MINUTE < SECOND) {
@@ -3986,20 +2775,20 @@ void Update()  // every 30 frames
 			AiLog("[ANV] commander at (" + int(cp.x) + "," + int(cp.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(cp) : -1.f)
 				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects + " guards=" + commGuards + " reclaimOrders=" + reclaimOrders + " builderEvacs=" + builderEvacs + " retreats=" + commRetreats + " frontReclaims=" + commReclaims + " fwdClaims=" + commFwd + " fwdFailed=" + fwdFailed + " fwd(calls/busy/none)=" + fwdCalls + "/" + fwdBusy + "/" + fwdNone + " fwdBest=" + int(fwdBestSeen) + " vs cur " + int(fwdCurSeen));
 		}
-		if (F_SCOUTMAP) AiLog("[ANV] " + Scout::Status());
+		AiLog("[ANV] " + Scout::Status());
 		AiLog("[ANV] eco t=" + Minute() + "m workers=" + aiBuilderMgr.GetWorkerCount() + " mex=" + Economist::mexes.length()
 			+ " M inc=" + F1(aiEconomyMgr.metal.income) + " M " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
 			+ " E inc=" + F1(aiEconomyMgr.energy.income) + " E " + int(aiEconomyMgr.energy.current) + "/" + int(aiEconomyMgr.energy.storage)
-			+ " stall=" + aiEconomyMgr.isEnergyStalling + " expandWant=" + F1(Director::expandWant) + " spots(free/enemy/unsafe)=" + Director::freeSpots + "/" + Director::enemySpots + "/" + Director::unsafeSpots + " bpTarget=" + F1(aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio));
+			+ " stall=" + aiEconomyMgr.isEnergyStalling + " bpTarget=" + F1(aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio));
 		Intel::BridgeLog();
-		if (F_HOLD) AiLog("[ANV] hold " + Hold::Status());
+		AiLog("[ANV] hold " + Hold::Status());
 
-		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | groundPow=" + F1(Army::groundPower) + " allPow=" + F1(Director::MeasuredPower()) + " units=" + Army::ground.length()
-			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " waves=" + Army::waves + " recalls=" + Army::recalls + " ft=" + Army::Hist()
+		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | allPow=" + F1(Director::MeasuredPower()) + " units=" + Army::ground.length()
+			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " recalls=" + Army::recalls + " ft=" + Army::Hist()
 			+ " quota.attack=" + F1(aiMilitaryMgr.quota.attack) + " raidMin=" + F1(aiMilitaryMgr.quota.raid.min)
 			+ " enemyMob=" + F1(aiEnemyMgr.mobileThreat) + " jamCost=" + F1(Intel::jammerCost)
 			+ " maxHeat=" + F1(Intel::MaxHeat()) + " eyes=" + Intel::eyes.length() + "/" + Intel::eyesOrdered
-			+ " | " + Production::Status() + " | " + Waste::Status() + " " + Redirect::Status() + " | " + Recycler::Status() + " " + Eco::Status() + " | " + Strategic::Status()
+			+ " | " + Production::Status() + " | " + Recycler::Status() + " | " + Strategic::Status()
 			+ " | E inc=" + F1(aiEconomyMgr.energy.income) + " pull=" + F1(aiEconomyMgr.energy.pull)
 			+ " M inc=" + F1(aiEconomyMgr.metal.income));
 	}

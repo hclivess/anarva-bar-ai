@@ -6,9 +6,6 @@ namespace Military {
 
 IUnitTask@ AiMakeTask(CCircuitUnit@ unit)
 {
-	IUnitTask@ task = Brain::Army::MakeTask(unit);
-	if (task !is null)
-		return task;
 	return aiMilitaryMgr.DefaultMakeTask(unit);
 }
 

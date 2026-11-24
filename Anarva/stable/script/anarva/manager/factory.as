@@ -86,31 +86,6 @@ void AiUnitAdded(CCircuitUnit@ unit, Unit::UseAs usage)
 				cdef.SetIgnore(true);
 		}
 	}
-
-	if (Brain::F_PROD)
-		return;  // no fixed opener: production decides by value from the first unit
-	const array<Opener::SO>@ opener = Opener::GetOpener(facDef);
-	if (opener is null)
-		return;
-
-	const AIFloat3 pos = unit.GetPos(ai.frame);
-	for (uint i = 0, icount = opener.length(); i < icount; ++i) {
-		CCircuitDef@ buildDef = aiFactoryMgr.GetRoleDef(facDef, opener[i].role);
-		if ((buildDef is null) || !buildDef.IsAvailable(ai.frame))
-			continue;
-
-		Task::Priority priority;
-		Task::RecruitType recruit;
-		if (opener[i].role == Unit::Role::BUILDER.type) {
-			priority = Task::Priority::NORMAL;
-			recruit  = Task::RecruitType::BUILDPOWER;
-		} else {
-			priority = Task::Priority::HIGH;
-			recruit  = Task::RecruitType::FIREPOWER;
-		}
-		for (uint j = 0, jcount = opener[i].count; j < jcount; ++j)
-			aiFactoryMgr.Enqueue(TaskS::Recruit(recruit, priority, buildDef, pos, 64.f));
-	}
 }
 
 void AiUnitRemoved(CCircuitUnit@ unit, Unit::UseAs usage)
