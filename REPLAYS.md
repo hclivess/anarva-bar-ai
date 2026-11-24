@@ -13,31 +13,28 @@ This file says what the library holds, how replays are categorised, and which fi
 | `ref/top_team_replays/` | team games (mixed sizes) | earlier download | 9 |
 | `ref/vsbots_replays/`, `ref/vsbots_solo/` | humans vs bots (team, solo) | local games of humans beating BARb | 15, 12 |
 
-Each folder has an `index.json` (from `tools/fetch_replays.py`): id, file, format, map, minutes, players
+Folders only say where a replay came from; they are not categories. Each folder has an `index.json` (from `tools/fetch_replays.py`): id, file, format, map, minutes, players
 with skill and faction, winners. `.sdfz` files are not committed; rerun the fetcher to rebuild a folder.
 
-## Categories
+## Categories are discovered, not assigned
 
-A replay is categorised on several axes. Findings are reported per category and do not transfer to
-another category unless the replays show it.
+No category is written down in advance: a hand-made label ("eco boom", "turtle") decides what the games
+are allowed to show, the same mistake as a fixed threshold. Categories come out of the data:
 
-1. **Format:** 1v1, 2v2, 3v3, 4v4, 5v5-8v8, FFA, humans vs bots (1vN). Format changes what is safe: in team
-   games one commander's death does not end the game, in 1v1 it does.
-2. **Map type:** open, choke, mixed, water (`ref/maps.json`, the same classes the test harness uses).
-3. **Length and outcome:** minutes, winner, and how it ended (army wipe, commander kill, surrender).
-4. **Play style per player:** measured from the analyzer output, not assigned by hand. Each player gets
-   the style whose feature is furthest above the median of the same format and map type (a z-score
-   within the category, so no fixed cutoffs):
-
-   | Style | Feature (from `[REPLAY]` lines) |
-   |---|---|
-   | eco boom | metal income at minute 10 relative to army metal |
-   | early aggression | army metal and first contact time before minute 6 |
-   | turtle / porc | defence metal share |
-   | air | air units' share of army metal |
-   | T2 rush | minute the first T2 lab finishes |
-   | commander play | commander distance from start, minutes 3-8; share of time in contact |
-   | sea | naval share of army metal |
+1. **Features, not labels.** Every player-game becomes a vector of measured features from the analyzer
+   output: the economy curve (metal/energy income by minute), army composition by kind (ground, air, sea,
+   artillery, by tier), defence share, tech timings (first T2/T3 lab), expansion (extractors by minute),
+   commander behaviour (distance by minute, share of time in contact, what it builds), first contact time,
+   and the context as numbers too: team size, number of teams, map size, chokiness and water share from
+   the map analysis, faction.
+2. **Clusters from the data.** Features are standardised and clustered without supervision. The number
+   of clusters is chosen by how well the model fits (silhouette / BIC over a range), not fixed.
+3. **Description afterwards.** Each cluster is described by the features that set it apart from the rest
+   (largest standardised differences of its centroid). A name, if any, is only shorthand for that
+   description and is regenerated when the library changes.
+4. **Findings are per cluster,** with the member replays listed, so a claim cites the replays it rests on.
+   A finding from one cluster does not carry over to another unless the replays show it. Format is a
+   feature like any other: if 1v1 and 8v8 commanders behave differently, the clusters will split them.
 
 ## Tools
 
@@ -45,6 +42,7 @@ another category unless the replays show it.
 - `tools/run_replay.py <out> <demo...> [--par N] [--minutes M]` plays replays headless with
   `tools/replay_harness` (economy every minute, builds, commander every 5 s, commander builds and deaths).
 - `tools/analyze_replays.py` (economy curves), `tools/analyze_comm.py <runs> [--only list]` (commander).
+- `tools/cluster_replays.py` (to build): feature vectors per player-game, clustering with the cluster count chosen by fit, cluster descriptions and member lists.
 
 ## Findings and the sets they rest on
 

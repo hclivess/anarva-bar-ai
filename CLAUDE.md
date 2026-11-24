@@ -11,11 +11,11 @@ These are the owner's standing rules. They apply to every change, every claim an
   messages or chat), cite the replay(s) it rests on: file name (or replay id), map, format, players and
   the minute where it happens, or the aggregate from `tools/analyze_*.py` with the set it ran on.
   No reference, no claim.
-- **Keep the library broad and categorised.** Download top-player replays across configurations:
-  1v1, 2v2, 3v3, 4v4, 8v8, FFA, and humans vs bots (1vN). Categorise each by the type of gameplay it
-  shows (see [REPLAYS.md](REPLAYS.md)): format, map type, outcome and length, and play style
-  (eco boom, early aggression, turtle/porc, air, T2 rush, commander play, sea, and so on).
-  A finding from one category does not carry over to another unless the replays show it.
+- **Keep the library broad; let the categories emerge.** Download top-player replays across
+  configurations (1v1, 2v2, 3v3, 4v4, 8v8, FFA, humans vs bots). Do not hand-write categories or style
+  labels: describe each player-game by measured features and cluster them, with the number of clusters
+  chosen by fit (see [REPLAYS.md](REPLAYS.md)). A finding holds for the cluster whose replays show it and
+  does not carry over to another unless the replays show that too.
   Example: commanders stand 2000-3000 out all game in team games, but not in 1v1.
 - Tools: `tools/fetch_replays.py` (download by preset and skill), `tools/run_replay.py` (play back
   headless with the analyzer widget), `tools/analyze_replays.py` (economy curves) and
