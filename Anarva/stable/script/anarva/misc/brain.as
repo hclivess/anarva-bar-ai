@@ -3233,7 +3233,9 @@ void Update()
 		scale = AiMin(2.f, AiMax(scale, 1.f) * (1.f + float(Brain::Waste::metalSec) / 60.f));
 		scaleWhy = "metal overflowing: more build power";
 	}
-	if (F_DECIDE && !F_ECOPOS)
+	if (F_ECOPOS) {
+		// EcoPos alone sets the constructor rule (behind: economy; ahead: army)
+	} else if (F_DECIDE)
 		aiFactoryMgr.buildpowerRatio = 1e9f;  // no cap or band: the core's constructor rule is 'only while income goes unspent'
 	else if (F_SCALE)
 		aiFactoryMgr.buildpowerRatio = baseBP * scale;
