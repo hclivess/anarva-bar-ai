@@ -8,7 +8,7 @@ This file says what the library holds, how replays are categorised, and which fi
 | Folder | Format | Source | Count |
 |---|---|---|---|
 | `ref/top_replays/` | 1v1 | top duels (`--preset duel`, every player OpenSkill >= 40) | 24 |
-| `ref/lib/<format>/` | whatever the top players played (1v1 ... 8v8, FFA) | `tools/build_library.py`: the games of the best players overall, from the top of our leaderboard down | 500 (building) |
+| `ref/lib/<format>/` | whatever the top players played (1v1 ... 8v8, FFA) | `tools/build_library.py`: recent games of the official leaderboard's players (Season 3, ~400 players on 4 boards) | 500 (building) |
 | `ref/top_team_replays/` | team games (mixed sizes) | earlier download | 9 |
 | `ref/vsbots_replays/`, `ref/vsbots_solo/` | humans vs bots (team, solo) | local games of humans beating BARb | 15, 12 |
 
@@ -41,7 +41,8 @@ are allowed to show, the same mistake as a fixed threshold. Categories come out 
 - `tools/run_replay.py <out> <demo...> [--par N] [--minutes M]` plays replays headless with
   `tools/replay_harness` (economy every minute, builds, commander every 5 s, commander builds and deaths).
 - `tools/analyze_replays.py` (economy curves), `tools/analyze_comm.py <runs> [--only list]` (commander).
-- `tools/build_library.py` builds the library around the best players overall: it scans recent games of every format, builds a leaderboard of everyone seen (best rating a player holds across game types), walks it from the top and collects the games those players are in until the library holds 500. Each replay lists its `top_players`; only their player-games are analysed.
+- `tools/fetch_leaderboard.py` saves the official leaderboard (bar-rts.com/leaderboards, the page embedded on beyondallreason.info: Small Team, Large Team, Duel, FFA, top 100 each) to `ref/leaderboard.json`; it parses the page's data as data, nothing from the page is executed.
+- `tools/build_library.py` builds the library from those players' games: ranked by each player's best position on any board, round-robin (each pass takes every player's next most recent playable game, best first) until 500 games, via the replay API's `players=` filter. Each replay lists its `top_players`; only their player-games are analysed.
 - `tools/cluster_replays.py <playback dir> [--md CLUSTERS.md]`: feature vectors per player-game, Gaussian mixture with the cluster count chosen by BIC, each cluster described by its most distinctive features, with member replays and win rate.
 
 ## Findings and the sets they rest on
