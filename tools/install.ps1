@@ -15,6 +15,13 @@ $engine = Get-ChildItem (Join-Path $BarData "engine") -Directory |
     Sort-Object Name | Select-Object -Last 1
 if (-not $engine) { throw "No engine with BARb found under $BarData\engine" }
 
+# A running game (or the lobby) holds the installed library open: removing the folder then deletes everything except
+# the locked DLL and leaves a broken install (2026-11-25). Check the lock first and change nothing if it is held.
+$oldDll = Join-Path $dst "SkirmishAI.dll"
+if (Test-Path $oldDll) {
+    try { $fs = [IO.File]::Open($oldDll, 'Open', 'ReadWrite', 'None'); $fs.Close() }
+    catch { throw "$oldDll is in use (close Beyond All Reason, lobby included, and run again): nothing was changed" }
+}
 if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }
 New-Item -ItemType Directory -Force $dst | Out-Null
 Copy-Item -Recurse -Force (Join-Path $src "*") $dst
