@@ -874,7 +874,7 @@ index 559a0abf..90335c82 100644
  	CCircuitDef* terraDef = nullptr;
  	std::unordered_map<IBuilderTask::BT, std::unordered_map<CCircuitDef*, SBuildChain*>> buildChains;  // owner
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..8d7797a1 100644
+index 6e5da8b6..ae83d989 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,8 @@
@@ -1185,7 +1185,68 @@ index 6e5da8b6..8d7797a1 100644
  									   8.0f/*unit->GetCircuitDef()->GetBuildDistance()*/));
  		} else {
  			task = nullptr;
-@@ -1299,13 +1247,10 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1280,6 +1228,60 @@ IBuilderTask* CEconomyManager::UpdateReclaimTasks(const AIFloat3& position, CCir
+ 	return task;
+ }
+ 
++// Anarva (#86): the energy needed to spend our metal income, at the E/M of what we build. Computed on its own, once per
++// frame, wherever it is read: inside UpdateEnergyTasks it went stale whenever the job queue was busy (early return),
++// and the builders priced energy at the converter rate while we were short (Throne/Eye of Horus 2026-11-25).
++void CEconomyManager::UpdateEnergyPlan()
++{
++	if (energyPlanFrame == circuit->GetLastFrame()) {
++		return;
++	}
++	energyPlanFrame = circuit->GetLastFrame();
++	CBuilderManager* builderMgr = circuit->GetBuilderManager();
++	// what we have chosen to build so far (our built units' costs, commander excluded: it was given, not chosen).
++	// What we will spend on is mostly what our factories make: add the mobile units each factory we own or have
++	// queued can build (a Pawn costs ~17 E per M; built structures alone read ~2 at the start, no energy was
++	// planned, the lab sat at the energy's pace with metal banked: 1v1 Avalanche 2026-11-25).
++	float sumE = 0.f, sumM = 0.f;
++	auto addOptions = [&sumE, &sumM, this](const CCircuitDef* fac) {
++		for (CCircuitDef::Id id : fac->GetBuildOptions()) {
++			const CCircuitDef* o = circuit->GetCircuitDef(id);
++			if ((o != nullptr) && o->IsMobile()) {
++				sumE += o->GetCostE();
++				sumM += o->GetCostM();
++			}
++		}
++	};
++	// Once our factories have made something, what they actually made is the measure; every option counted
++	// equally over-planned energy (E/M income 18-32 at minute 8 vs 10-15 for the winners, 1v1 replays).
++	bool producedMobile = false;
++	std::vector<const CCircuitDef*> facs;
++	for (const auto& kv : circuit->GetTeamUnits()) {
++		const CCircuitDef* d = kv.second->GetCircuitDef();
++		if (d->IsRoleComm()) {
++			continue;
++		}
++		sumE += d->GetCostE();
++		sumM += d->GetCostM();
++		producedMobile |= d->IsMobile();
++		if (!d->IsMobile() && !d->GetBuildOptions().empty()) {
++			facs.push_back(d);
++		}
++	}
++	if (!producedMobile) {
++		for (const CCircuitDef* f : facs) {
++			addOptions(f);
++		}
++		for (IBuilderTask* t : builderMgr->GetTasks(IBuilderTask::BuildType::FACTORY)) {
++			if (t->GetBuildDef() != nullptr) {
++				addOptions(t->GetBuildDef());
++			}
++		}
++	}
++	plannedEnergy = (sumM > 0.f) ? GetAvgMetalIncome() * sumE / sumM : 0.f;                                   // for the builders' shadow price of energy
++	spendMetalPerEnergy = (sumE > 0.f) ? sumM / sumE : 0.f;
++}
++
+ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCircuitUnit* unit)
+ {
+ 	ZoneScoped;
+@@ -1299,13 +1301,10 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  	CCircuitDef* bestDef = nullptr;
  	CCircuitDef* hopeDef = nullptr;
@@ -1200,7 +1261,7 @@ index 6e5da8b6..8d7797a1 100644
  
  	std::map<CCircuitDef::Id, int> defCounts;
  	for (IBuilderTask* task : builderMgr->GetTasks(IBuilderTask::BuildType::ENERGY)) {
-@@ -1313,59 +1258,96 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1313,59 +1312,55 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  	}
  
  	const auto& infos = energyDefs.GetInfos();
@@ -1214,7 +1275,17 @@ index 6e5da8b6..8d7797a1 100644
 -			{
 -				lowerIdx = j;
 -				break;
-+
+-			}
+-		}
+-		return (lowerIdx < 0) || (SQUARE(curWind) / SQUARE(infos[i].data.make) * infos[i].score > infos[lowerIdx].score);
+-	};
+ 
+-	for (unsigned i = 0; i < infos.size(); ++i) {  // sorted by high-tech first
+-		const auto& engy = infos[i];
+-		if (engy.data.isOld || !engy.cdef->IsAvailable(frame)
+-			|| !terrainMgr->CanBeBuiltAtSafe(engy.cdef, position))
+-		{
+-			continue;
 +	{
 +		// Anarva: energy by need and payback, no income gates or count caps. Need = energy pull above income (or a
 +		// stall), minus what is already queued. Choice = the plant with the shortest time to pay back: its build time at
@@ -1228,46 +1299,6 @@ index 6e5da8b6..8d7797a1 100644
 +					queuedMake += e.data.make;
 +					break;
 +				}
- 			}
- 		}
--		return (lowerIdx < 0) || (SQUARE(curWind) / SQUARE(infos[i].data.make) * infos[i].score > infos[lowerIdx].score);
--	};
--
--	for (unsigned i = 0; i < infos.size(); ++i) {  // sorted by high-tech first
--		const auto& engy = infos[i];
--		if (engy.data.isOld || !engy.cdef->IsAvailable(frame)
--			|| !terrainMgr->CanBeBuiltAtSafe(engy.cdef, position))
--		{
--			continue;
-+		// Think ahead (#86): besides today's deficit, the energy needed to spend the metal we earn, at the E/M ratio of
-+		// what we have chosen to build so far (our built units' costs, commander excluded: it was given, not chosen).
-+		// What we will spend on is mostly what our factories make: add the mobile units each factory we own or have
-+		// queued can build (a Pawn costs ~17 E per M; built structures alone read ~2 at the start, no energy was
-+		// planned, the lab sat at the energy's pace with metal banked: 1v1 Avalanche 2026-11-25).
-+		float sumE = 0.f, sumM = 0.f;
-+		auto addOptions = [&sumE, &sumM, this](const CCircuitDef* fac) {
-+			for (CCircuitDef::Id id : fac->GetBuildOptions()) {
-+				const CCircuitDef* o = circuit->GetCircuitDef(id);
-+				if ((o != nullptr) && o->IsMobile()) {
-+					sumE += o->GetCostE();
-+					sumM += o->GetCostM();
-+				}
-+			}
-+		};
-+		// Once our factories have made something, what they actually made is the measure; every option counted
-+		// equally over-planned energy (E/M income 18-32 at minute 8 vs 10-15 for the winners, 1v1 replays).
-+		bool producedMobile = false;
-+		std::vector<const CCircuitDef*> facs;
-+		for (const auto& kv : circuit->GetTeamUnits()) {
-+			const CCircuitDef* d = kv.second->GetCircuitDef();
-+			if (d->IsRoleComm()) {
-+				continue;
-+			}
-+			sumE += d->GetCostE();
-+			sumM += d->GetCostM();
-+			producedMobile |= d->IsMobile();
-+			if (!d->IsMobile() && !d->GetBuildOptions().empty()) {
-+				facs.push_back(d);
 +			}
  		}
 -
@@ -1275,19 +1306,9 @@ index 6e5da8b6..8d7797a1 100644
 -			isLastHope = false;
 -			if (defCounts[engy.cdef->GetId()] < (int)(buildPower / engy.cdef->GetCostM() * 4 + 1)) {
 -				if (engy.cdef->IsWind() && !checkWind(i)) {
-+		if (!producedMobile) {
-+			for (const CCircuitDef* f : facs) {
-+				addOptions(f);
-+			}
-+			for (IBuilderTask* t : builderMgr->GetTasks(IBuilderTask::BuildType::FACTORY)) {
-+				if (t->GetBuildDef() != nullptr) {
-+					addOptions(t->GetBuildDef());
-+				}
-+			}
-+		}
-+		const float spendE = (sumM > 0.f) ? GetAvgMetalIncome() * sumE / sumM : 0.f;
-+		plannedEnergy = spendE;                                   // for the builders' shadow price of energy
-+		spendMetalPerEnergy = (sumE > 0.f) ? sumM / sumE : 0.f;
++		// Think ahead (#86): the energy to spend our metal income, from UpdateEnergyPlan (per frame)
++		UpdateEnergyPlan();
++		const float spendE = plannedEnergy;
 +		const bool need = isEnergyStalling || (pull - rawIncome > queuedMake) || (spendE - rawIncome > queuedMake);
 +		if (need) {
 +			// energy per metal at the best converter we can build (game data: energyconv_capacity / efficiency)
@@ -1341,7 +1362,7 @@ index 6e5da8b6..8d7797a1 100644
  	}
  
  	if (isLastHope) {
-@@ -1384,9 +1366,46 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1384,9 +1379,46 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  	CSetupManager* setupMgr = circuit->GetSetupManager();
  	AIFloat3 buildPos = -RgtVector;
  	if (bestDef->IsAttrBase()) {
@@ -1390,7 +1411,7 @@ index 6e5da8b6..8d7797a1 100644
  	} else {
  		if (terrainMgr->IsZoneAlly(position)
  			|| ((circuit->GetFactoryManager()->GetFactoryCount() > 0) && (position.SqDistance2D(setupMgr->GetSmallEnergyPos()) < SQUARE(600.f))
-@@ -1402,9 +1421,10 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1402,9 +1434,10 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  	if (geom::is_valid(buildPos) && terrainMgr->CanBeBuiltAtSafe(bestDef, buildPos) &&
  		((unit == nullptr) || terrainMgr->CanReachAtSafe(unit, buildPos, unit->GetCircuitDef()->GetBuildDistance())))
  	{
@@ -1404,7 +1425,7 @@ index 6e5da8b6..8d7797a1 100644
  		IBuilderTask* task = builderMgr->Enqueue(TaskB::Common(IBuilderTask::BuildType::ENERGY,
  												 priority, bestDef, buildPos, 0.f, true));
  		if ((unit == nullptr) || unit->GetCircuitDef()->CanBuild(bestDef)) {
-@@ -1446,7 +1466,7 @@ IBuilderTask* CEconomyManager::UpdateGeoTasks(const AIFloat3& position, CCircuit
+@@ -1446,7 +1479,7 @@ IBuilderTask* CEconomyManager::UpdateGeoTasks(const AIFloat3& position, CCircuit
  
  	float metalIncome = GetAvgMetalIncome();
  	const float energyIncome = GetAvgEnergyIncome();
@@ -1413,7 +1434,7 @@ index 6e5da8b6..8d7797a1 100644
  	const float maxCostM = metalIncome * builderMgr->GetGoalExecTime();
  	const float maxCostE = energyIncome * builderMgr->GetGoalExecTime();
  
-@@ -1468,7 +1488,15 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1468,7 +1501,15 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	ZoneScoped;
  
  	CBuilderManager* builderMgr = circuit->GetBuilderManager();
@@ -1430,7 +1451,7 @@ index 6e5da8b6..8d7797a1 100644
  		return nullptr;
  	}
  
-@@ -1498,11 +1526,13 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1498,11 +1539,13 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	 * check factory
  	 */
  	if (!builderMgr->GetTasks(IBuilderTask::BuildType::FACTORY).empty()) {
@@ -1444,7 +1465,7 @@ index 6e5da8b6..8d7797a1 100644
  		return nullptr;
  	}
  	CCircuitDef* facDef = factoryTask->GetBuildDef();
-@@ -1516,8 +1546,9 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1516,8 +1559,9 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	float eiRequire;
  	if (isStart && (unit != nullptr)) {
  		const float startBuildTime = facDef->GetBuildTime() / unit->GetCircuitDef()->GetWorkerTime();
@@ -1456,7 +1477,7 @@ index 6e5da8b6..8d7797a1 100644
  	} else {
  		const float buildTime = reprDef->GetBuildTime() / facDef->GetWorkerTime();
  		miRequire = reprDef->GetCostM() / buildTime * factoryMgr->GetNewFacModM();
-@@ -1529,15 +1560,14 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1529,15 +1573,14 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	const int nanoQueued = builderMgr->GetTasks(IBuilderTask::BuildType::NANO).size();
  	const float factoryPower = factoryMgr->GetMetalRequire() * factoryMgr->GetFacModM() + nanoQueued * factoryMgr->GetAssistSpeed();
  	const float energyPower = factoryMgr->GetEnergyRequire() * factoryMgr->GetFacModE() * GetEcoEM() + nanoQueued * factoryMgr->GetAssistSpeed();
@@ -1476,7 +1497,7 @@ index 6e5da8b6..8d7797a1 100644
  		return nullptr;
  	}
  
-@@ -1549,13 +1579,15 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1549,13 +1592,15 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	} else {
  		const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
  		const AIFloat3& enemyPos = circuit->GetEnemyManager()->GetEnemyPos();
@@ -1494,7 +1515,7 @@ index 6e5da8b6..8d7797a1 100644
  			} else {
  				int facing;
  				buildPos = terrainMgr->GetBusPos(facDef, basePos, facing);
-@@ -1591,7 +1623,7 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1591,7 +1636,7 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  
  			const float sqStartDist = enemyPos.SqDistance2D(basePos);
  			const float sqBuildDist = enemyPos.SqDistance2D(buildPos);
@@ -1503,7 +1524,7 @@ index 6e5da8b6..8d7797a1 100644
  		}
  
  		if (factoryTask->GetFacing() != UNIT_NO_FACING) {
-@@ -1654,18 +1686,25 @@ IBuilderTask* CEconomyManager::UpdateStorageTasks()
+@@ -1654,18 +1699,25 @@ IBuilderTask* CEconomyManager::UpdateStorageTasks()
  
  		if (!storeDef->IsAvailable(circuit->GetLastFrame())
  //			|| (GetMetalStore() > 60 * GetAvgMetalIncome())
@@ -1533,7 +1554,7 @@ index 6e5da8b6..8d7797a1 100644
  		{
  			storeDef = nullptr;
  		}
-@@ -1711,7 +1750,7 @@ IBuilderTask* CEconomyManager::UpdatePylonTasks()
+@@ -1711,7 +1763,7 @@ IBuilderTask* CEconomyManager::UpdatePylonTasks()
  	}
  
  	if (geom::is_valid(buildPos)) {
@@ -1542,7 +1563,7 @@ index 6e5da8b6..8d7797a1 100644
  		return builderMgr->Enqueue(TaskB::Pylon(priority, buildDef, buildPos, link, buildDef->GetCostM()));
  	} else {
  		link->SetValid(false);
-@@ -1757,45 +1796,11 @@ IBuilderTask* CEconomyManager::CheckMobileAssistRequired(const AIFloat3& positio
+@@ -1757,45 +1809,11 @@ IBuilderTask* CEconomyManager::CheckMobileAssistRequired(const AIFloat3& positio
  
  void CEconomyManager::StartFactoryJob()
  {
@@ -1592,7 +1613,7 @@ index 6e5da8b6..8d7797a1 100644
  	}
  
  	CScheduler* scheduler = circuit->GetScheduler().get();
-@@ -1820,13 +1825,13 @@ CBFactoryTask* CEconomyManager::PickNextFactory(const AIFloat3& position, bool i
+@@ -1820,13 +1838,13 @@ CBFactoryTask* CEconomyManager::PickNextFactory(const AIFloat3& position, bool i
  		return nullptr;
  	}
  	CBuilderManager* builderMgr = circuit->GetBuilderManager();
@@ -1610,7 +1631,7 @@ index 6e5da8b6..8d7797a1 100644
  	return factoryTask;
  }
  
-@@ -1838,7 +1843,7 @@ void CEconomyManager::AddMorphee(CCircuitUnit* unit)
+@@ -1838,7 +1856,7 @@ void CEconomyManager::AddMorphee(CCircuitUnit* unit)
  	morphees.insert(unit);
  	if (morph == nullptr) {
  		morph = CScheduler::GameJob(&CEconomyManager::UpdateMorph, this);
@@ -1619,7 +1640,7 @@ index 6e5da8b6..8d7797a1 100644
  	}
  }
  
-@@ -1854,7 +1859,7 @@ void CEconomyManager::UpdateMorph()
+@@ -1854,7 +1872,7 @@ void CEconomyManager::UpdateMorph()
  
  	const float energyIncome = GetAvgEnergyIncome();
  	const float metalIncome = std::min(GetAvgMetalIncome(), energyIncome);
@@ -1628,7 +1649,7 @@ index 6e5da8b6..8d7797a1 100644
  		return;
  	}
  
-@@ -1862,7 +1867,8 @@ void CEconomyManager::UpdateMorph()
+@@ -1862,7 +1880,8 @@ void CEconomyManager::UpdateMorph()
  	while (it != morphees.end()) {
  		CCircuitUnit* unit = *it;
  		if ((unit->GetTask()->GetType() == IUnitTask::Type::PLAYER) ||
@@ -1638,7 +1659,7 @@ index 6e5da8b6..8d7797a1 100644
  		{
  			++it;
  		} else {
-@@ -1892,57 +1898,9 @@ void CEconomyManager::DelFactoryInfo(CCircuitUnit* unit)
+@@ -1892,57 +1911,9 @@ void CEconomyManager::DelFactoryInfo(CCircuitUnit* unit)
  
  bool CEconomyManager::CheckAirpadRequired(const AIFloat3& position, CCircuitUnit* unit, IBuilderTask*& outTask)
  {
@@ -1698,7 +1719,7 @@ index 6e5da8b6..8d7797a1 100644
  	return false;
  }
  
-@@ -1965,7 +1923,7 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -1965,7 +1936,7 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  		return cdef->IsAvailable(frame) && terrainMgr->CanBeBuiltAt(cdef, buildPos);
  	});
  	if (assistDef == nullptr) {
@@ -1707,7 +1728,7 @@ index 6e5da8b6..8d7797a1 100644
  	}
  
  	/*
-@@ -1989,30 +1947,30 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -1989,30 +1960,30 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  	eiRequire += assistDef->GetUpkeepE();
  	// FIXME: Mex and other buildings have energy upkeep that's not counted.
  	//        It also doesn't count mobile buildpower
@@ -1750,7 +1771,7 @@ index 6e5da8b6..8d7797a1 100644
  			break;
  	}
  	CTerrainManager::CorrectPosition(buildPos);
-@@ -2029,6 +1987,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -2029,6 +2000,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  	return false;
  }
  
@@ -1768,7 +1789,7 @@ index 6e5da8b6..8d7797a1 100644
  float CEconomyManager::GetStorage(Resource* res)
  {
  	return economy->GetStorage(res) - HIDDEN_STORAGE;
-@@ -2096,15 +2065,6 @@ void CEconomyManager::UpdateEconomy()
+@@ -2096,15 +2078,6 @@ void CEconomyManager::UpdateEconomy()
  		buildDelay = int(bdInfo.fraction * (ecoFrame - bdInfo.startFrame)) + bdInfo.startDelay;
  	}
  
@@ -1784,7 +1805,7 @@ index 6e5da8b6..8d7797a1 100644
  	pullMtoS *= circuit->GetMilitaryManager()->ClampMobileCostRatio();
  }
  
-@@ -2133,78 +2093,14 @@ bool CEconomyManager::HasNoPurpose(const CCircuitDef::Id defId) const
+@@ -2133,78 +2106,14 @@ bool CEconomyManager::HasNoPurpose(const CCircuitDef::Id defId) const
  
  void CEconomyManager::ReclaimOldConvert(const SConvertExt* convertExt)
  {
@@ -1868,7 +1889,7 @@ index 6e5da8b6..8d7797a1 100644
  
  } // namespace circuit
 diff --git a/src/circuit/module/EconomyManager.h b/src/circuit/module/EconomyManager.h
-index 733f7a43..d0117186 100644
+index 733f7a43..4338b625 100644
 --- a/src/circuit/module/EconomyManager.h
 +++ b/src/circuit/module/EconomyManager.h
 @@ -67,6 +67,8 @@ public:
@@ -1880,7 +1901,7 @@ index 733f7a43..d0117186 100644
  	CEnergyGrid* GetEnergyGrid() const { return energyGrid; }
  	float GetClusterRange() const { return clusterRange; }
  	float GetPylonRange() const { return pylonRange; }
-@@ -89,23 +91,27 @@ public:
+@@ -89,23 +91,29 @@ public:
  	float GetAvgMetalIncome() const { return metal.income; }
  	float GetAvgEnergyIncome() const { return energy.income; }
  	float GetEcoFactor() const { return ecoFactor; }
@@ -1895,9 +1916,11 @@ index 733f7a43..d0117186 100644
  	float GetEnergyStore();
  	float GetEnergyPull();
 +	float GetEnergyPullReal();
-+	float GetPlannedEnergy() const { return plannedEnergy; }              // Anarva: E/s to spend our metal income
-+	float GetSpendMetalPerEnergy() const { return spendMetalPerEnergy; }  // Anarva: M per E of what we build
-+	float plannedEnergy = 0.f, spendMetalPerEnergy = 0.f;  // Anarva: pull without what our converters draw (they eat exactly the surplus)
++	float GetPlannedEnergy() { UpdateEnergyPlan(); return plannedEnergy; }              // Anarva: E/s to spend our metal income
++	float GetSpendMetalPerEnergy() { UpdateEnergyPlan(); return spendMetalPerEnergy; }  // Anarva: M per E of what we build
++	void UpdateEnergyPlan();
++	float plannedEnergy = 0.f, spendMetalPerEnergy = 0.f;
++	int energyPlanFrame = -1;  // Anarva: pull without what our converters draw (they eat exactly the surplus)
  	bool IsMetalEmpty() const { return isMetalEmpty; }
  	bool IsMetalFull() const { return isMetalFull; }
  	bool IsEnergyStalling() const { return isEnergyStalling; }
