@@ -541,6 +541,14 @@ void Update()
 	 */
 	array<int> assets;
 	for (int c = 0; c < n; ++c) if (ours[c] > 0.f) assets.insertLast(c);
+	// cells inside a known enemy turret's reach (19 Fleas died to light laser towers on Canis River, 2026-11-25)
+	array<bool> covered(n, false);
+	for (uint i = 0; i < ne; ++i) {
+		if (ed[i] is null || ed[i].IsMobile() || ed[i].GetSustainedDps() <= 0.f) continue;
+		const float r = ed[i].GetMaxRange();
+		for (int c = 0; c < n; ++c)
+			if (!covered[c] && Intel::CellCenter(c).distance2D(ep[i]) <= r) covered[c] = true;
+	}
 	/*
 	 * Offence (Vritrasura108 #74: scouts in several directions find unprotected extractors and constructors to raid).
 	 * An open metal spot on the enemy's side may have been taken since we last looked: the chance grows with how
@@ -585,6 +593,7 @@ void Update()
 			const AIFloat3 cc = Intel::CellCenter(c);
 			const float age = float(ai.frame - lastSeen[c]) / SECOND;
 			if (age <= 0.f && dots[c] <= 0.f) continue;
+			if (covered[c]) continue;  // a known turret holds it: a scout dies there before it learns anything new
 			float v = dots[c] * meanCost + raidable[c];
 			for (uint k = 0; k < assets.length(); ++k) {
 				const AIFloat3 ac = Intel::CellCenter(assets[k]);
@@ -2019,7 +2028,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		}
 		vScout = Scout::NextValue(d);
 		const float v = AiMax(vFight, AiMax(vBuild, vScout));
-		const float ratio = v / AiMax(1.f, Economist::MetalValue(d));
+		const float ratio = v / AiMax(1.f, Economist::CostNow(d));  // energy at its price now (binding or not)
 		why += " " + d.GetName() + "=" + F2(ratio);
 		if (ratio > bestRatio) {
 			bestRatio = ratio; @bestDef = d; bestV = v;
@@ -2130,6 +2139,17 @@ void OnFinished(CCircuitUnit@ u) { if (InList(mexDefs, u.circuitDef)) mexes.inse
 void OnDestroyed(CCircuitUnit@ u) { RemoveUnit(mexes, u); }
 
 float MetalValue(const CCircuitDef@ d) { return d.costM + d.costE / energyPerMetal; }
+// What a unit costs us now (owner: unit types differ hugely in energy draw): energy at the converter rate while it is
+// in surplus, at the metal we can match it with (metal income / energy income) while it binds (stall, or pulled
+// faster than it comes in) - an energy-heavy unit then costs the production it takes away.
+float EnergyPrice()
+{
+	const float conv = 1.f / AiMax(1e-3f, energyPerMetal);
+	const bool binds = aiEconomyMgr.isEnergyStalling || aiEconomyMgr.energy.pull > aiEconomyMgr.energy.income;
+	if (!binds) return conv;
+	return AiMax(conv, aiEconomyMgr.metal.income / AiMax(1e-3f, aiEconomyMgr.energy.income));
+}
+float CostNow(const CCircuitDef@ d) { return d.costM + d.costE * EnergyPrice(); }
 // what a building is worth to whoever owns it: its cost plus what it yields over the horizon (extraction at the map's
 // mean spot, metal make, energy make or negative upkeep at the converter rate) - one valuation for ours and theirs
 float AssetValue(const CCircuitDef@ d)
@@ -2711,6 +2731,13 @@ void Init()
 	const AIFloat3 home = Home(), them = Them();
 	const array<string> opts = Facts::BuildOptions(com.GetName());
 	plants.resize(0); plantPos.resize(0); labs.resize(0);
+	array<AIFloat3> theirSpots;
+	{
+		array<AIFloat3> msp; array<float> msi; array<bool> mso;
+		AiGetMetalSpots(msp, msi, mso);
+		for (uint q = 0; q < msp.length(); ++q) if (msp[q].distance2D(them) < msp[q].distance2D(home)) theirSpots.insertLast(msp[q]);
+		if (theirSpots.length() == 0) theirSpots.insertLast(them);
+	}
 	for (uint k = 0; k < opts.length(); ++k) {
 		CCircuitDef@ d = ai.GetCircuitDef(opts[k]);
 		if (d is null || d.IsMobile()) continue;
@@ -2727,7 +2754,11 @@ void Init()
 		for (uint u = 0; u < prod.length(); ++u) {
 			CCircuitDef@ ud = ai.GetCircuitDef(prod[u]);
 			if (ud is null || !ud.IsMobile() || ud.GetSustainedDps() <= 0.f || ud.IsAbleToFly()) continue;
-			if (!AiDefCanReach(ud, home, them)) continue;
+			// it must reach somewhere that matters: an extractor spot on their side (the centre of their start box can be
+			// unpathable: Theta Crystals listed no lab at all and the commander built extractors forever)
+			bool reach = false;
+			for (uint q = 0; q < theirSpots.length() && !reach; ++q) reach = AiDefCanReach(ud, home, theirSpots[q]);
+			if (!reach) continue;
 			const float ut = ud.buildTime / AiMax(1.f, d.buildSpeed);
 			// strength per metal it costs: early production is limited by income, not build time (per second of
 			// build time chose a hover plant on Feast of Hades - strong hovers no early income can feed)
@@ -2758,7 +2789,9 @@ void Init()
 		for (uint u = 0; u < prod.length(); ++u) {
 			CCircuitDef@ r = ai.GetCircuitDef(prod[u]);
 			if (r is null || !r.IsMobile() || r.GetSustainedDps() <= 0.f || r.IsAbleToFly() || !Army::IsRaider(r)) continue;
-			if (!AiDefCanReach(r, them, home)) continue;
+			bool comes = false;  // from any spot on their side (their box centre can be unpathable)
+			for (uint q = 0; q < theirSpots.length() && !comes; ++q) comes = AiDefCanReach(r, theirSpots[q], home);
+			if (!comes) continue;
 			// the enemy obeys the same economy: each of lab and raider takes the longer of its build time and the time
 			// to afford it from the starting stock plus a commander's income (a raid "at 54 s" rushed our lab ahead
 			// of the extractors every player builds first; winners' first armed unit comes at ~78 s, replays.db)
@@ -2837,20 +2870,25 @@ float TailGrowth(const Sim@ s, float end)
 	const Lab@ L = labs[s.lab];
 	const float mexBuild = Economist::mexT1.buildTime / AiMax(1.f, L.con.buildSpeed);
 	float v = 0.f; int k = 0;
-	float walkSum = 0.f; int n = 0;
-	for (uint j = 0; j < tailOrder.length(); ++j) if (!s.usedSpot[tailOrder[j]]) { walkSum += tailDist[j]; ++n; }
-	if (n == 0) return 0.f;
-	const float rate = 1.f / AiMax(1.f, walkSum / n / AiMax(1.f, L.con.speed) + mexBuild);  // spots per constructor-second
 	const float conCost = Economist::MetalValue(L.con), mexCost = Economist::MetalValue(Economist::mexT1);
+	// constructors come as fast as the lab builds them AND our metal pays for them: early income compounds (more
+	// income, more constructors, spots claimed sooner) - why players start at a spot cluster and take 3 extractors in
+	// the first 20 s
+	const float conEvery = AiMax(L.conTime, L.con.costM / AiMax(1e-3f, s.mInc));
+	// Constructors claim the nearest spots first: the k-th claim needs the work of the k nearest (walk from home +
+	// build), W_k; constructor-seconds available tau after the lab are tau^2 / (2 conEvery), so t_k = labAt +
+	// sqrt(2 conEvery W_k). (The map-average walk let far spots decide the start: a central forward start won.)
+	float W = 0.f;
 	for (uint j = 0; j < tailOrder.length(); ++j) {
 		if (s.usedSpot[tailOrder[j]]) continue;
 		++k;
-		const float tk = s.labAt + sqrt(2.f * float(k) * L.conTime / rate);
+		W += tailDist[j] / AiMax(1.f, L.con.speed) + mexBuild;
+		const float tk = s.labAt + sqrt(2.f * conEvery * W);
 		if (tk >= end) break;
 		v += tailYield[j] * (end - tk) - mexCost;
 	}
 	// constructors needed to claim them by then: one per rate x elapsed time... their cost
-	const float conUsed = AiMin(float(k), (end - s.labAt) / AiMax(1.f, L.conTime));
+	const float conUsed = AiMin(float(k), (end - s.labAt) / AiMax(1.f, conEvery));
 	return v - conUsed * conCost;
 }
 
@@ -2858,23 +2896,50 @@ float TailGrowth(const Sim@ s, float end)
 float Value(const Sim@ s, float now, float H)
 {
 	const float end = now + H;
-	// what we spend productively to the end of the horizon, plus what is banked (unspent income is not lost)
-	float v = s.realized + SpendRate(s) * AiMax(0.f, end - s.t) + s.M + s.E / AiMax(1e-3f, Economist::energyPerMetal)
+	// After the hand-over (a lab stands) the economy keeps expanding (owner: "you should be expanding at all times ...
+	// more wind turbines, geothermal, fusions"): energy is built to match metal, so the metal income is what counts
+	// and the energy it lacks costs once - the metal of the plants that close the gap at the cheapest plant's metal
+	// per energy. (Valuing metal only as far as today's energy matched it made 4 early extractors worth less than a
+	// lab at 25 s with one solar: starts went to box centres, 500-700 from the spots.)
+	float econRate = SpendRate(s), oneOff = 0.f;
+	if (s.lab >= 0) {
+		const float epm = AiMax(1e-3f, Economist::energyPerMetal);
+		const float eR = labs[s.lab].eRatio;
+		const float needE = AiMax(0.f, s.mInc * eR - s.eInc);
+		float perE = 1e9f;
+		for (uint k = 0; k < plants.length(); ++k)
+			perE = AiMin(perE, Economist::MetalValue(plants[k]) / AiMax(1e-3f, aiEconomyMgr.GetEnergyMake(plants[k])));
+		econRate = s.mInc + AiMax(0.f, s.eInc - s.mInc * eR) / epm;
+		oneOff = (perE < 1e9f) ? needE * perE : 0.f;
+	}
+	float v = s.realized + econRate * AiMax(0.f, end - s.t) - oneOff + s.M + s.E / AiMax(1e-3f, Economist::energyPerMetal)
 		+ TailGrowth(s, end);
 	if (raidArrive < end && s.nProd > 0.f) {
 		// raid strength n(t) x one raider, n = 1 + rate x (t - arrival), the rate capped by an income like ours
 		const float rate = AiMin(raidRate, s.mInc / raidCostM);
-		// ours: the lab's answer units from when the first is out (no lab: none)
-		float window = end - raidArrive;
+		// Ours: the commander - which stands by the first extractors (why players start at a spot cluster: early raids
+		// lose to it) - plus the lab's answer units from when the first is out. The raid strips producers while it is
+		// stronger: f(t) = commander + lab units(t) - raid(t) < 0. (Without the commander every exposed producer died
+		// for the whole horizon: cluster starts lost ~57k to an early raid and the box centre won, 2026-11-25.)
+		const float com = Strength(ComDef());
+		float oursRate = 0.f, tU = end;
 		if (s.lab >= 0) {
 			const Lab@ L = labs[s.lab];
 			const float uRate = AiMin(1.f / AiMax(1e-3f, L.unitTime), s.mInc / AiMax(1.f, L.answer.costM));
-			const float tU = s.labAt + L.unitTime;
-			const float ours = L.strength * uRate, theirs = raidStrength * rate;
-			// first t >= arrival with ours x (t - tU) >= raidStrength x (1 + rate x (t - arrival))
-			if (ours > theirs) {
-				const float t = (raidStrength * (1.f - rate * raidArrive) + ours * tU) / (ours - theirs);
-				window = AiMin(window, AiMax(0.f, t - raidArrive));
+			oursRate = L.strength * uRate;
+			tU = s.labAt + L.unitTime;
+		}
+		// f is linear on [arrival, tU] and on [tU, end]; the window is the time it is negative
+		float window = 0.f;
+		{
+			array<float> ts = {raidArrive, AiMax(raidArrive, AiMin(tU, end)), end};
+			for (uint seg = 0; seg + 1 < ts.length(); ++seg) {
+				const float t0 = ts[seg], t1 = ts[seg + 1];
+				if (t1 <= t0) continue;
+				const float f0 = com + oursRate * AiMax(0.f, t0 - tU) - raidStrength * (1.f + rate * (t0 - raidArrive));
+				const float f1 = com + oursRate * AiMax(0.f, t1 - tU) - raidStrength * (1.f + rate * (t1 - raidArrive));
+				if (f0 < 0.f && f1 < 0.f) window += t1 - t0;
+				else if (f0 < 0.f || f1 < 0.f) window += (t1 - t0) * ((f0 < 0.f) ? f0 : f1) / (f0 - f1) * ((f0 < 0.f) ? 1.f : -1.f);
 			}
 		}
 		// producers it kills over the window: its damage (growing) over their mean health
@@ -3083,6 +3148,15 @@ AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3&
 	for (uint c = 0; c < cands.length(); ++c) {
 		planHome = cands[c];
 		planHome.y = AiGetElevation(planHome.x, planHome.z);
+		// the commander must be able to stand there and walk to the spots it would build (a centroid can fall on a
+		// cliff or inside rock: on Theta Crystals the commander took no job at all for minutes)
+		{
+			int reachable = 0;
+			CCircuitDef@ walker = ai.GetCircuitDef(planDef.GetName());
+			for (uint i = 0; i < sp.length() && reachable == 0; ++i)
+				if (sp[i].distance2D(planHome) <= 2.f * reach && AiDefCanReach(walker, planHome, sp[i])) ++reachable;
+			if (reachable == 0) { AiLog("[ANV-START] candidate (" + int(planHome.x) + "," + int(planHome.z) + ") unreachable ground: skipped"); continue; }
+		}
 		ready = false; raidArrive = 1e9f;
 		Init();
 		Sim s0;
@@ -3095,18 +3169,25 @@ AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3&
 		s0.usedSpot.resize(sp.length());
 		for (uint i = 0; i < sp.length(); ++i) s0.usedSpot[i] = false;
 		PrepareTail(sp, si, so);
-		array<Opt@> first = Options(s0, sp, si, so);
-		int b = -1;
-		float v = BestPlan(s0, 0.f, H, first, b, planDef.buildSpeed, planDef.speed, sp, si, so);
-		// the territory it claims for the game: every spot's yield at the share we keep from here (nearer us than them)
-		// over the horizon - what a forward start buys; the plan already charges the earlier raid it invites
-		float terr = 0.f;
-		for (uint i = 0; i < sp.length(); ++i) {
-			const float dUs = planHome.distance2D(sp[i]), dThem = them.distance2D(sp[i]);
-			terr += si[i] * ext * ((dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f) * H;
+		// what the opener will actually do from here: its own decisions (Bottleneck) until its lab stands, then valued
+		// over the horizon - income, the expansion its lab drives, minus what the earliest raid strips (a forward start
+		// is raided sooner; a scattered one makes the commander walk). (The retired rollout planner judged the starts.)
+		Sim@ os = Copy(s0);
+		for (int step = 0; os.lab < 0 && os.t < H; ++step) {
+			array<Opt@> opts = Options(os, sp, si, so);
+			int ob = -1; string why;
+			Bottleneck(os, opts, planDef.buildSpeed, planDef.speed, ob, why);
+			if (ob < 0) break;
+			Apply(os, opts[ob], planDef.buildSpeed, planDef.speed);
 		}
-		v += terr;
-		AiLog("[ANV-START] candidate (" + int(planHome.x) + "," + int(planHome.z) + ") plan " + int(v - terr) + " + territory " + int(terr) + " = " + int(v));
+		float v = Value(os, 0.f, H);
+		// (No separate territory term: every spot's yield x kept share x horizon grew with every step forward and
+		// outweighed the plan - starts at 0.91 forward, 3rd spot 758 away, winners 0.50-0.80 and 188-381. What a start
+		// changes is in the plan's value: the commander's first extractors, the constructors' walks to every later
+		// spot at the share kept from here (TailGrowth), and how soon the raid comes.)
+		const float terr = 0.f;
+		AiLog("[ANV-START] candidate (" + int(planHome.x) + "," + int(planHome.z) + ") value " + int(v) + " [" + Describe(os, 0.f, H) + " tail " + int(TailGrowth(os, H))
+			+ " con " + ((os.lab >= 0 && labs[os.lab].con !is null) ? labs[os.lab].con.GetName() : "none") + " raid " + int(raidArrive) + "]");
 		if (v > bestV) { bestV = v; bestP = planHome; }
 	}
 	planning = false; ready = false; raidArrive = 1e9f;
@@ -3612,10 +3693,17 @@ void Update()
 				if (sd.IsMobile() || sd.threat <= 0.f || sd.surfThrDmg <= 0.f) continue;
 				if (all[k].GetPos(ai.frame).distance2D(cp[best]) <= sd.GetMaxRange()) S += sd.threat;
 			}
-			if (S <= need) continue;  // what is free can't win it
+			if (S <= need) {  // what is free can't win it
+				if (cid[best] >= 0) AiLog("[ANV-CMD] skip enemy " + cid[best] + " at (" + int(cp[best].x) + "," + int(cp[best].z) + ") value " + int(cv[best])
+					+ ": strength " + F1(S) + " <= defence " + F1(dfc[best]) + " / trade " + F2(trade));
+				continue;
+			}
 			const float r = dfc[best] / AiMax(1e-6f, S);
 			const float loss = metal * r * r;  // square law
-			if (cv[best] <= loss) continue;  // it costs more than it is worth
+			if (cv[best] <= loss) {  // it costs more than it is worth
+				if (cid[best] >= 0) AiLog("[ANV-CMD] skip enemy " + cid[best] + " value " + int(cv[best]) + " <= expected loss " + int(loss));
+				continue;
+			}
 			Op op;
 			op.enemyId = cid[best]; op.pos = cp[best]; op.value = cv[best]; op.defence = dfc[best]; op.engaged = dfc[best] <= 0.f;
 			for (uint k = 0; k < pick.length(); ++k) op.units.insertLast(pick[k]);
@@ -3909,6 +3997,7 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 	if (CommWorth(bt.GetBuildPos(), JobValue(bt)))
 		return task;
 	++commRedirects;
+	AiLog("[ANV] CommRedirect: " + bt.buildDef.GetName() + " gain " + int(lastGain) + " < risk " + int(lastRisk) + " (danger " + F1(commDanger) + " cover " + F1(commCover) + ")");
 	IUnitTask@ safe = CommSafeJob(comm.GetPos(ai.frame));
 	return safe is null ? task : safe;
 }
@@ -4147,7 +4236,10 @@ float CommShare() { return AiMin(1.f, commander.circuitDef.buildSpeed / AiMax(1.
 float JobValue(IBuilderTask@ bt)
 {
 	const float share = CommShare();
-	if (bt !is null && bt.buildDef !is null) return Brain::Economist::MetalValue(bt.buildDef) * share;
+	// a job is worth what it produces over the horizon (cost + yield), as for every builder: valued at its cost (~40
+	// for an extractor against P(death) x everything we own, ~3000) the fog's 1-2% sent the commander back from every
+	// extractor 300 elmos out - 27 redirects, first extractor at 87 s on Gasbag Grabens (2026-11-25)
+	if (bt !is null && bt.buildDef !is null) return Brain::Economist::AssetValue(bt.buildDef) * share;
 	return share * aiEconomyMgr.metal.income * Brain::Economist::Horizon();  // over the planning horizon (the span of the jobs we hand out)
 }
 // Best job by gain - risk among: assisting a factory, reclaiming a wreck field (the frontline reclaim
