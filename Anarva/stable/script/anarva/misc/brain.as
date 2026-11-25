@@ -462,10 +462,28 @@ string Status() { return "ecoPos " + (behind ? "behind" : "ahead") + " ours=" + 
  */
 namespace MexPorc {
 int orders = 0;
+IUnitTask@ pending = null;  // the tower ordered last, until its job ends: one at a time, like a player (26 towers in
+                            // 10 minutes when every update ordered another before the last one stood, Gasbag)
+void OnTaskRemoved(IUnitTask@ t) { if (t is pending) @pending = null; }
+float RaidLoss(CCircuitUnit@ u, const CCircuitDef@ con)
+{
+	const CCircuitDef@ d = u.circuitDef;
+	const string nm = d.GetName();
+	const float upkeep = Facts::EnergyUpkeep(nm);
+	const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
+	array<AIFloat3> sp; array<float> si; array<bool> so;
+	const uint ns = AiGetMetalSpots(sp, si, so);
+	float avg = 0.f; for (uint i = 0; i < ns; ++i) avg += si[i]; avg = (ns > 0) ? avg / float(ns) : 0.f;
+	const float yield = Economist::Extract(nm) * avg + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
+	float rebuild = 0.f;
+	if (con !is null) rebuild = (HasBase() ? basePos.distance2D(u.GetPos(ai.frame)) : 0.f) / AiMax(1.f, con.speed) + d.buildTime / AiMax(1.f, con.buildSpeed);
+	return Economist::MetalValue(d) + yield * rebuild;
+}
 dictionary guarded;  // mex id -> frame ordered
 void Update()
 {
 	if (!HasBase()) return;
+	if (pending !is null) return;  // the last tower first
 	CCircuitDef@ tur = Strategic::BestTurret();
 	if (tur is null || !tur.IsAvailable(ai.frame)) return;
 	const float cost = Economist::MetalValue(tur);
@@ -488,8 +506,12 @@ void Update()
 		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
 		float total = 0.f;
 		array<float> val(mx.length(), 0.f);
+		// what a raid takes from a producer: its cost and its yield until it stands again (a constructor's walk from
+		// base + build), not its whole future - we rebuild (with the horizon's worth every extractor earned a tower:
+		// 11 constructors on towers at minute 12, Gasbag Grabens)
+		CCircuitDef@ con = EcoPos::CheapestConstructor();
 		for (uint i = 0; i < mine.length(); ++i)
-			if (Economist::IsProducer(mine[i].circuitDef)) total += Economist::AssetValue(mine[i].circuitDef);
+			if (Economist::IsProducer(mine[i].circuitDef)) total += RaidLoss(mine[i], con);
 		const float r = tur.GetMaxRange();
 		for (uint i = 0; i < mx.length(); ++i) {
 			if (guarded.exists("" + mx[i].id)) continue;
@@ -499,7 +521,7 @@ void Update()
 				covered = !mine[k].circuitDef.IsMobile() && mine[k].circuitDef.surfThrDmg > 0.f && mine[k].GetPos(ai.frame).distance2D(q) <= mine[k].circuitDef.GetMaxRange();
 			if (covered) continue;
 			for (uint k = 0; k < mine.length(); ++k)
-				if (Economist::IsProducer(mine[k].circuitDef) && mine[k].GetPos(ai.frame).distance2D(q) <= r) val[i] += Economist::AssetValue(mine[k].circuitDef);
+				if (Economist::IsProducer(mine[k].circuitDef) && mine[k].GetPos(ai.frame).distance2D(q) <= r) val[i] += RaidLoss(mine[k], con);
 			const float expected = val[i] * val[i] / AiMax(1.f, total);
 			if (expected > bestHeat) { bestHeat = expected; @best = mx[i]; }
 		}
@@ -516,7 +538,7 @@ void Update()
 	// next to the extractor, not on it: the build site is searched within the two footprints side by side (at the
 	// extractor's own position with radius 0 the job could never be placed: 8 orders, 1 tower, Gasbag Grabens)
 	const float around = tur.GetRadius() * 2.f + best.circuitDef.GetRadius() * 2.f;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, p, around, true, OrderLife(tur, p)));
+	@pending = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, p, around, true, OrderLife(tur, p)));
 	AiLog("[ANV] MexPorc: " + tur.GetName() + " at extractor (loss there, seen or expected from the raid, " + int(bestHeat) + " > turret " + int(cost) + ")");
 }
 }  // namespace MexPorc
@@ -4395,7 +4417,7 @@ IUnitTask@ CommSafeJob(const AIFloat3& in from) { ++commRetreats; return CommBes
  * takes the best spot when that beats the job it has.
  */
 int commFwd = 0, fwdCalls = 0, fwdBusy = 0, fwdNone = 0; float fwdBestSeen = 0.f, fwdCurSeen = 0.f; IUnitTask@ commFwdTask = null; float lastFwdGain = 0.f; int fwdDue = 0, fwdFailed = 0;
-void OnBuilderTaskRemoved(IUnitTask@ task) { Opening::OnTaskRemoved(task); if (task is commFwdTask) @commFwdTask = null; if (task is commGuardTask) @commGuardTask = null; }
+void OnBuilderTaskRemoved(IUnitTask@ task) { MexPorc::OnTaskRemoved(task); Opening::OnTaskRemoved(task); if (task is commFwdTask) @commFwdTask = null; if (task is commGuardTask) @commGuardTask = null; }
 IUnitTask@ CommForward(const AIFloat3& in from, float curScore)
 {
 	if (Brain::Economist::mexT1 is null) return null;
