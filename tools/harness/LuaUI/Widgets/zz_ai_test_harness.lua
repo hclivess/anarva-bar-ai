@@ -95,7 +95,8 @@ function widget:GameFrame(n)
 			local us = Spring.GetTeamUnits(t)
 			if us and #us > 0 then
 				local x, _, z = Spring.GetUnitPosition(us[1])
-				Spring.Echo(string.format("[HARNESS] start team=%d x=%d z=%d", t, x, z))
+				local ud = UnitDefs[Spring.GetUnitDefID(us[1])]
+				Spring.Echo(string.format("[HARNESS] start team=%d x=%d z=%d com=%s", t, x, z, ud and ud.name or "?"))
 			end
 		end
 	end

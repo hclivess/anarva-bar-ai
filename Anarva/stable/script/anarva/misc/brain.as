@@ -381,7 +381,7 @@ void Update()
 			if (pTaken <= 0.f) continue;
 			rp.insertLast(msp[i]);
 			// what killing their extractor there is worth: its cost + what it would extract over our horizon
-			const float yieldH = (Economist::mexT1 is null) ? 0.f : msi[i] * Facts::ExtractsMetal(Economist::mexT1.GetName()) * Economist::Horizon();
+			const float yieldH = (Economist::mexT1 is null) ? 0.f : msi[i] * Economist::Extract(Economist::mexT1.GetName()) * Economist::Horizon();
 			rv.insertLast(pTaken * (mexV + yieldH));
 		}
 		raidPos = rp; raidVal = rv;
@@ -412,11 +412,11 @@ void Update()
 	if (conDef !is null && Economist::mexT1 !is null && HasBase()) {
 		const float conSpeed = AiMax(1.f, conDef.speed);
 		const float conBuild = Economist::mexT1.buildTime / AiMax(1.f, conDef.buildSpeed);
-		const float ext = Facts::ExtractsMetal(Economist::mexT1.GetName());
+		const float ext = Economist::Extract(Economist::mexT1.GetName());
 		for (int i = 0; i < ns2; ++i)
 			if (mso2[i] && !OwnSpot(msp2[i])) {
 				// weighted by the share we keep: how much sooner we reach the spot than they do
-				const float dUs = basePos.distance2D(msp2[i]), dThem = aiEnemyMgr.GetEnemyPos().distance2D(msp2[i]);
+				const float dUs = basePos.distance2D(msp2[i]), dThem = AiEnemyBasePos().distance2D(msp2[i]);
 				const float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;
 				claimWork += keep * (dUs / conSpeed + conBuild);
 				claimYield += keep * msi2[i] * ext;
@@ -1959,7 +1959,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	 * A unit can do one job: its value is the larger of the three.
 	 */
 	const array<string>@ opts = Facts::BuildOptions(fdef.GetName());
-	const AIFloat3 fpos = fac.GetPos(ai.frame), them = aiEnemyMgr.GetEnemyPos();
+	const AIFloat3 fpos = fac.GetPos(ai.frame), them = AiEnemyBasePos();
 	// our strength per domain
 	float sAir = 0.f, sSurf = 0.f;
 	{
@@ -2061,6 +2061,40 @@ array<CCircuitDef@> mexDefs;
 array<CCircuitUnit@> mexes;
 CCircuitDef@ mexT1, mexT2, makerDef;
 float energyPerMetal = 0.f;   // converter exchange rate, from defs
+/*
+ * Metal per second an extractor makes per unit of a spot's income: extractsMetal x the scale the engine actually
+ * applies, measured from our own extractors (their output now / spot income x extractsMetal). The spot "income" is
+ * BAR's metal value, not metal per second: taken as such, every extractor was valued at ~1/9 of its output (0.2
+ * against 1.9 measured in our game and 1.80 median in 848 player-minutes of 1v1 replays). Until our first extractor
+ * reports, the scale that makes an average spot give that replay median.
+ */
+float extractorScale = 0.f;
+float Extract(const string& in name) { return Facts::ExtractsMetal(name) * AiMax(1e-6f, extractorScale); }
+void MeasureExtraction()
+{
+	array<AIFloat3> sp; array<float> si; array<bool> so;
+	const uint n = AiGetMetalSpots(sp, si, so);
+	if (extractorScale <= 0.f && mexT1 !is null && n > 0) {
+		float sum = 0.f;
+		for (uint i = 0; i < n; ++i) sum += si[i];
+		const float avg = sum / float(n);
+		const float replayMedian = 1.80f;  // metal/s per extractor, 1v1 replays.db (measured, minutes 3-6, n=848)
+		extractorScale = replayMedian / AiMax(1e-6f, avg * Facts::ExtractsMetal(mexT1.GetName()));
+	}
+	float actual = 0.f, predicted = 0.f;
+	for (uint k = 0; k < mexes.length(); ++k) {
+		const float a = mexes[k].GetMetalMake();
+		if (a <= 0.f) continue;  // not extracting yet (just built, or stalled)
+		const AIFloat3 p = mexes[k].GetPos(ai.frame);
+		int best = -1; float bd = 1e30f;
+		for (uint i = 0; i < n; ++i) { const float d = sp[i].distance2D(p); if (d < bd) { bd = d; best = int(i); } }
+		if (best < 0) continue;
+		actual += a;
+		predicted += si[best] * Facts::ExtractsMetal(mexes[k].circuitDef.GetName());
+	}
+	if (predicted > 0.f) extractorScale = actual / predicted;
+	aiEconomyMgr.SetExtractorScale(extractorScale);
+}
 // Game facts the script API doesn't expose (from unitdefs: extractsmetal / energyupkeep). Not tunables.
 // extractor facts from the unit files (extractsmetal relative to T1, energy upkeep E/s)
 float MexExtract(const CCircuitDef@ d) { return (d is null) ? 0.f : Facts::ExtractsMetal(d.GetName()); }
@@ -2088,7 +2122,8 @@ void Init()
 		if (c !is null && c.eff > 0.f)
 			energyPerMetal = 1.f / c.eff;
 	}
-	AiLog("[ANV] Economist: converter rate " + F1(energyPerMetal) + " E per M");
+	MeasureExtraction();
+	AiLog("[ANV] Economist: converter rate " + F1(energyPerMetal) + " E per M, extractor scale " + F2(extractorScale));
 }
 
 void OnFinished(CCircuitUnit@ u) { if (InList(mexDefs, u.circuitDef)) mexes.insertLast(u); }
@@ -2111,7 +2146,7 @@ float AssetValue(const CCircuitDef@ d)
 	}
 	const float upkeep = Facts::EnergyUpkeep(nm);
 	const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
-	const float yield = Facts::ExtractsMetal(nm) * spotM + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, energyPerMetal);
+	const float yield = Economist::Extract(nm) * spotM + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, energyPerMetal);
 	return MetalValue(d) + ((yield > 0.f) ? yield * Horizon() : 0.f);
 }
 
@@ -2335,7 +2370,7 @@ bool OnOurSide(const AIFloat3& in p)
 {
 	if (!HasBase()) return true;
 	const float dU = basePos.distance2D(p);
-	if (enemyStatics.length() == 0) return dU < basePos.distance2D(aiEnemyMgr.GetEnemyPos());
+	if (enemyStatics.length() == 0) return dU < basePos.distance2D(AiEnemyBasePos());
 	for (uint j = 0; j < enemyStatics.length(); ++j)
 		if (enemyStatics[j].distance2D(p) < dU) return false;
 	return true;
@@ -2631,6 +2666,8 @@ class Lab {
 	float unitTime;        // build time of one at the lab's build power
 	float spend;           // metal/s the lab spends building it
 	float eRatio;          // its energy per metal
+	CCircuitDef@ con;      // its cheapest constructor that can build an extractor
+	float conTime = 0.f;   // build time of one at the lab's build power
 }
 array<Lab@> labs;
 array<CCircuitDef@> plants;
@@ -2649,7 +2686,7 @@ const CCircuitDef@ planDef = null;
 AIFloat3 planHome, planThem;
 const CCircuitDef@ ComDef() { return planning ? planDef : commander.circuitDef; }
 AIFloat3 Home() { if (planning) return planHome; return HasBase() ? basePos : commander.GetPos(ai.frame); }
-AIFloat3 Them() { return planning ? planThem : aiEnemyMgr.GetEnemyPos(); }
+AIFloat3 Them() { return planning ? planThem : AiEnemyBasePos(); }
 float Strength(const CCircuitDef@ d) { return sqrt(AiMax(0.f, d.GetSustainedDps()) * AiMax(1.f, d.health)); }
 
 // a spot near home where it can stand: home, else the first point of a ring at the commander's build distance
@@ -2692,15 +2729,26 @@ void Init()
 			if (ud is null || !ud.IsMobile() || ud.GetSustainedDps() <= 0.f || ud.IsAbleToFly()) continue;
 			if (!AiDefCanReach(ud, home, them)) continue;
 			const float ut = ud.buildTime / AiMax(1.f, d.buildSpeed);
-			const float rate = Strength(ud) / AiMax(1e-3f, ut);
+			// strength per metal it costs: early production is limited by income, not build time (per second of
+			// build time chose a hover plant on Feast of Hades - strong hovers no early income can feed)
+			const float rate = Strength(ud) / AiMax(1.f, Economist::MetalValue(ud));
 			if (rate > bestRate) { bestRate = rate; @L.answer = ud; L.strength = Strength(ud); L.unitTime = ut;
 				L.spend = ud.costM / AiMax(1e-3f, ut); L.eRatio = ud.costE / AiMax(1.f, ud.costM); }
+		}
+		@L.con = null;
+		for (uint u = 0; u < prod.length(); ++u) {
+			CCircuitDef@ cd = ai.GetCircuitDef(prod[u]);
+			if (cd is null || !cd.IsMobile() || cd.buildSpeed <= 0.f || Economist::mexT1 is null || !cd.CanBuild(Economist::mexT1)) continue;
+			if (L.con is null || cd.costM < L.con.costM) { @L.con = cd; L.conTime = cd.buildTime / AiMax(1.f, d.buildSpeed); }
 		}
 		if (L.answer !is null) labs.insertLast(L);
 	}
 	// the earliest raid: every T1 lab any commander can build, its fastest raider that can reach us from their base
+	// the raid's path from their side to this home: the straight distance times the map's detour (path / straight
+	// between the bases, map analysis) - a forward start invites an earlier raid (it was the same for every start)
 	float path = them.distance2D(home);
-	if (Production::mapInfo !is null && Production::mapInfo.basePath > 0.f) path = Production::mapInfo.basePath;
+	if (Production::mapInfo !is null && Production::mapInfo.basePath > 0.f && Production::mapInfo.straight > 0.f)
+		path *= Production::mapInfo.basePath / Production::mapInfo.straight;
 	const array<string>@ facs = Facts::buildOptions.getKeys();
 	for (uint f = 0; f < facs.length(); ++f) {
 		if (int(Facts::FactoryTier(facs[f])) != 1) continue;
@@ -2711,8 +2759,16 @@ void Init()
 			CCircuitDef@ r = ai.GetCircuitDef(prod[u]);
 			if (r is null || !r.IsMobile() || r.GetSustainedDps() <= 0.f || r.IsAbleToFly() || !Army::IsRaider(r)) continue;
 			if (!AiDefCanReach(r, them, home)) continue;
+			// the enemy obeys the same economy: each of lab and raider takes the longer of its build time and the time
+			// to afford it from the starting stock plus a commander's income (a raid "at 54 s" rushed our lab ahead
+			// of the extractors every player builds first; winners' first armed unit comes at ~78 s, replays.db)
+			const float m0 = AiSetupNumber("startmetal", 1000.f), e0 = AiSetupNumber("startenergy", 1000.f);
+			const float mI = AiMax(1e-3f, Facts::MetalMake(com.GetName())), eI = AiMax(1e-3f, AiMax(Facts::EnergyMake(com.GetName()), aiEconomyMgr.GetEnergyMake(com)));
+			const float tLab = AiMax(F.buildTime / comBp, AiMax((F.costM - m0) / mI, (F.costE - e0) / eI));
 			const float ut = r.buildTime / AiMax(1.f, F.buildSpeed);
-			const float arrive = F.buildTime / comBp + ut + path / AiMax(1.f, r.speed);
+			const float mLeft = m0 + mI * tLab - F.costM, eLeft = e0 + eI * tLab - F.costE;
+			const float tUnit = AiMax(ut, AiMax((r.costM - mLeft) / mI, (r.costE - eLeft) / eI));
+			const float arrive = tLab + tUnit + path / AiMax(1.f, r.speed);
 			if (arrive < raidArrive) {
 				raidArrive = arrive; raidRate = 1.f / AiMax(1e-3f, ut); raidStrength = Strength(r); raidDps = r.GetSustainedDps();
 				raidCostM = AiMax(1.f, r.costM); raidUnitTime = ut;
@@ -2727,25 +2783,84 @@ void Init()
 	ready = true;
 }
 
-// metal-eq per second we can turn into something now: income as energy lets production use it, up to build power
+// metal-eq per second we can turn into something now. Everything we spend on needs energy at its own ratio: the
+// commander's builds (an extractor's energy per metal) and the lab's units. Income flows to the commander's build
+// power first, then the lab's; only energy left after both counts at the converter rate. (Metal counted as fully
+// usable without a lab but energy-limited with one made adding a lab look like a loss: the extractor-first plan
+// never added one, Feast of Hades 2026-11-25.)
 float SpendRate(const Sim@ s)
 {
+	// What a player counts: resources gathered, usable as far as metal and energy match for what we spend on -
+	// extractors and plants before the lab, the lab's units after it - plus surplus energy at the converter rate.
+	// Build power is no value in itself; it only limits growth (TailGrowth). At the start (2 M, 30 E) metal binds:
+	// extractors first; after three, energy binds: energy; then the lab, whose constructors grow the economy - the
+	// order the winners follow (first extractor 4 s, 3 by 60 s, solar 24 s, lab 43 s; 106 winners, replays.db).
 	const float epm = AiMax(1e-3f, Economist::energyPerMetal);
-	const float eR = (s.lab >= 0) ? labs[s.lab].eRatio : 0.f;
-	const float usable = (eR > 0.f) ? AiMin(s.mInc, s.eInc / eR) : s.mInc;
-	float total = usable + AiMax(0.f, s.eInc - usable * eR) / epm;
-	float spend = 0.f;
-	if (Economist::mexT1 !is null)
-		spend = ComDef().buildSpeed * Economist::mexT1.costM / AiMax(1.f, Economist::mexT1.buildTime);
-	if (s.lab >= 0 && s.t >= s.labAt) spend += labs[s.lab].spend;
-	return AiMin(total, spend);
+	if (Economist::mexT1 is null) return 0.f;
+	float eR = Economist::mexT1.costE / AiMax(1.f, Economist::mexT1.costM);
+	if (s.lab >= 0 && s.t >= s.labAt) eR = labs[s.lab].eRatio;
+	const float m = s.mInc, e = s.eInc;
+	const float usable = (eR > 0.f) ? AiMin(m, e / eR) : m;
+	return usable + AiMax(0.f, e - usable * eR) / epm;
+}
+
+// the free extractor spots, nearest home first: what constructors claim after the lab (set per planning call)
+array<int> tailOrder; array<float> tailYield, tailDist;
+void PrepareTail(const array<AIFloat3>@ sp, const array<float>@ si, const array<bool>@ so)
+{
+	tailOrder.resize(0); tailYield.resize(0); tailDist.resize(0);
+	if (Economist::mexT1 is null) return;
+	const float ext = Economist::Extract(Economist::mexT1.GetName());
+	const AIFloat3 h = Home(), t = Them();
+	array<float> d; array<int> idx;
+	for (uint i = 0; i < sp.length(); ++i) {
+		if (!so[i] || EcoPos::OwnSpot(sp[i])) continue;
+		d.insertLast(h.distance2D(sp[i])); idx.insertLast(int(i));
+	}
+	while (idx.length() > 0) {  // selection by distance (no sort helper for parallel arrays)
+		uint m = 0;
+		for (uint k = 1; k < idx.length(); ++k) if (d[k] < d[m]) m = k;
+		const int i = idx[m];
+		const float dUs = d[m], dThem = t.distance2D(sp[i]);
+		tailOrder.insertLast(i); tailDist.insertLast(dUs);
+		tailYield.insertLast(si[i] * ext * ((dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f));
+		idx.removeAt(m); d.removeAt(m);
+	}
+}
+// After the lab stands, income keeps growing: the lab makes constructors (one per conTime) and each claims spots at
+// one per (walk + extractor build); the k-th spot comes at labAt + sqrt(2 k conTime / rate). Each yields its kept
+// income to the end of the horizon, less the constructors' cost. (Income held constant after the hand-over made a
+// lab worth nothing until the commander had built everything: lab first 28.7k vs 204k, lab at 6478 s.)
+float TailGrowth(const Sim@ s, float end)
+{
+	if (s.lab < 0 || labs[s.lab].con is null || Economist::mexT1 is null) return 0.f;
+	const Lab@ L = labs[s.lab];
+	const float mexBuild = Economist::mexT1.buildTime / AiMax(1.f, L.con.buildSpeed);
+	float v = 0.f; int k = 0;
+	float walkSum = 0.f; int n = 0;
+	for (uint j = 0; j < tailOrder.length(); ++j) if (!s.usedSpot[tailOrder[j]]) { walkSum += tailDist[j]; ++n; }
+	if (n == 0) return 0.f;
+	const float rate = 1.f / AiMax(1.f, walkSum / n / AiMax(1.f, L.con.speed) + mexBuild);  // spots per constructor-second
+	const float conCost = Economist::MetalValue(L.con), mexCost = Economist::MetalValue(Economist::mexT1);
+	for (uint j = 0; j < tailOrder.length(); ++j) {
+		if (s.usedSpot[tailOrder[j]]) continue;
+		++k;
+		const float tk = s.labAt + sqrt(2.f * float(k) * L.conTime / rate);
+		if (tk >= end) break;
+		v += tailYield[j] * (end - tk) - mexCost;
+	}
+	// constructors needed to claim them by then: one per rate x elapsed time... their cost
+	const float conUsed = AiMin(float(k), (end - s.labAt) / AiMax(1.f, L.conTime));
+	return v - conUsed * conCost;
 }
 
 // the plan's value to the end of the horizon (now + H): what it lets us spend, minus what the first raid strips
 float Value(const Sim@ s, float now, float H)
 {
 	const float end = now + H;
-	float v = s.realized + SpendRate(s) * AiMax(0.f, end - s.t);
+	// what we spend productively to the end of the horizon, plus what is banked (unspent income is not lost)
+	float v = s.realized + SpendRate(s) * AiMax(0.f, end - s.t) + s.M + s.E / AiMax(1e-3f, Economist::energyPerMetal)
+		+ TailGrowth(s, end);
 	if (raidArrive < end && s.nProd > 0.f) {
 		// raid strength n(t) x one raider, n = 1 + rate x (t - arrival), the rate capped by an income like ours
 		const float rate = AiMin(raidRate, s.mInc / raidCostM);
@@ -2804,7 +2919,7 @@ array<Opt@> Options(const Sim@ s, const array<AIFloat3>@ sp, const array<float>@
 			Opt o; o.kind = 0; @o.def = Economist::mexT1; o.pos = sp[i]; o.spot = int(i);
 			const float dUs = Home().distance2D(sp[i]), dThem = Them().distance2D(sp[i]);
 			const float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;  // the share we keep
-			o.yieldM = si[i] * Facts::ExtractsMetal(Economist::mexT1.GetName()) * keep;
+			o.yieldM = si[i] * Economist::Extract(Economist::mexT1.GetName()) * keep;
 			opts.insertLast(o);
 		}
 	}
@@ -2814,6 +2929,7 @@ array<Opt@> Options(const Sim@ s, const array<AIFloat3>@ sp, const array<float>@
 	}
 	if (s.lab < 0 && Intel::allFactories.length() == 0) {
 		for (uint k = 0; k < labs.length(); ++k) {
+			if (labOnly != -2 && int(k) != labOnly) continue;  // a rollout plans with one lab (or none: -1)
 			Opt o; o.kind = 2; @o.def = labs[k].def; o.pos = labs[k].pos; o.lab = int(k);
 			opts.insertLast(o);
 		}
@@ -2831,31 +2947,107 @@ Sim@ Copy(const Sim@ a)
 }
 
 // the best plan from state s0: every first option followed by the best next step while one adds value
+int labOnly = -2;  // -2: any lab; -1: none; k: only labs[k]
+Sim@ lastOne = null;
+/*
+ * The best plan from s0 (#95). The lab's timing is searched, not left to a greedy step: a lab pays off over time, so a
+ * greedy rollout added it only when one step of it beat one more extractor (the extractor-first plan built its lab at
+ * 249 s while players build 3 extractors, energy, then the lab at ~45 s). For each first step: the greedy sequence
+ * without a lab, then each lab inserted at every point of that sequence, followed greedily; the best counts. First
+ * steps: the extractor worth most one step ahead (that ranks walk and richness), each energy plant, each lab.
+ */
 float BestPlan(const Sim@ s0, float now, float H, const array<Opt@>@ first, int &out best, float bp, float speed,
 	const array<AIFloat3>@ sp, const array<float>@ si, const array<bool>@ so)
 {
 	best = -1;
 	float bestV = Value(s0, now, H);  // doing nothing more is the baseline
+	@lastBest = null;
+	int bestMex = -1; float bestMexV = -1e30f;
 	for (uint a = 0; a < first.length(); ++a) {
+		if (first[a].kind != 0) continue;
 		Sim@ s = Copy(s0);
 		Apply(s, first[a], bp, speed);
-		float cur = Value(s, now, H);
-		while (s.t < now + H) {
-			array<Opt@> nx = Options(s, sp, si, so);
-			int nb = -1; float nv = cur;
-			for (uint b = 0; b < nx.length(); ++b) {
-				Sim@ s2 = Copy(s);
-				Apply(s2, nx[b], bp, speed);
-				const float v2 = Value(s2, now, H);
-				if (v2 > nv) { nv = v2; nb = int(b); }
-			}
-			if (nb < 0) break;
-			Apply(s, nx[nb], bp, speed);
-			cur = nv;
-		}
-		if (cur > bestV) { bestV = cur; best = int(a); }
+		const float v = Value(s, now, H);
+		if (v > bestMexV) { bestMexV = v; bestMex = int(a); }
+	}
+	for (uint a = 0; a < first.length(); ++a) {
+		if (first[a].kind == 0 && int(a) != bestMex) continue;
+		Sim@ end = null;
+		const float v = PlanFrom(s0, first[a], now, H, bp, speed, sp, si, so, end);
+		if (v > bestV) { bestV = v; best = int(a); @lastBest = end; }
 	}
 	return bestV;
+}
+// greedy: the best next step while one adds value (labs only as labOnly allows)
+float Greedy(Sim@ s, float now, float H, float bp, float speed, const array<AIFloat3>@ sp, const array<float>@ si,
+	const array<bool>@ so, array<Opt@>@ seq)
+{
+	float cur = Value(s, now, H);
+	while (s.t < now + H) {
+		array<Opt@> nx = Options(s, sp, si, so);
+		int nb = -1; float nv = cur;
+		for (uint b = 0; b < nx.length(); ++b) {
+			Sim@ s2 = Copy(s);
+			Apply(s2, nx[b], bp, speed);
+			const float v2 = Value(s2, now, H);
+			if (v2 > nv) { nv = v2; nb = int(b); }
+		}
+		if (nb < 0) break;
+		Apply(s, nx[nb], bp, speed);
+		if (seq !is null) seq.insertLast(nx[nb]);
+		cur = nv;
+	}
+	return cur;
+}
+float PlanFrom(const Sim@ s0, const Opt@ firstStep, float now, float H, float bp, float speed,
+	const array<AIFloat3>@ sp, const array<float>@ si, const array<bool>@ so, Sim@ &out endState)
+{
+	// The plan ends where the opening's job ends, when a lab stands (the builders' valuation takes over); its value
+	// extrapolates the rates from there. Without a lab yet: grow the sequence one best step at a time and try each
+	// lab after every step, until a later lab is worth less than an earlier one for every lab (delay only costs then).
+	Sim@ s1 = Copy(s0);
+	Apply(s1, firstStep, bp, speed);
+	@endState = s1;
+	float best = Value(s1, now, H);
+	if (s1.lab >= 0 || Intel::allFactories.length() > 0) return best;
+	labOnly = -1;
+	array<float> prev(labs.length(), -1e30f);
+	array<bool> falling(labs.length(), false);
+	Sim@ sj = Copy(s1);
+	while (sj.t < now + H) {
+		bool any = false;
+		for (uint L = 0; L < labs.length(); ++L) {
+			if (falling[L]) continue;
+			Opt lo; lo.kind = 2; @lo.def = labs[L].def; lo.pos = labs[L].pos; lo.lab = int(L);
+			Sim@ s2 = Copy(sj);
+			Apply(s2, lo, bp, speed);
+			const float v = Value(s2, now, H);
+			if (v > best) { best = v; @endState = s2; }
+			if (v < prev[L]) falling[L] = true; else { prev[L] = v; any = true; }
+		}
+		if (!any) break;
+		// one more step without a lab: the one worth most
+		array<Opt@> nx = Options(sj, sp, si, so);
+		int nb = -1; float nv = -1e30f;
+		for (uint k = 0; k < nx.length(); ++k) {
+			Sim@ s3 = Copy(sj);
+			Apply(s3, nx[k], bp, speed);
+			const float v3 = Value(s3, now, H);
+			if (v3 > nv) { nv = v3; nb = int(k); }
+		}
+		if (nb < 0) break;
+		Apply(sj, nx[nb], bp, speed);
+		if (nv > best) { best = nv; @endState = Copy(sj); }
+	}
+	labOnly = -2;
+	return best;
+}
+Sim@ lastBest = null;  // the best plan's end state (for the decision log)
+string Describe(const Sim@ s, float now, float H)
+{
+	if (s is null) return "-";
+	return "end t " + int(s.t) + " mInc " + F1(s.mInc) + " eInc " + F1(s.eInc) + " lab " + (s.lab >= 0 ? labs[s.lab].def.GetName() + "@" + int(s.labAt) : "none")
+		+ " realized " + int(s.realized) + " rate " + F1(SpendRate(s)) + " producers " + int(s.nProd);
 }
 
 /*
@@ -2886,7 +3078,7 @@ AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3&
 		cands.insertLast(AIFloat3(c.x / k, 0.f, c.z / k));
 	}
 	const float H = AiMax(1.f, Economist::Horizon());
-	const float ext = (Economist::mexT1 !is null) ? Facts::ExtractsMetal(Economist::mexT1.GetName()) : 0.f;
+	const float ext = (Economist::mexT1 !is null) ? Economist::Extract(Economist::mexT1.GetName()) : 0.f;
 	AIFloat3 bestP = cands[0]; float bestV = -1e30f;
 	for (uint c = 0; c < cands.length(); ++c) {
 		planHome = cands[c];
@@ -2894,11 +3086,15 @@ AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3&
 		ready = false; raidArrive = 1e9f;
 		Init();
 		Sim s0;
-		s0.t = 0.f; s0.M = aiEconomyMgr.metal.current; s0.E = aiEconomyMgr.energy.current;
-		s0.mInc = aiEconomyMgr.metal.income; s0.eInc = aiEconomyMgr.energy.income;
+		// the game's start: its starting stock (setup; the engine gives 1000/1000 at frame 0 when the setup sets none,
+		// [HARNESS] stats f=0) and what the commander makes (unit facts) - before the game the economy reads 0 and
+		// no plan could pay for anything (every candidate scored "plan 0")
+		s0.t = 0.f; s0.M = AiSetupNumber("startmetal", 1000.f); s0.E = AiSetupNumber("startenergy", 1000.f);
+		s0.mInc = Facts::MetalMake(planDef.GetName()); s0.eInc = AiMax(Facts::EnergyMake(planDef.GetName()), aiEconomyMgr.GetEnergyMake(planDef));
 		s0.pos = planHome; s0.labAt = 1e9f;
 		s0.usedSpot.resize(sp.length());
 		for (uint i = 0; i < sp.length(); ++i) s0.usedSpot[i] = false;
+		PrepareTail(sp, si, so);
 		array<Opt@> first = Options(s0, sp, si, so);
 		int b = -1;
 		float v = BestPlan(s0, 0.f, H, first, b, planDef.buildSpeed, planDef.speed, sp, si, so);
@@ -2947,7 +3143,11 @@ void Update()
 	AiGetMetalSpots(sp, si, so);
 	Sim s0;
 	s0.t = now; s0.M = aiEconomyMgr.metal.current; s0.E = aiEconomyMgr.energy.current;
-	s0.mInc = aiEconomyMgr.metal.income; s0.eInc = aiEconomyMgr.energy.income;
+	if (aiEconomyMgr.metal.storage <= 0.f) {  // nothing measured yet (frame 0): the game's starting stock
+		s0.M = AiSetupNumber("startmetal", 1000.f); s0.E = AiSetupNumber("startenergy", 1000.f);
+	}
+	s0.mInc = AiMax(aiEconomyMgr.metal.income, Facts::MetalMake(ComDef().GetName()));  // at least what the commander makes
+	s0.eInc = AiMax(aiEconomyMgr.energy.income, Facts::EnergyMake(ComDef().GetName()));
 	s0.pos = commander.GetPos(ai.frame); s0.labAt = 1e9f;
 	s0.usedSpot.resize(sp.length());
 	for (uint i = 0; i < sp.length(); ++i) s0.usedSpot[i] = false;
@@ -2955,7 +3155,19 @@ void Update()
 	const float H = AiMax(1.f, Economist::Horizon());
 	array<Opt@> first = Options(s0, sp, si, so);
 	int best = -1;
-	const float bestV = BestPlan(s0, now, H, first, best, bp, speed, sp, si, so);
+	string why = "";
+	const float bestV = Bottleneck(s0, first, bp, speed, best, why);
+	if (false) {  // (the rollout planner's step log, retired with it)
+		array<float> kv = {-1e30f, -1e30f, -1e30f}; array<string> kn = {"", "", ""};
+		for (uint a = 0; a < first.length(); ++a) {
+			array<Opt@> one = {first[a]};
+			int bb = -1;
+			@lastBest = null;
+			const float v = BestPlan(s0, now, H, one, bb, bp, speed, sp, si, so);
+			if (v > kv[first[a].kind]) { kv[first[a].kind] = v; kn[first[a].kind] = first[a].def.GetName() + " [" + Describe(lastBest, now, H) + "]"; }
+		}
+		AiLog("[ANV-OPEN] first step values: extractor " + kn[0] + " " + int(kv[0]) + ", energy " + kn[1] + " " + int(kv[1]) + ", lab " + kn[2] + " " + int(kv[2]));
+	}
 	if (best < 0) return;  // nothing the commander can do here adds value: the builders' valuation decides
 	const Opt@ o = first[best];
 	++plans;
@@ -2967,9 +3179,90 @@ void Update()
 	else
 		@planned = aiBuilderMgr.Enqueue(TaskB::Factory(Task::Priority::NOW, o.def, o.pos, o.def, 0.f, false, true, OrderLife(o.def, o.pos)));
 	if (planned !is null) aiBuilderMgr.AssignTask(commander, planned);
-	AiLog("[ANV-OPEN] t=" + int(now) + "s commander -> " + o.def.GetName() + (o.kind == 0 ? (" at spot " + o.spot) : "")
-		+ " (best of " + first.length() + " options over the " + int(H) + " s horizon, value " + int(bestV) + ", raid expected " + int(raidArrive) + " s)");
+	AiLog("[ANV-OPEN] t=" + int(now) + "s commander -> " + o.def.GetName() + (o.kind == 0 ? (" at spot " + o.spot) : "") + " (" + why + ")");
 }
+/*
+ * The opener as a player reasons it (owner: "everyone knows that if you choose the lab as the first building you
+ * will immediately stall energy"; the guides: extractors first - metal is the most limiting resource - then energy,
+ * then one factory; replays: first extractor 4 s, 3 by 60 s, solar 24 s, lab 43 s; 106 winners):
+ *  1. the lab, when it can be built now without waiting for resources AND energy income covers the production it
+ *     starts right after (its first product, a constructor, at the rate metal allows) - else it stalls energy;
+ *  2. otherwise the commander uses the time until then for the producer worth most per second of its time (walk +
+ *     build): an extractor's metal; a plant's energy, at the production ratio while energy is what keeps the lab
+ *     from running, else at the converter rate.
+ * The lab is the best one for this map (strength per metal it fields, its units can reach their base).
+ */
+float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, int &out best, string &out why)
+{
+	best = -1;
+	int lab = -1; float labV = -1e30f;
+	for (uint a = 0; a < opts.length(); ++a) {
+		if (opts[a].kind != 2) continue;
+		const Lab@ L = labs[opts[a].lab];
+		const float v = L.strength / AiMax(1.f, Economist::MetalValue(L.answer));
+		if (v > labV) { labV = v; lab = int(a); }
+	}
+	float drawE = 0.f, needE = 0.f, drawM = 0.f, needM = 0.f;
+	if (lab >= 0) {
+		const Lab@ L = labs[opts[lab].lab];
+		const CCircuitDef@ firstUnit = (L.con !is null) ? L.con : L.answer;
+		const float ut = firstUnit.buildTime / AiMax(1.f, L.def.buildSpeed);
+		// a factory pulls at its full build rate whatever the income (and starves the rest when short): that is why a
+		// lab first stalls energy. Its draw is its first product's cost per its build time at the lab's build power.
+		// (Drawing "at the rate metal allows" read 29 E/s and built the lab first: energy stalled at 30/s.)
+		drawE = firstUnit.costE / AiMax(1.f, ut);
+		drawM = firstUnit.costM / AiMax(1.f, ut);
+		Sim@ t = Copy(s0);
+		const float t0 = t.t;
+		Apply(t, opts[lab], bp, speed);
+		const float walkBuild = s0.pos.distance2D(opts[lab].pos) / AiMax(1.f, speed) + opts[lab].def.buildTime / AiMax(1.f, bp);
+		const bool noWait = (t.t - t0) <= walkBuild + 1e-3f;
+		needE = drawE - s0.eInc;
+		needM = drawM - s0.mInc;
+		// A small gap doesn't stall: the stock left when the lab stands carries it while the commander closes it (the
+		// players start the lab at ~43 s with energy still short). It stalls only if the stock runs out first.
+		// Time to close a gap: the best plant (or extractor) of that resource per second of commander time.
+		bool carried = true;
+		if (needE > 0.f || needM > 0.f) {
+			float bestE = 0.f, bestM = 0.f;  // resource per second of commander time
+			for (uint a = 0; a < opts.length(); ++a) {
+				if (opts[a].kind == 2) continue;
+				const float tt = opts[a].def.buildTime / AiMax(1.f, bp) + t.pos.distance2D(opts[a].pos) / AiMax(1.f, speed);
+				bestE = AiMax(bestE, opts[a].yieldE / AiMax(1e-3f, tt));
+				bestM = AiMax(bestM, opts[a].yieldM / AiMax(1e-3f, tt));
+			}
+			// one commander closes both gaps one after the other (g / r each), and each deficit runs until then: the stock
+			// must carry each for the sum (half-credit for a shrinking deficit let the lab go first and stall, minute 1-2)
+			const float tFix = ((needE > 0.f) ? needE / AiMax(1e-3f, bestE) : 0.f) + ((needM > 0.f) ? needM / AiMax(1e-3f, bestM) : 0.f);
+			if (needE > 0.f) carried = carried && (bestE > 0.f) && (t.E >= needE * tFix);
+			if (needM > 0.f) carried = carried && (bestM > 0.f) && (t.M >= needM * tFix);
+		}
+		if (noWait && carried) {
+			best = lab;
+			why = "lab: affordable now; income " + F1(s0.mInc) + " M/s, " + int(s0.eInc) + " E/s covers its production (" + F1(drawM) + " M/s, " + int(drawE) + " E/s)";
+			return 1.f;
+		}
+		why = (noWait ? "" : "lab not affordable yet; ") + (needM > 0.f ? ("metal " + F1(s0.mInc) + "/s short of " + F1(drawM) + "; ") : "")
+			+ (needE > 0.f ? ("energy " + int(s0.eInc) + "/s short of " + int(drawE) + "; ") : "");
+	}
+	const float epm = AiMax(1e-3f, Economist::energyPerMetal);
+	// energy's worth in metal: at the production ratio while it keeps the lab from running, else the converter rate
+	// each resource is worth as much as it closes the gap that keeps the lab from running: a unit of the short one
+	// closes 1/need of it (both short: each by its own gap); not short: energy at the converter rate, metal at 1
+	float eWorth = 1.f / epm, mWorth = 1.f;
+	if (needM > 0.f && needE > 0.f) { mWorth = 1.f / needM; eWorth = 1.f / needE; }
+	else if (needE > 0.f) { eWorth = AiMax(eWorth, drawM / AiMax(1e-3f, drawE)); }
+	float bestV = -1e30f;
+	for (uint a = 0; a < opts.length(); ++a) {
+		if (opts[a].kind == 2) continue;
+		const float time = s0.pos.distance2D(opts[a].pos) / AiMax(1.f, speed) + opts[a].def.buildTime / AiMax(1.f, bp);
+		const float v = (opts[a].yieldM * mWorth + opts[a].yieldE * eWorth) / AiMax(1e-3f, time);
+		if (v > bestV) { bestV = v; best = int(a); }
+	}
+	if (best >= 0) why += "best producer per second of commander time: " + opts[best].def.GetName() + " " + F2(bestV) + " metal-eq/s per s";
+	return bestV;
+}
+
 // a planned extractor whose job ended without the extractor standing failed there (taken, blocked or unreachable):
 // the opening stops planning that spot
 array<int> failedSpots;
@@ -3130,7 +3423,7 @@ float EnemyValue(uint i, float H)
 	float v = Economist::MetalValue(d);
 	const float upkeep = Facts::EnergyUpkeep(nm);
 	const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
-	const float yield = Facts::ExtractsMetal(nm) * spotIncome + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
+	const float yield = Economist::Extract(nm) * spotIncome + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
 	if (yield > 0.f) v += yield * H;
 	return v;
 }
@@ -3162,7 +3455,7 @@ float OursThreatened(uint i, const array<CCircuitUnit@>@ mine, float tAnswer)
 			const string nm = d.GetName();
 			const float upkeep = Facts::EnergyUpkeep(nm);
 			const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
-			const float yield = Facts::ExtractsMetal(nm) * spotIncome + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
+			const float yield = Economist::Extract(nm) * spotIncome + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
 			v += Economist::MetalValue(d) + ((yield > 0.f) ? yield * Economist::Horizon() : 0.f);
 		}
 	}
@@ -3199,7 +3492,7 @@ void Update()
 		float sum = 0.f;
 		for (uint i = 0; i < ns; ++i) sum += si[i];
 		const float avg = (ns > 0) ? sum / float(ns) : 0.f;
-		spotIncome = (Economist::mexT1 is null) ? 0.f : avg * Facts::ExtractsMetal(Economist::mexT1.GetName());
+		spotIncome = (Economist::mexT1 is null) ? 0.f : avg * Economist::Extract(Economist::mexT1.GetName());
 	}
 	const float H = AiMax(1.f, Economist::Horizon());
 	const float trade = AiMax(1e-3f, Assess::trade);
@@ -3475,7 +3768,7 @@ void Update()
 			int kind = -1;
 			for (uint o = 0; o < Command::ops.length() && kind < 0; ++o) {
 				if (Command::ops[o].units.findByRef(u) < 0) continue;
-				kind = (Command::ops[o].enemyId < 0) ? 1 : ((HasBase() && Command::ops[o].pos.distance2D(basePos) < Command::ops[o].pos.distance2D(aiEnemyMgr.GetEnemyPos())) ? 2 : 0);
+				kind = (Command::ops[o].enemyId < 0) ? 1 : ((HasBase() && Command::ops[o].pos.distance2D(basePos) < Command::ops[o].pos.distance2D(AiEnemyBasePos())) ? 2 : 0);
 			}
 			if (kind < 0) ++noFight;
 			else if (kind == 0) ++onAttack;
@@ -3659,7 +3952,7 @@ float CommFog(const AIFloat3& in p, float tHome, float seenThreat, float seenSpe
 	if (hidden <= 0.f) return 0.f;
 	Director::MeasuredPower();
 	const float sp = seenN > 0 ? seenSpeed / float(seenN) : AiMax(1.f, Director::allSpeed);
-	const float dist = aiEnemyMgr.GetEnemyPos().distance2D(p);
+	const float dist = AiEnemyBasePos().distance2D(p);
 	return dist / AiMax(1.f, sp) <= tHome ? hidden : 0.f;
 }
 float commDanger = 0.f, commCover = 0.f, commDps = 0.f;
@@ -3924,7 +4217,7 @@ IUnitTask@ CommForward(const AIFloat3& in from, float curScore)
 	float avg = 0.f; for (uint k = 0; k < n; ++k) avg += si[k]; avg = AiMax(1e-3f, avg / float(n));
 	const float perMex = aiEconomyMgr.metal.income / float(AiMax(1, int(Brain::Economist::mexes.length())));
 	const float H = Brain::Economist::Horizon();
-	const AIFloat3 ec0 = aiEnemyMgr.GetEnemyPos();
+	const AIFloat3 ec0 = AiEnemyBasePos();
 	const float V = GameValue();
 	const float rate = JobValue(null) / AiMax(1.f, Brain::Economist::Horizon());  // metal/s the commander's build power carries
 	const float cost = Brain::Economist::MetalValue(Brain::Economist::mexT1);
@@ -4041,6 +4334,7 @@ void Update()  // every 30 frames
 	Director::Update();
 	// the core values builder jobs and smooths energy demand over the same horizon as the script (it was never set:
 	// the core ran on a 1-second horizon)
+	Economist::MeasureExtraction();
 	Economist::UpdateProducerLife();
 	aiMilitaryMgr.SetValueHorizon(Economist::ProducerLife());
 	// (BARb's attack/raid quotas and the core raid task's targets are gone: no combat unit is in a BARb task any more;

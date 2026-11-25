@@ -16,6 +16,13 @@ compared with top players while it could not even pick its starting location.
 - **Ask what the player sees and why they act.** From the replays: what situation the player was in, what they
   wanted, what it bought them. Then make Anarvā see the same and decide from it (the rest of these rules: no
   constants, no tables, values from the live game).
+- **Follow the process in [PROCESS.md](PROCESS.md)** every time (owner: "build a process"):
+  1. decisions;
+  2. conditions;
+  3. ranked gaps;
+  4. reason from replays;
+  5. decision;
+  6. verify.
 
 ## 0. Work ethic: improve first, test later
 

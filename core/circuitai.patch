@@ -365,7 +365,7 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
-index e4c1d126..876ae32f 100644
+index e4c1d126..886e1a79 100644
 --- a/src/circuit/module/BuilderManager.cpp
 +++ b/src/circuit/module/BuilderManager.cpp
 @@ -6,9 +6,12 @@
@@ -478,9 +478,9 @@ index e4c1d126..876ae32f 100644
 +		// 44 extractors, 6 stood at minute 8 (2026-11-25).
 +		const springai::AIFloat3& sp = task->GetPosition();
 +		const float dUs = circuit->GetSetupManager()->GetBasePos().distance2D(sp);
-+		const float dThem = circuit->GetEnemyManager()->GetEnemyPos().distance2D(sp);
++		const float dThem = circuit->GetEnemyManager()->GetEnemyBasePos().distance2D(sp);
 +		const float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;
-+		yield += circuit->GetMetalManager()->GetSpotAvgIncome() * bd->GetExtractsM() * pM * keep;
++		yield += circuit->GetMetalManager()->GetSpotAvgIncome() * bd->GetExtractsM() * eco->GetExtractorScale() * pM * keep;  // measured scale (was ~1/9 of real)
 +	}
 +	yield += eco->GetEnergyMake(const_cast<circuit::CCircuitDef*>(bd)) * pE;
 +	// A job without a yield (lab, turret) is paid back by our income instead: the time our income needs to earn
@@ -1028,7 +1028,7 @@ index 559a0abf..90335c82 100644
  	CCircuitDef* terraDef = nullptr;
  	std::unordered_map<IBuilderTask::BT, std::unordered_map<CCircuitDef*, SBuildChain*>> buildChains;  // owner
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..eca9b1a0 100644
+index 6e5da8b6..29cb8c29 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,8 @@
@@ -1060,6 +1060,15 @@ index 6e5da8b6..eca9b1a0 100644
  
  	// TODO: Use A* ai planning... or sth... STRIPS https://ru.wikipedia.org/wiki/STRIPS
  	//       https://ru.wikipedia.org/wiki/Марковский_процесс_принятия_решений
+@@ -135,7 +137,7 @@ void CEconomyManager::InitHandlers()
+ 		if (index < 0) {
+ 			return;
+ 		}
+-		const float income = metalMgr->GetSpots()[index].income * unit->GetCircuitDef()->GetExtractsM();
++		const float income = metalMgr->GetSpots()[index].income * unit->GetCircuitDef()->GetExtractsM() * extractorScale;
+ 		for (int i = 0; i < INCOME_SAMPLES; ++i) {
+ 			metalIncomes[i] += income;
+ 		}
 @@ -182,7 +184,7 @@ void CEconomyManager::InitHandlers()
  				return;
  			}
@@ -1234,7 +1243,7 @@ index 6e5da8b6..eca9b1a0 100644
  		unit->StopUpgrade();  // StopMorph();
  		AddMorphee(unit);
  	}
-@@ -725,6 +647,23 @@ int CEconomyManager::UnitDestroyed(CCircuitUnit* unit, CEnemyInfo* attacker)
+@@ -725,10 +647,27 @@ int CEconomyManager::UnitDestroyed(CCircuitUnit* unit, CEnemyInfo* attacker)
  	return 0; //signaling: OK
  }
  
@@ -1258,6 +1267,11 @@ index 6e5da8b6..eca9b1a0 100644
  float CEconomyManager::GetMetalMake(CCircuitDef* cdef) const
  {
  	if (cdef->IsMex()) {
+-		return circuit->GetMetalManager()->GetSpotAvgIncome() * cdef->GetExtractsM();
++		return circuit->GetMetalManager()->GetSpotAvgIncome() * cdef->GetExtractsM() * extractorScale;  // Anarva: measured scale
+ 	}
+ 	const SConvertExt* convertExt = convertDefs.GetAvailInfo(cdef);
+ 	return (convertExt == nullptr) ? 0.f : convertExt->make;
 @@ -1056,15 +995,16 @@ IBuilderTask* CEconomyManager::UpdateMetalTasks(const AIFloat3& position, CCircu
  		return nullptr;
  	}
@@ -2060,7 +2074,7 @@ index 6e5da8b6..eca9b1a0 100644
  
  } // namespace circuit
 diff --git a/src/circuit/module/EconomyManager.h b/src/circuit/module/EconomyManager.h
-index 733f7a43..308b7d05 100644
+index 733f7a43..22aa37da 100644
 --- a/src/circuit/module/EconomyManager.h
 +++ b/src/circuit/module/EconomyManager.h
 @@ -67,6 +67,8 @@ public:
@@ -2072,7 +2086,7 @@ index 733f7a43..308b7d05 100644
  	CEnergyGrid* GetEnergyGrid() const { return energyGrid; }
  	float GetClusterRange() const { return clusterRange; }
  	float GetPylonRange() const { return pylonRange; }
-@@ -89,23 +91,31 @@ public:
+@@ -89,23 +91,34 @@ public:
  	float GetAvgMetalIncome() const { return metal.income; }
  	float GetAvgEnergyIncome() const { return energy.income; }
  	float GetEcoFactor() const { return ecoFactor; }
@@ -2089,9 +2103,12 @@ index 733f7a43..308b7d05 100644
 +	float GetEnergyPullReal();
 +	float GetPlannedEnergy() { UpdateEnergyPlan(); return plannedEnergy; }              // Anarva: E/s to spend our metal income
 +	float GetSpendMetalPerEnergy() { UpdateEnergyPlan(); return spendMetalPerEnergy; }  // Anarva: M per E of what we build
++	float GetExtractorScale() const { return extractorScale; }  // Anarva: metal/s per (spot income x extractsMetal), measured
++	void SetExtractorScale(float s) { extractorScale = s; }  // Anarva: M per E of what we build
 +	void UpdateEnergyPlan();
 +	float plannedEnergy = 0.f, spendMetalPerEnergy = 0.f;
 +	int energyPlanFrame = -1;
++	float extractorScale = 1.f;
 +	float demandE = 0.f, demandM = 0.f;  // smoothed energy / metal demand (pull)
 +	int demandFrame = 0;  // Anarva: pull without what our converters draw (they eat exactly the surplus)
  	bool IsMetalEmpty() const { return isMetalEmpty; }
@@ -3347,8 +3364,20 @@ index 0be6a835..50601754 100644
  
  }
  
+diff --git a/src/circuit/script/EconomyScript.cpp b/src/circuit/script/EconomyScript.cpp
+index 2baf4ae9..641575f7 100644
+--- a/src/circuit/script/EconomyScript.cpp
++++ b/src/circuit/script/EconomyScript.cpp
+@@ -41,6 +41,7 @@ CEconomyScript::CEconomyScript(CScriptManager* scr, CEconomyManager* mgr)
+ 	r = engine->RegisterObjectProperty("CEconomyManager", "float startMexTravel", asOFFSET(CEconomyManager, startMexTravel)); ASSERT(r >= 0);
+ 	r = engine->RegisterObjectMethod("CEconomyManager", "float GetMetalMake(const CCircuitDef@) const", asMETHOD(CEconomyManager, GetMetalMake), asCALL_THISCALL); ASSERT(r >= 0);
+ 	r = engine->RegisterObjectMethod("CEconomyManager", "float GetEnergyMake(const CCircuitDef@) const", asMETHOD(CEconomyManager, GetEnergyMake), asCALL_THISCALL); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CEconomyManager", "void SetExtractorScale(float)", asMETHOD(CEconomyManager, SetExtractorScale), asCALL_THISCALL); ASSERT(r >= 0);  // Anarva
+ }
+ 
+ CEconomyScript::~CEconomyScript()
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..95501adf 100644
+index c3aaefe5..0fdca09c 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -3456,7 +3485,7 @@ index c3aaefe5..95501adf 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +776,241 @@ void CInitScript::RegisterCore()
+@@ -735,9 +776,265 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -3603,6 +3632,30 @@ index c3aaefe5..95501adf 100644
 +	return (d != nullptr) && bridgeAI->GetTerrainManager()->CanBeBuiltAt(d, pos);
 +}
 +
++// A number from the game's setup script (e.g. the modoptions startmetal / startenergy), or the given default when
++// the setup doesn't set it (the game's own default, a game fact).
++static float Bridge_SetupNumber(const std::string& key, float dflt)
++{
++	const std::string script = bridgeAI->GetGame()->GetSetupScript();
++	const std::string k = key + "=";
++	size_t at = 0;
++	while ((at = script.find(k, at)) != std::string::npos) {
++		if (at == 0 || !isalnum((unsigned char)script[at - 1])) {
++			return std::strtof(script.c_str() + at + k.size(), nullptr);
++		}
++		at += k.size();
++	}
++	return dflt;
++}
++
++// a unit's actual metal output now (engine), e.g. what an extractor really extracts
++static float CCircuitUnit_GetMetalMake(CCircuitUnit* u)
++{
++	return u->GetUnit()->GetResourceMake(bridgeAI->GetEconomyManager()->GetMetalRes());
++}
++
++static AIFloat3 Bridge_EnemyBasePos() { return bridgeAI->GetEnemyManager()->GetEnemyBasePos(); }
++
 +// Enemies destroyed since the last call (the engine's enemy-destroyed events): place and metal. Counting ids that
 +// vanished from the known list booked every pruned ghost as a kill (17646 "killed" at minute 8 while BARb grew).
 +static asUINT Bridge_DrainKills(CScriptArray* pos, CScriptArray* metal)
@@ -3698,7 +3751,7 @@ index c3aaefe5..95501adf 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +1040,44 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +1064,47 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -3722,6 +3775,9 @@ index c3aaefe5..95501adf 100644
 +	r = engine->RegisterGlobalFunction("uint AiDrainKills(array<AIFloat3>@+, array<float>@+)", asFUNCTION(Bridge_DrainKills), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiDefCanReach(CCircuitDef@, const AIFloat3& in, const AIFloat3& in)", asFUNCTION(Bridge_DefCanReach), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiCanBeBuiltAt(CCircuitDef@, const AIFloat3& in)", asFUNCTION(Bridge_CanBeBuiltAt), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterGlobalFunction("float AiSetupNumber(const string& in, float)", asFUNCTION(Bridge_SetupNumber), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterGlobalFunction("AIFloat3 AiEnemyBasePos()", asFUNCTION(Bridge_EnemyBasePos), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetMetalMake()", asFUNCTION(CCircuitUnit_GetMetalMake), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHighGroundArty", &anarva::switches.highGroundArty); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHeightSquads", &anarva::switches.heightSquads); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchScoutMap", &anarva::switches.scoutMap); ASSERT(r >= 0);
@@ -3743,7 +3799,7 @@ index c3aaefe5..95501adf 100644
  }
  
  bool CInitScript::Init()
-@@ -782,6 +1093,7 @@ bool CInitScript::Init()
+@@ -782,6 +1120,7 @@ bool CInitScript::Init()
  	mainInfo.receiveMessage = script->GetFunc(mod, "void AiMessage(const string& in, int)");
  	mainInfo.unitFinished = script->GetFunc(mod, "void AiUnitFinished(CCircuitUnit@)");
  	mainInfo.unitDestroyed = script->GetFunc(mod, "void AiUnitDestroyed(CCircuitUnit@)");
@@ -3751,7 +3807,7 @@ index c3aaefe5..95501adf 100644
  	asIScriptFunction* main = script->GetFunc(mod, "void AiMain()");
  	if (main == nullptr) {
  		return false;
-@@ -793,6 +1105,19 @@ bool CInitScript::Init()
+@@ -793,6 +1132,19 @@ bool CInitScript::Init()
  	return true;
  }
  
@@ -3771,7 +3827,7 @@ index c3aaefe5..95501adf 100644
  void CInitScript::Update()
  {
  	if (mainInfo.update == nullptr) {
-@@ -920,22 +1245,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1272,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  
@@ -7416,7 +7472,7 @@ index 96098603..ed7c57e3 100644
  	minSqDist = squareSize * increment;  // / 2;
  	minSqDist *= minSqDist;
 diff --git a/src/circuit/unit/enemy/EnemyManager.cpp b/src/circuit/unit/enemy/EnemyManager.cpp
-index 091a710f..18e9039d 100644
+index 091a710f..cf0f7079 100644
 --- a/src/circuit/unit/enemy/EnemyManager.cpp
 +++ b/src/circuit/unit/enemy/EnemyManager.cpp
 @@ -126,7 +126,7 @@ void CEnemyManager::UpdateEnemyDatas(CQuadField& quadField)
@@ -7452,11 +7508,41 @@ index 091a710f..18e9039d 100644
  }
  
  /*
+@@ -616,4 +611,29 @@ void CEnemyManager::SwapBuffers()
+ 	maxThreatGroupIdx = groupData.maxThreatGroupIdx;
+ }
+ 
++AIFloat3 CEnemyManager::GetEnemyBasePos() const
++{
++	// Anarva: the share of a spot we keep is measured against their base, not against their units: the mean of the
++	// seen groups started at (0,0) with none seen (our base on Feast of Hades sat next to it: every home extractor
++	// looked contested at a share ~0.1) and raiders near us pulled it onto our base.
++	AIFloat3 c(0.f, 0.f, 0.f);
++	float w = 0.f;
++	for (const auto& kv : circuit->GetEnemyInfos()) {
++		const CEnemyInfo* e = kv.second;
++		if ((e->GetCircuitDef() == nullptr) || e->GetCircuitDef()->IsMobile()) continue;
++		const float cost = e->GetCircuitDef()->GetCostM();
++		c += e->GetPos() * cost; w += cost;
++	}
++	if (w > 0.f) return c / w;
++	CSetupManager* setup = circuit->GetSetupManager();
++	if (setup->HasStartBoxes()) {
++		const AIFloat3 e = setup->GetEnemyStartCenter();
++		if (e.x > 0.f || e.z > 0.f) return e;
++	}
++	// no boxes: our start mirrored through the map centre (maps are built symmetric for fairness)
++	const AIFloat3 m = circuit->GetTerrainManager()->GetTerrainCenter();
++	const AIFloat3& b = setup->GetBasePos();
++	return AIFloat3(2.f * m.x - b.x, 0.f, 2.f * m.z - b.z);
++}
++
+ } // namespace circuit
 diff --git a/src/circuit/unit/enemy/EnemyManager.h b/src/circuit/unit/enemy/EnemyManager.h
-index 372f9c9f..8c9bf7ea 100644
+index 372f9c9f..d1ad3e17 100644
 --- a/src/circuit/unit/enemy/EnemyManager.h
 +++ b/src/circuit/unit/enemy/EnemyManager.h
-@@ -88,7 +88,8 @@ public:
+@@ -88,10 +88,12 @@ public:
  	float GetMobileThreat() const { return mobileThreat; }
  	float GetStaticThreat() const { return staticThreat; }
  	float GetEnemyThreat() const { return mobileThreat + staticThreat; }
@@ -7466,6 +7552,10 @@ index 372f9c9f..8c9bf7ea 100644
  
  	const std::vector<SEnemyGroup>& GetEnemyGroups() const { return enemyGroups; }
  	const springai::AIFloat3& GetEnemyPos() const { return enemyPos; }
++	springai::AIFloat3 GetEnemyBasePos() const;  // Anarva: where their base is (structures seen, else their start)
+ 	float GetMinGroupThreat() const { return enemyGroups[minThreatGroupIdx].influence; }
+ 	float GetPreMaxGroupThreat() const { return enemyGroups[preMaxThreatGroupIdx].influence; }
+ 	float GetMaxGroupThreat() const { return enemyGroups[maxThreatGroupIdx].influence; }
 diff --git a/src/circuit/unit/enemy/EnemyUnit.cpp b/src/circuit/unit/enemy/EnemyUnit.cpp
 index 037c7d1a..7113094b 100644
 --- a/src/circuit/unit/enemy/EnemyUnit.cpp

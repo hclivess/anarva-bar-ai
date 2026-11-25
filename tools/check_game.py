@@ -98,6 +98,10 @@ def _games(db, feats):
             "select replay_id, team, x, z from comm c where frame = "
             "(select min(frame) from comm c2 where c2.replay_id=c.replay_id and c2.team=c.team)"):
         starts.setdefault(rid, {})[team] = (x, z)
+    side = {}
+    for rid, team, unit in db.execute("select replay_id, team, unit from built b where frame = (select min(frame) from built b2 "
+                                      "where b2.replay_id=b.replay_id and b2.team=b.team)"):
+        side[(rid, team)] = unit[:3]
     games = []
     q = ("select r.id, r.map, t.team from replays r join teams t on t.replay_id=r.id "
          "where r.format='1v1' and r.status='done' and t.won=1")
@@ -107,6 +111,7 @@ def _games(db, feats):
         if team not in st or not other or mp not in feats or not feats[mp].get("spots"):
             continue
         f = game_features(st[team], st[other[0]], feats[mp])
+        f["side"] = (side.get((rid, team)), side.get((rid, other[0])))
         if any(f[k] is None for k in GAME_FEATURES):
             continue
         rows = {}
@@ -136,7 +141,7 @@ def _gpool(games, weights):
     return out
 
 
-def winners_curve(db_path, map_name=None, maps_json=None, starts=None):
+def winners_curve(db_path, map_name=None, maps_json=None, starts=None, sides=None):
     """The winners' curve for this game. Every 1v1 winner game counts, weighted by how alike the game it was is to
     ours: w = exp(-d^2 / 2h^2), d the distance in standardized game features (start distance, own extractor spots,
     water, wind). The width h is chosen by fit: each map's games are held out and predicted from the other maps'; the
@@ -157,13 +162,19 @@ def winners_curve(db_path, map_name=None, maps_json=None, starts=None):
     ours = None
     if map_name in feats and starts and feats[map_name].get("spots"):
         ours = game_features(starts[0], starts[1], feats[map_name])
+        ours["side"] = sides
     if ours is None or any(ours[k] is None for k in GAME_FEATURES):
         return _gpool(games, [1.0] * len(games)), f"all {len(games)} winner games alike (no starts or spots for {map_name!r})"
     mu = {k: sum(g["f"][k] for g in games) / len(games) for k in GAME_FEATURES}
     sd = {k: (sum((g["f"][k] - mu[k]) ** 2 for g in games) / len(games)) ** 0.5 or 1.0 for k in GAME_FEATURES}
     z = lambda f: [(f[k] - mu[k]) / sd[k] for k in GAME_FEATURES]
-    zs = [z(g["f"]) for g in games]
-    dist = lambda x, y: sum((p - q) ** 2 for p, q in zip(x, y)) ** 0.5
+    zs = [z(g["f"]) + [g["f"].get("side")] for g in games]
+
+    def dist(x, y):
+        d2 = sum((p - q) ** 2 for p, q in zip(x[:-1], y[:-1]))
+        if x[-1] and y[-1]:  # the faction matchup: each side that differs counts one standard unit
+            d2 += sum(1.0 for a, b in zip(x[-1], y[-1]) if a and b and a != b)
+        return d2 ** 0.5
     rows = [r for g in games for rs in g["rows"].values() for r in rs]
     msd = [(sum((r[i] - sum(x[i] for x in rows) / len(rows)) ** 2 for r in rows) / len(rows)) ** 0.5 or 1.0 for i in range(5)]
     pair = sorted({round(dist(zs[i], zs[j]), 3) for i in range(len(games)) for j in range(i + 1, len(games))})
@@ -190,7 +201,7 @@ def winners_curve(db_path, map_name=None, maps_json=None, starts=None):
                             n += 1
         return e / max(1, n)
     h = min(cands, key=err)
-    zo = z(ours)
+    zo = z(ours) + [ours.get("side")]
     w = [math.exp(-dist(zg, zo) ** 2 / (2 * h * h)) for zg in zs]
     curve = _gpool(games, w)
     top = sorted(zip(w, range(len(games))), key=lambda t: -t[0])[:4]
@@ -290,8 +301,12 @@ def parse(game_dir):
         mm = re.search(r"^\s*mapname=([^;]+);", open(script, encoding="utf-8", errors="replace").read(), re.M | re.I)
         mapname = mm.group(1).strip() if mm else None
     starts = {}
-    for m in re.finditer(r"\[HARNESS\] start team=(\d+) x=(-?\d+) z=(-?\d+)", text):
+    coms = {}
+    for m in re.finditer(r"\[HARNESS\] start team=(\d+) x=(-?\d+) z=(-?\d+)(?: com=(\w+))?", text):
         starts[int(m.group(1))] = (int(m.group(2)), int(m.group(3)))
+        if m.group(4):
+            coms[int(m.group(1))] = m.group(4)[:3]
+    starts["_coms"] = coms
     return checks, truth, me, mapname, starts
 
 
@@ -304,12 +319,14 @@ def frac(a, b):
 
 def report(game_dir, db_path, maps_json):
     checks, truth, me, mapname, starts = parse(game_dir)
-    pair = None
+    coms = starts.pop("_coms", {})
+    pair, sides = None, None
     if me is not None and me in starts:
         other = [t for t in starts if t != me]
         if other:
             pair = (starts[me], starts[other[0]])
-    curve, basis = winners_curve(db_path, mapname, maps_json, pair)
+            sides = (coms.get(me), coms.get(other[0]))
+    curve, basis = winners_curve(db_path, mapname, maps_json, pair, sides)
     print(f"\n=== {game_dir}  (Anarva team {me})")
     if not checks:
         print("  no [ANV-CHECK] lines: the AI build predates the self-assessment")
@@ -408,6 +425,42 @@ def report(game_dir, db_path, maps_json):
                 behind[k].append(minute)
     for k, v in behind.items():
         flags[f"behind the winners: {k}"] = v
+    # PROCESS.md step 3: every gap in the winners' own spread, largest first (the next job is the top one)
+    gaps = []
+    for minute in sorted(checks):
+        c = checks[minute]
+        top = curve.get(minute)
+        if not top or len(top) < 7 or not top[6]:
+            continue
+        ib = c.get("idleBuilders", "0/0").split("/")
+        ifac = c.get("idleFactories", "0/0").split("/")
+        try:
+            einc = float(c.get("eInc", 0))
+        except ValueError:
+            einc = 0.0
+        mine = {"extractors": int(c.get("mex", 0) or 0), "constructors": int(ib[1] or 0), "factories": int(ifac[1] or 0),
+                "energy": einc, "army": int(c.get("army", 0))}
+        idx = {"army": 0, "extractors": 1, "constructors": 2, "factories": 3, "energy": 4}
+        for k, i in idx.items():
+            sdv = top[6][i]
+            if sdv > 0:
+                gaps.append(((mine[k] - top[i]) / sdv, k, minute, mine[k], top[i]))
+    worst = {}
+    for zv, k, minute, a, b in gaps:
+        if k not in worst or zv < worst[k][0]:
+            worst[k] = (zv, minute, a, b)
+    # where it started going wrong: late gaps are the consequences of losing; the earliest minute a metric falls more
+    # than one winners' spread behind is where the causes are
+    first = {}
+    for zv, k, minute, a, b in sorted(gaps, key=lambda g: g[2]):
+        if zv < -1.0 and k not in first:
+            first[k] = (minute, zv, a, b)
+    print("  where it started going wrong (first minute more than one winners' spread behind; PROCESS.md step 3):")
+    for k, (minute, zv, a, b) in sorted(first.items(), key=lambda kv: (kv[1][0], kv[1][1])):
+        print(f"    minute {minute:2d}  {k:12s} {a:.0f} vs {b:.1f} ({zv:+.1f} spreads)")
+    if first:
+        k, (minute, zv, a, b) = min(first.items(), key=lambda kv: (kv[1][0], kv[1][1]))
+        print(f"  NEXT JOB: {k} at minute {minute} - find in the replays why the winners have {b:.0f} by then, and why we have {a:.0f}")
     print("  checklist:")
     for k, v in flags.items():
         print(f"    [{'FAIL' if v else ' ok '}] {k}" + (f": minutes {','.join(map(str, v))}" if v else ""))
