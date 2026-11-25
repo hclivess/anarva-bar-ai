@@ -2582,7 +2582,14 @@ float OursThreatened(uint i, const array<CCircuitUnit@>@ mine)
 	for (uint k = 0; k < mine.length(); ++k) {
 		const CCircuitDef@ d = mine[k].circuitDef;
 		if (d.IsMobile()) continue;
-		if (mine[k].GetPos(ai.frame).distance2D(ePos[i]) <= ed.GetMaxRange() + ed.speed) v += Economist::MetalValue(d);
+		if (mine[k].GetPos(ai.frame).distance2D(ePos[i]) <= ed.GetMaxRange() + ed.speed) {
+			// what we lose with it: its cost and what it would yield us over the horizon (same terms as an enemy's value)
+			const string nm = d.GetName();
+			const float upkeep = Facts::EnergyUpkeep(nm);
+			const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
+			const float yield = Facts::ExtractsMetal(nm) * spotIncome + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
+			v += Economist::MetalValue(d) + ((yield > 0.f) ? yield * Economist::Horizon() : 0.f);
+		}
 	}
 	return v;
 }

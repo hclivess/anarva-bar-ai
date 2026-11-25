@@ -866,7 +866,7 @@ index 559a0abf..90335c82 100644
  	CCircuitDef* terraDef = nullptr;
  	std::unordered_map<IBuilderTask::BT, std::unordered_map<CCircuitDef*, SBuildChain*>> buildChains;  // owner
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..cb68e010 100644
+index 6e5da8b6..8335bfcf 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,8 @@
@@ -1640,8 +1640,34 @@ index 6e5da8b6..cb68e010 100644
  	return false;
  }
  
-@@ -2000,19 +1992,21 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
- 		return true;
+@@ -1965,7 +1957,7 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+ 		return cdef->IsAvailable(frame) && terrainMgr->CanBeBuiltAt(cdef, buildPos);
+ 	});
+ 	if (assistDef == nullptr) {
+-		return true;
++		return false;  // Anarva: nothing to assist with: let the factory decision go on
+ 	}
+ 
+ 	/*
+@@ -1989,30 +1981,30 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+ 	eiRequire += assistDef->GetUpkeepE();
+ 	// FIXME: Mex and other buildings have energy upkeep that's not counted.
+ 	//        It also doesn't count mobile buildpower
+-	if (GetAvgMetalIncome() < factoryMgr->GetMetalRequire() * factoryMgr->GetFacModM() + (nanoQueued + 1) * miRequire) {
+-		return true;
+-	}
+-	if ((GetAvgEnergyIncome() < factoryMgr->GetEnergyRequire() * factoryMgr->GetFacModE() + (nanoQueued + 1) * eiRequire)
+-		|| IsEnergyStalling())
++	// Anarva: when we can't afford one more caretaker, skip the caretaker, don't block the factory decision behind it
++	// (returning "assist required" here ended every UpdateFactoryTasks call: one factory all game on every map,
++	// checklist 2026-11-25); energy for it is planned like any other need, no "energy required" latch
++	if ((GetAvgMetalIncome() < factoryMgr->GetMetalRequire() * factoryMgr->GetFacModM() + (nanoQueued + 1) * miRequire)
++		|| (GetAvgEnergyIncome() < factoryMgr->GetEnergyRequire() * factoryMgr->GetFacModE() + (nanoQueued + 1) * eiRequire))
+ 	{
+-		isEnergyRequired = true;  // enough metal, request energy
+-		UpdateEnergyTasks(position, unit);
+-		return true;
++		return false;
  	}
  
 +	// Anarva: the caretaker stands behind the factory by the factory's half-length plus its own radius (no 64 elmos)
@@ -1666,7 +1692,7 @@ index 6e5da8b6..cb68e010 100644
  			break;
  	}
  	CTerrainManager::CorrectPosition(buildPos);
-@@ -2029,6 +2023,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -2029,6 +2021,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  	return false;
  }
  
@@ -1684,7 +1710,7 @@ index 6e5da8b6..cb68e010 100644
  float CEconomyManager::GetStorage(Resource* res)
  {
  	return economy->GetStorage(res) - HIDDEN_STORAGE;
-@@ -2096,15 +2101,6 @@ void CEconomyManager::UpdateEconomy()
+@@ -2096,15 +2099,6 @@ void CEconomyManager::UpdateEconomy()
  		buildDelay = int(bdInfo.fraction * (ecoFrame - bdInfo.startFrame)) + bdInfo.startDelay;
  	}
  
@@ -1700,7 +1726,7 @@ index 6e5da8b6..cb68e010 100644
  	pullMtoS *= circuit->GetMilitaryManager()->ClampMobileCostRatio();
  }
  
-@@ -2133,78 +2129,14 @@ bool CEconomyManager::HasNoPurpose(const CCircuitDef::Id defId) const
+@@ -2133,78 +2127,14 @@ bool CEconomyManager::HasNoPurpose(const CCircuitDef::Id defId) const
  
  void CEconomyManager::ReclaimOldConvert(const SConvertExt* convertExt)
  {
