@@ -319,7 +319,7 @@ void UpdateEnergy()
 	if (e.current < e.storage) return;  // nothing overflows below full
 	if (eCountAtOrder >= 0 && eStoreDef.count <= eCountAtOrder && eOrderFrame != NEVER && ai.frame - eOrderFrame < OrderLife(eStoreDef, basePos)) return;
 	const float epm = AiMax(1e-3f, Economist::energyPerMetal);
-	const float over = AiMax(0.f, e.income - e.pull);
+	const float over = AiMax(0.f, e.income - Economist::RealPull());  // converted surplus is still surplus
 	const float kept = AiMin(eStoreDef.storageE, over * Economist::Horizon());
 	if (kept / epm <= Economist::MetalValue(eStoreDef)) return;
 	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::STORE, Task::Priority::NORMAL, eStoreDef, basePos, 0.f, true, OrderLife(eStoreDef, basePos)));
@@ -407,8 +407,7 @@ void Update()
 	theirs = (float(enemyMex) + unseen) * perMex;
 	behind = ours < theirs;
 	// the core's constructor rule (decide): builds constructors while build power < income x ratio. A constructor
-	// pays only through work the ones we have can't do: open extractor spots on our side to claim, or metal that
-	// overflows unspent. Behind with neither, more constructors only spend (smoke 2026-11-25: 22 constructors,
+	// pays only through work the ones we have can't do: open extractor spots on our side to claim. Behind without, more constructors only spend (smoke 2026-11-25: 22 constructors,
 	// 4 extractors, army 403 vs 3170).
 	uint openOurs = 0;
 	{
@@ -417,8 +416,9 @@ void Update()
 		for (uint i = 0; i < ns2; ++i)
 			if (mso2[i] && Assess::OnOurSide(msp2[i])) ++openOurs;
 	}
-	const bool overflow = aiEconomyMgr.metal.current >= aiEconomyMgr.metal.storage && aiEconomyMgr.metal.income > aiEconomyMgr.metal.pull;
-	const bool work = openOurs > aiBuilderMgr.GetWorkerCount() || overflow;
+	// (Overflowing metal is not constructor work: it is missing spending capacity, i.e. factories. As a reason for
+	// constructors it made 49 of them on Throne while one lab sat on 4600 metal, 1v1 2026-11-25.)
+	const bool work = openOurs > aiBuilderMgr.GetWorkerCount();
 	aiFactoryMgr.buildpowerRatio = (behind && work) ? 1e9f
 		: aiBuilderMgr.GetBuildPower() / AiMax(1e-3f, aiEconomyMgr.metal.income);  // otherwise hold constructors where they are
 }
@@ -1058,7 +1058,7 @@ void EcoReclaimUpdate()
 	// The converter price is what SURPLUS energy is worth. Without the plant, energy must still be in surplus (income
 	// covers the pull); otherwise its energy is what lets our metal be spent at all, worth far more than a converter
 	// pays, and reclaiming it starves the build (smoke 2026-11-25: wind built, reclaimed, stalled, rebuilt).
-	const float net = e.income - bestMake - e.pull;
+	const float net = e.income - bestMake - Brain::Economist::RealPull();  // converters' draw is surplus, not need
 	if (net < 0.f) return;
 	if (!Brain::Storage::Fits(best.circuitDef.costM)) { Brain::Storage::Block(best.circuitDef.costM); return; }
 	++ecoReclaims;
@@ -1117,7 +1117,7 @@ void Update()
 
 	// Safety valve: energy stalls and the big plants no longer cover what we consume -> allow cheap energy again
 	// (no 10% fill, 15 ticks or half-income lines)
-	if (aiEconomyMgr.isEnergyStalling && bigMake < e.pull) {
+	if (aiEconomyMgr.isEnergyStalling && bigMake < Brain::Economist::RealPull()) {
 		RestoreAll();
 		return;
 	}
@@ -2098,6 +2098,7 @@ void Init()
 		"coruwmex", "armuwmme", "coruwmme"});
 	@mexT1 = Brain::Strategic::Side("armmex", "cormex", "legmex");
 	@mexT2 = Brain::Strategic::Side("armmoho", "cormoho", "legmoho");
+	Facts::InitConverters();  // ConverterUse needs the table even when the defs give the rate
 	@makerDef = Brain::Strategic::Side("armmakr", "cormakr", "legeconv");
 	if (makerDef !is null) {
 		const float mm = aiEconomyMgr.GetMetalMake(makerDef);
@@ -2144,6 +2145,21 @@ float EnemyThreat()
 		lastEnemySeen = seen;
 	return Brain::Director::blind ? AiMax(lastEnemySeen, Brain::Director::OurPower()) : seen;
 }
+
+// Energy our converters draw now (unit files: energyconv_capacity per converter). Converters eat exactly the surplus,
+// so income - pull hides it; every surplus/deficit test uses RealPull() = pull without them (owner, #83).
+float ConverterUse()
+{
+	float use = 0.f;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) {
+		if (all[i].circuitDef.IsMobile()) continue;
+		Facts::SConv@ c = Facts::Converter(all[i].circuitDef.GetName());
+		if (c !is null) use += c.capE;
+	}
+	return AiMin(use, aiEconomyMgr.energy.pull);
+}
+float RealPull() { return AiMax(0.f, aiEconomyMgr.energy.pull - ConverterUse()); }
 
 // Payback of the next T1 extractor we could still claim on our side (cost / its spot's income); none left: never
 float NextMexPayback()
@@ -2227,7 +2243,10 @@ bool Allowed(const CCircuitDef@ facDef)
 		// claim on our side (its income / its cost). (Payback inside the horizon alone bought a T2 lab at 2:20 with
 		// 3 extractors, ~13x worse per metal than expanding: smoke 2026-11-25.)
 		const float mexBack = Brain::Economist::NextMexPayback();
-		ok = (payback < H && payback < mexBack) || forced;
+		// The extractor is only the alternative when both compete for the same metal: with the lab's cost already
+		// banked, buying it takes nothing from the extractors (one lab sat on 4600 metal for 20 min, Throne 2026-11-25).
+		const bool banked = aiEconomyMgr.metal.current >= Brain::Economist::MetalValue(facDef);
+		ok = (payback < H && (banked || payback < mexBack)) || forced;
 		why = "payback " + int(payback) + "s vs horizon " + int(H) + "s, next extractor " + (mexBack >= 1e9f ? "none" : (int(mexBack) + "s")) + (forced ? ", enemy teched" : "");
 	} else {
 		// T3: when the enemy fields super units while we're not ahead and must answer in kind.
@@ -2723,9 +2742,13 @@ void BuilderSafeUpdate()
 			const float tDone = bt.buildDef.buildTime / AiMax(1.f, d.buildSpeed);
 			Pj = JobPDeath(u, bt.buildDef, bt.GetBuildPos(), tDone);
 		}
-		const float stay = (1.f - Pj) * jobV - Pj * jobV - P * own;
-		const float safe = d.buildSpeed / bp * income * Brain::Economist::Horizon();  // its share of our spending over the planning horizon
-		if (stay >= safe) continue;
+		// Both choices share the builder's future work (its share of our spending over the horizon) if it survives.
+		// Stay: the job's expected gain, minus the chance of losing the builder and that future. Leave: the future,
+		// safe. Stay when (1-2Pj) x job - P x (builder + future) >= 0. (Comparing one job with the whole future made
+		// builders run 490 times in 12 minutes: 1v1 Avalanche 2026-11-25.)
+		const float future = d.buildSpeed / bp * income * Brain::Economist::Horizon();
+		const float stay = (1.f - Pj) * jobV - Pj * jobV - P * (own + future);
+		if (stay >= 0.f) continue;
 		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, int(Brain::Economist::Horizon() * SECOND) + 1));
 		if (g is null) continue;
 		safeTasks.insertLast(g);
@@ -2868,16 +2891,12 @@ void CommGuardUpdate()
 	if (commGuardTask !is null && commander.task is commGuardTask) return;
 	const AIFloat3 c = commander.GetPos(ai.frame);
 	IBuilderTask@ cur = cast<IBuilderTask>(commander.task);
-	if (CommWorth(c, JobValue(cur))) {
-		IUnitTask@ fwd = CommForward(c, lastGain - lastRisk);
-		if (fwd !is null) { aiBuilderMgr.AssignTask(commander, fwd); return; }
-		// worth staying; but an assist or nothing is the commander's weakest use: is a wreck field better?
-		if (cur is null || cur.buildDef is null) {
-			IUnitTask@ better = CommBestJob(c, lastGain - lastRisk);
-			if (better !is null) { @commGuardTask = better; aiBuilderMgr.AssignTask(commander, better); }
-		}
+	// Worth staying: the core's ranking picks the commander's jobs (travel + payback, like every builder). The script's
+	// forward claims and best-job overrides were a second decision-maker for the same choice: 40 claims in 5 minutes
+	// pulled the commander off each job before it finished (1 extractor by minute 3, 1v1 Avalanche 2026-11-25).
+	// Only the risk decision stays here.
+	if (CommWorth(c, JobValue(cur)))
 		return;
-	}
 	@commGuardTask = CommSafeJob(c);
 	if (commGuardTask is null) return;
 	aiBuilderMgr.AssignTask(commander, commGuardTask);
@@ -2952,6 +2971,14 @@ void Update()  // every 30 frames
 				+ " task=" + (commander.task is null ? -1 : int(commander.task.GetType())) + " redirects=" + commRedirects + " guards=" + commGuards + " reclaimOrders=" + reclaimOrders + " builderEvacs=" + builderEvacs + " retreats=" + commRetreats + " frontReclaims=" + commReclaims + " fwdClaims=" + commFwd + " fwdFailed=" + fwdFailed + " fwd(calls/busy/none)=" + fwdCalls + "/" + fwdBusy + "/" + fwdNone + " fwdBest=" + int(fwdBestSeen) + " vs cur " + int(fwdCurSeen));
 		}
 		AiLog("[ANV] " + Scout::Status());
+		uint spotsOpenOurs = 0, spotsOpen = 0, spotsAll = 0;
+		{
+			array<AIFloat3> lsp; array<float> lsi; array<bool> lso;
+			spotsAll = AiGetMetalSpots(lsp, lsi, lso);
+			for (uint i = 0; i < spotsAll; ++i)
+				if (lso[i]) { ++spotsOpen; if (Assess::OnOurSide(lsp[i])) ++spotsOpenOurs; }
+		}
+		AiLog("[ANV] spots all=" + spotsAll + " open=" + spotsOpen + " openOurSide=" + spotsOpenOurs);
 		AiLog("[ANV] eco t=" + Minute() + "m workers=" + aiBuilderMgr.GetWorkerCount() + " mex=" + Economist::mexes.length()
 			+ " M inc=" + F1(aiEconomyMgr.metal.income) + " M " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
 			+ " E inc=" + F1(aiEconomyMgr.energy.income) + " E " + int(aiEconomyMgr.energy.current) + "/" + int(aiEconomyMgr.energy.storage)

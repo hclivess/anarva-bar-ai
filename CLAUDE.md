@@ -30,6 +30,13 @@ IMPROVEMENT ONLY THEN YOU CAN TEST."
 - **Tests are not progress.** Thousands of A/B games on marginal flags produced nothing a single watched game
   didn't show. Study (replays, unit facts) and reasoned implementation come first.
 
+- **The yardstick is the best players, not BARb** (owner, 2026-11-25: "WHY ARENT YOU COMPARING YOURSELF TO THE BEST
+  PLAYERS BUT A FUCKING BARB"). Judge every change by Anarva's curves (income, extractors, energy, army use, build
+  order by minute) against leaderboard replays. Beating BARb is a gate, not the measure. An army that neither trades
+  nor holds ground is an expansion opportunity cost, and scouting decides between expanding, army and attack.
+- **Every rule is suspect, including your own.** A comparison against a literal, a priority band or a gate is a
+  frozen decision whoever wrote it. Never add one; when you find one, replace it with a computed value.
+
 - **No substitutes for decisions.** A rotation, a fixed range middle or a "more likely than not" cutoff is not a
   decision; derive the choice from value.
 

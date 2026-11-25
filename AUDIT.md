@@ -1086,3 +1086,9 @@ The patch is mostly clean: ToFiringSpot ranks spots by trip length, GetRangeAt r
 ## Closed: owner ruling, 2026-11-25
 
 "those hardcoded numbers have nothing to do with the ai decision making". The remaining digits stay: frame rate, pi/e/1/2 inside formulas, tier and flag identifiers, and numeric guards. They are facts or notation, not decisions (CLAUDE.md section 2). #71 and #42 are closed.
+
+## Open: added 2026-11-25
+
+- **Builder band for defence jobs (brain.as: turret, camera and wall orders at NORMAL, below income at HIGH).** This is a fixed ordering, not a computed value. Among jobs in one band, the core ranks by seconds until payback at shadow prices, but a turret has no yield of its own. The fix is to rank a turret by the income it protects: the queuer knows the metal lost around the spot, so it should pass that value to the core. The task API has no slot for it yet.
+- Removed today: the inherited `energyIncome *= 0.5` under an energy stall (dead `checkWind` code), the pylon `metalIncome < 40` gate, and the forced NOW band for energy when empty (shadow prices handle it).
+- Kept as notation or guards: `1e10` packs (band, seconds) into one sort key; `1e9` means "never/none"; `1e-3`/`1e-9` guard divisions.
