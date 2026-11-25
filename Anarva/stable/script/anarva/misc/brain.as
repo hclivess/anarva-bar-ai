@@ -2423,6 +2423,236 @@ void OnUnitFinished(CCircuitUnit@ unit)
 }
 
 /*
+ * Opening (owner, 2026-11-25: "openings must be based on map characteristics and must be procedurally adjusted").
+ * No build list. At the start the commander's next jobs are planned from this map and re-planned after every job
+ * and whenever something changes:
+ *  - contact deadline: the earliest an enemy raid can reach us = their lab's build time + their first raider's build
+ *    time + the path between the starts over that raider's speed; moved earlier as soon as an armed enemy is seen
+ *    closer (its distance over its speed);
+ *  - options from the map: every free extractor spot (its income, the walk to it), each energy plant we can build at
+ *    its expected output on this map (wind and tidal from the map, solar fixed), and the lab;
+ *  - each option's real time: walking, build time at the commander's build power, and waiting for metal or energy
+ *    that isn't there yet;
+ *  - score at the deadline: income valued over the horizon plus the army the lab has produced by then;
+ *  - choice: every option is tried and followed by the best single next step each time (a rollout to the deadline);
+ *    the commander takes the first job of the best plan.
+ * After the deadline the normal economy decides. Every plan is logged ([ANV-OPEN]).
+ */
+namespace Opening {
+bool done = false;
+float deadline = -1.f;   // game seconds
+IUnitTask@ planned = null;
+int plans = 0;
+
+class Opt {
+	int kind = 0;        // 0 extractor, 1 energy, 2 lab
+	CCircuitDef@ def;
+	AIFloat3 pos;
+	int spot = -1;
+	float yieldM = 0.f;  // metal/s it adds
+	float yieldE = 0.f;  // energy/s it adds
+}
+class Sim {
+	float t, M, E, mInc, eInc, labAt;
+	AIFloat3 pos;
+	array<bool> usedSpot;
+	bool hasLab;
+}
+
+CCircuitDef@ labDef = null, raiderDef = null;
+array<CCircuitDef@> plants;
+
+// tidal plants (unit facts: the tidal ones) stand only in water
+bool IsWaterPlant(const CCircuitDef@ d) { return d.GetName().findFirst("tide") >= 0; }
+bool WaterNearHome()
+{
+	const AIFloat3 h = Home();
+	const float r = commander.circuitDef.GetBuildDistance();  // the planner prices plants as built from home
+	for (int k = 0; k < 16; ++k) {
+		const float ang = 2.f * Pi() * float(k) / 16.f;
+		if (AiGetElevation(h.x + r * cos(ang), h.z + r * sin(ang)) < 0.f) return true;
+	}
+	return AiGetElevation(h.x, h.z) < 0.f;
+}
+// before the first building exists the commander's spot is the base
+AIFloat3 Home() { return HasBase() ? basePos : commander.GetPos(ai.frame); }
+void Init()
+{
+	@labDef = aiFactoryMgr.DefaultGetFactoryToBuild(Home(), true, false);
+	if (labDef is null) return;
+	// the lab's fastest armed unit: what both sides can send first
+	const array<string> opts = Facts::BuildOptions(labDef.GetName());
+	for (uint k = 0; k < opts.length(); ++k) {
+		CCircuitDef@ d = ai.GetCircuitDef(opts[k]);
+		if (d is null || !d.IsMobile() || d.defDmg <= 0.f) continue;
+		if (raiderDef is null || d.speed > raiderDef.speed) @raiderDef = d;
+	}
+	plants.resize(0);
+	array<string> names = {"armwin", "corwin", "legwin", "armsolar", "corsolar", "legsolar", "armtide", "cortide", "legtide"};
+	for (uint k = 0; k < names.length(); ++k) {
+		CCircuitDef@ d = ai.GetCircuitDef(names[k]);
+		if (d is null || commander is null || !commander.circuitDef.CanBuild(d)) continue;
+		if (aiEconomyMgr.GetEnergyMake(d) <= 0.f) continue;  // no wind / no water here: it makes nothing on this map
+		if (IsWaterPlant(d) && !WaterNearHome()) continue;   // tidal needs water within the commander's reach of home
+		plants.insertLast(d);
+	}
+	const float bp = AiMax(1.f, commander.circuitDef.buildSpeed);
+	float path = aiEnemyMgr.GetEnemyPos().distance2D(Home());
+	if (Production::mapInfo !is null && Production::mapInfo.basePath > 0.f) path = Production::mapInfo.basePath;
+	deadline = labDef.buildTime / bp + ((raiderDef is null) ? 0.f : raiderDef.buildTime / AiMax(1.f, labDef.buildSpeed)
+		+ path / AiMax(1.f, raiderDef.speed));
+	AiLog("[ANV-OPEN] map: " + plants.length() + " energy options, wind " + F1(AiMinWind()) + "-" + F1(AiMaxWind()) + " tidal " + F1(AiTidal())
+		+ ", lab " + labDef.GetName() + ", first raider " + (raiderDef is null ? "none" : raiderDef.GetName()) + ", path " + int(path)
+		+ " -> contact deadline " + int(deadline) + " s");
+}
+
+float Value(const Sim@ s, float H)
+{
+	// At contact the income we built is only ours as far as our army can hold the raid that arrives: the raid is what a
+	// lab like ours makes from when theirs can be done until the deadline (they earn what we earn). Score = income over
+	// the horizon x min(1, our army / their raid) + the army + what is in stock.
+	const float epm = AiMax(1e-3f, Economist::energyPerMetal);
+	const float income = s.mInc * H + s.eInc / epm * H;
+	float army = 0.f, raid = 0.f;
+	if (raiderDef !is null && labDef !is null && commander !is null) {
+		const float bt = raiderDef.buildTime / AiMax(1.f, labDef.buildSpeed);
+		const float rateM = raiderDef.costM / AiMax(1.f, bt);
+		const float eRatio = raiderDef.costE / AiMax(1.f, raiderDef.costM);
+		const float rate = AiMin(rateM, AiMin(s.mInc, s.eInc / AiMax(1e-3f, eRatio)));
+		if (s.hasLab && s.labAt < deadline) army = rate * (deadline - s.labAt);
+		const float theirLab = labDef.buildTime / AiMax(1.f, commander.circuitDef.buildSpeed);
+		raid = rate * AiMax(0.f, deadline - theirLab);
+	}
+	const float held = (raid > 0.f) ? AiMin(1.f, army / raid) : 1.f;
+	return income * held + army + s.M + s.E / epm;
+}
+
+// time to do o from state s (walk + build at bp, waiting for missing resources), applied to s
+void Apply(Sim@ s, const Opt@ o, float bp, float speed)
+{
+	const float walk = s.pos.distance2D(o.pos) / AiMax(1.f, speed);
+	const float build = o.def.buildTime / AiMax(1.f, bp);
+	const float wM = AiMax(0.f, o.def.costM - s.M - s.mInc * (walk + build)) / AiMax(1e-3f, s.mInc);
+	const float wE = AiMax(0.f, o.def.costE - s.E - s.eInc * (walk + build)) / AiMax(1e-3f, s.eInc);
+	const float dur = walk + build + AiMax(wM, wE);
+	s.M += s.mInc * dur - o.def.costM;
+	s.E += s.eInc * dur - o.def.costE;
+	s.t += dur;
+	s.pos = o.pos;
+	s.mInc += o.yieldM; s.eInc += o.yieldE;
+	if (o.kind == 0 && o.spot >= 0) s.usedSpot[o.spot] = true;
+	if (o.kind == 2) { s.hasLab = true; s.labAt = s.t; }
+}
+
+array<Opt@> Options(const Sim@ s, const array<AIFloat3>@ sp, const array<float>@ si, const array<bool>@ so)
+{
+	array<Opt@> opts;
+	if (Economist::mexT1 !is null) {
+		// the nearest free spots (each spot is its own option)
+		for (uint i = 0; i < sp.length(); ++i) {
+			if (!so[i] || s.usedSpot[i] || EcoPos::OwnSpot(sp[i])) continue;
+			Opt o; o.kind = 0; @o.def = Economist::mexT1; o.pos = sp[i]; o.spot = int(i);
+			o.yieldM = si[i] * Facts::ExtractsMetal(Economist::mexT1.GetName());
+			opts.insertLast(o);
+		}
+	}
+	for (uint k = 0; k < plants.length(); ++k) {
+		Opt o; o.kind = 1; @o.def = plants[k]; o.pos = Home(); o.yieldE = aiEconomyMgr.GetEnergyMake(plants[k]);
+		opts.insertLast(o);
+	}
+	if (!s.hasLab && labDef !is null && Intel::allFactories.length() == 0) {
+		Opt o; o.kind = 2; @o.def = labDef; o.pos = Home();
+		opts.insertLast(o);
+	}
+	return opts;
+}
+
+Sim@ Copy(const Sim@ a)
+{
+	Sim b;
+	b.t = a.t; b.M = a.M; b.E = a.E; b.mInc = a.mInc; b.eInc = a.eInc; b.labAt = a.labAt; b.pos = a.pos; b.hasLab = a.hasLab;
+	b.usedSpot = a.usedSpot;
+	return b;
+}
+
+void Update()
+{
+	if (done || commander is null) return;  // from frame 0: the opening also decides the first building
+	if (deadline < 0.f) { Init(); if (deadline < 0.f) { done = true; return; } }
+	const float now = float(ai.frame) / SECOND;
+	// an armed enemy seen closer moves the deadline: its distance over its speed
+	{
+		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+		const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+		for (uint i = 0; i < n; ++i) {
+			if (ed[i] is null || !ed[i].IsMobile() || ed[i].defDmg <= 0.f || ed[i].IsRoleAny(Unit::Role::COMM.mask)) continue;
+			const float arrive = now + ep[i].distance2D(Home()) / AiMax(1.f, ed[i].speed);
+			if (arrive < deadline) {
+				AiLog("[ANV-OPEN] contact sooner: " + ed[i].GetName() + " can reach us at " + int(arrive) + " s (was " + int(deadline) + ")");
+				deadline = arrive;
+			}
+		}
+	}
+	if (now >= deadline) {
+		done = true;
+		AiLog("[ANV-OPEN] contact deadline reached at " + int(now) + " s after " + plans + " plans: the economy takes over");
+		// the first factory is ours to place (the core waits for it): if the plan never needed one by now, queue it
+		if (Intel::allFactories.length() == 0 && labDef !is null)
+			aiBuilderMgr.Enqueue(TaskB::Factory(Task::Priority::NOW, labDef, Home(), labDef, 0.f, false, true, OrderLife(labDef, Home())));
+		return;
+	}
+	// still on its planned job
+	if (planned !is null && commander.task is planned) return;
+	// plan
+	array<AIFloat3> sp; array<float> si; array<bool> so;
+	AiGetMetalSpots(sp, si, so);
+	Sim s0;
+	s0.t = now; s0.M = aiEconomyMgr.metal.current; s0.E = aiEconomyMgr.energy.current;
+	s0.mInc = aiEconomyMgr.metal.income; s0.eInc = aiEconomyMgr.energy.income;
+	s0.pos = commander.GetPos(ai.frame); s0.hasLab = Intel::allFactories.length() > 0; s0.labAt = s0.hasLab ? now : 1e9f;
+	s0.usedSpot.resize(sp.length());
+	for (uint i = 0; i < sp.length(); ++i) s0.usedSpot[i] = false;
+	const float bp = commander.circuitDef.buildSpeed, speed = commander.circuitDef.speed;
+	const float H = AiMax(1.f, Economist::Horizon());
+	array<Opt@> first = Options(s0, sp, si, so);
+	int best = -1; float bestV = -1e30f;
+	for (uint a = 0; a < first.length(); ++a) {
+		Sim@ s = Copy(s0);
+		Apply(s, first[a], bp, speed);
+		// rollout: the best single next step each time, until the deadline
+		while (s.t < deadline) {
+			array<Opt@> nx = Options(s, sp, si, so);
+			int nb = -1; float nv = -1e30f;
+			for (uint b = 0; b < nx.length(); ++b) {
+				Sim@ s2 = Copy(s);
+				Apply(s2, nx[b], bp, speed);
+				if (s2.t > deadline) continue;
+				const float v2 = Value(s2, H);
+				if (v2 > nv) { nv = v2; nb = int(b); }
+			}
+			if (nb < 0) break;
+			Apply(s, nx[nb], bp, speed);
+		}
+		const float v = Value(s, H);
+		if (v > bestV) { bestV = v; best = int(a); }
+	}
+	if (best < 0) return;
+	const Opt@ o = first[best];
+	++plans;
+	if (o.kind == 0)
+		@planned = aiBuilderMgr.Enqueue(TaskB::Spot(Task::BuildType::MEX, Task::Priority::NOW, o.def, o.pos, o.spot, true, OrderLife(o.def, o.pos)));
+	else if (o.kind == 1)
+		@planned = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::ENERGY, Task::Priority::NOW, o.def, o.pos, commander.circuitDef.GetBuildDistance(), true, OrderLife(o.def, o.pos)));
+	else
+		@planned = aiBuilderMgr.Enqueue(TaskB::Factory(Task::Priority::NOW, o.def, o.pos, o.def, 0.f, false, true, OrderLife(o.def, o.pos)));
+	if (planned !is null) aiBuilderMgr.AssignTask(commander, planned);
+	AiLog("[ANV-OPEN] t=" + int(now) + "s commander -> " + o.def.GetName() + (o.kind == 0 ? (" at spot " + o.spot) : "")
+		+ " (best plan to the " + int(deadline) + " s deadline, value " + int(bestV) + ", " + first.length() + " options)");
+}
+void OnTaskRemoved(IUnitTask@ task) { if (task is planned) @planned = null; }
+}  // namespace Opening
+
+/*
  * Command: Anarva's own army (owner, 2026-11-25: scrap BARb's army handling and rebuild it). BARb's squads, quotas,
  * promotions and raid/attack/defend tasks no longer get our combat units: military.as hands every armed mobile unit
  * to the module's player task, and this decides what each one does, every second.
@@ -3277,7 +3507,7 @@ IUnitTask@ CommSafeJob(const AIFloat3& in from) { ++commRetreats; return CommBes
  * takes the best spot when that beats the job it has.
  */
 int commFwd = 0, fwdCalls = 0, fwdBusy = 0, fwdNone = 0; float fwdBestSeen = 0.f, fwdCurSeen = 0.f; IUnitTask@ commFwdTask = null; float lastFwdGain = 0.f; int fwdDue = 0, fwdFailed = 0;
-void OnBuilderTaskRemoved(IUnitTask@ task) { if (task is commFwdTask) @commFwdTask = null; if (task is commGuardTask) @commGuardTask = null; }
+void OnBuilderTaskRemoved(IUnitTask@ task) { Opening::OnTaskRemoved(task); if (task is commFwdTask) @commFwdTask = null; if (task is commGuardTask) @commGuardTask = null; }
 IUnitTask@ CommForward(const AIFloat3& in from, float curScore)
 {
 	if (Brain::Economist::mexT1 is null) return null;
@@ -3336,6 +3566,7 @@ bool CommWorth(const AIFloat3& in p, float gain)
 
 void CommGuardUpdate()
 {
+	if (!Opening::done) return;  // the opening directs the commander until the contact deadline
 	if (commander is null || Brain::Intel::allFactories.length() == 0) return;
 	if (commGuardTask !is null && commander.task is commGuardTask) return;
 	const AIFloat3 c = commander.GetPos(ai.frame);
@@ -3396,6 +3627,7 @@ void Update()  // every 30 frames
 	Director::Update();
 	// (BARb's attack/raid quotas and the core raid task's targets are gone: no combat unit is in a BARb task any more;
 	// Brain::Command decides each fight from its own defence estimate)
+	Opening::Update();  // map-based opening, re-planned after every job (#94)
 	Command::Update();  // Anarva's own army (BARb squads, recalls and holds retired)
 	// every module re-decides on the engine's own slow-update tick (no per-module polling periods)
 	Recycler::Update();
