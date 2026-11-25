@@ -211,13 +211,66 @@ def high_ground(grid, gw, gh, hm, hw, choke_cell, own_start):
         return None
     return ((best[0] + 0.5) * CELL * SQUARE, (best[1] + 0.5) * CELL * SQUARE, best[2])
 
+ENGINE_WIND = (5.0, 25.0)  # Spring MapInfo.cpp defaults when a map sets no wind (engine fact)
+
+_SANDBOX = """
+local src = ...
+local env = {
+  pairs = pairs, ipairs = ipairs, next = next, type = type, tostring = tostring, tonumber = tonumber,
+  select = select, unpack = unpack, pcall = pcall, error = error, assert = assert, setmetatable = setmetatable,
+  getmetatable = getmetatable, rawget = rawget, rawset = rawset,
+  math = math, string = string, table = table,
+  -- the engine tables a mapinfo may touch; no file, os or io access
+  VFS = { Include = function() return {} end, FileExists = function() return false end, DirList = function() return {} end,
+          LoadFile = function() return nil end, RAW_FIRST = 0, ZIP = 0, MAP = 0, GAME = 0, MOD = 0, BASE = 0 },
+  Spring = { GetMapOptions = function() return {} end, GetModOptions = function() return {} end, Echo = function() end,
+             Log = function() end },
+  getfenv = function() return {} end, Game = {}, Script = {},
+}
+env._G = env
+local f, err = loadstring(src, "mapinfo")
+if not f then error(err) end
+setfenv(f, env)
+local ok, res = pcall(f)
+if not ok then error(res) end
+return res
+"""
+_lua = None
+
+
+def eval_mapinfo(info):
+    """Run mapinfo.lua in a sandboxed Lua runtime and return its table (the same table the engine reads)."""
+    global _lua
+    if _lua is None:
+        import lupa.luajit21 as lupa  # LuaJIT, as the Spring engine runs (Lua 5.1: loadstring/setfenv)
+        _lua = lupa.LuaRuntime(unpack_returned_tuples=True)
+        _lua.execute("io = nil; os = nil; require = nil; dofile = nil; loadfile = nil; package = nil; debug = nil")
+    return _lua.eval("function(src) " + _SANDBOX.replace("local src = ...", "") + " end")(info)
+
+
 def parse_wind(info):
-    """The map's wind range (atmosphere minWind/maxWind in mapinfo.lua); None when the map doesn't set it."""
-    atm = re.search(r"atmosphere\s*=\s*\{(.*?)\}", info, re.S | re.I)
-    src = atm.group(1) if atm else info  # (no word boundaries: keys are unique in mapinfo)
-    lo = re.search(r"minwind\s*=\s*(-?[\d.]+)", src, re.I)
-    hi = re.search(r"maxwind\s*=\s*(-?[\d.]+)", src, re.I)
-    return [float(lo.group(1)), float(hi.group(1))] if lo and hi else None
+    """The map's wind range: atmosphere.minWind/maxWind of the evaluated mapinfo.lua (keys are case-insensitive
+    in the engine), the engine defaults when unset, None when the file can't be evaluated."""
+    if not info:
+        return list(ENGINE_WIND)
+    try:
+        t = eval_mapinfo(info)
+    except Exception:
+        return None
+    if t is None:
+        return None
+    atm = None
+    for k, v in t.items():
+        if isinstance(k, str) and k.lower() == "atmosphere":
+            atm = v
+    lo, hi = ENGINE_WIND
+    if atm is not None:
+        for k, v in atm.items():
+            if isinstance(k, str) and k.lower() == "minwind" and isinstance(v, (int, float)):
+                lo = float(v)
+            if isinstance(k, str) and k.lower() == "maxwind" and isinstance(v, (int, float)):
+                hi = float(v)
+    return [lo, hi]
 
 
 def read_info(path):
