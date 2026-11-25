@@ -5779,7 +5779,7 @@ index 5f061310..bae1c185 100644
  }
  
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a922..6a8a9bdf 100644
+index a0f5a922..b1e6f81e 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -5874,7 +5874,21 @@ index a0f5a922..6a8a9bdf 100644
  		canSurfTargetAir |= isAirWeapon;
  
  		const bool isLandWeapon = ((wt != "TorpedoLauncher") || wd->IsSubMissile());
-@@ -453,7 +461,7 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -439,8 +447,12 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 		canSubTargetLand |= (isLandWeapon && isWaterWeapon && isFireSubmersed);
+ 		canSubTargetWater |= (isWaterWeapon && isFireSubmersed);
+ 
++		// Anarva: a manual-fire weapon (the commander's D-gun) adds no sustained damage (see below)
++		const bool sustained = !(hasDGun && wd->IsManualFire());
+ 		it = customParams.find("statsdamage");
+-		if (it != customParams.end()) {
++		if (!sustained) {
++			// fires only on order; its damage reaches no total
++		} else if (it != customParams.end()) {
+ 			float localDmg = utils::string_to_float(it->second);
+ 			localDmg *= std::pow(2.0f, (wd->IsDynDamageInverted() ? 1 : -1) * wd->GetDynDamageExp());
+ 			dmg += localDmg;
+@@ -453,7 +465,7 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  				float localDmg = .0f;
  				for (int type : armorTypes) {
  					// if the weapon is paralyzer, limit the damage contribution to 100, eg: armthor missle doesnt actually do 80000 damage
@@ -5883,8 +5897,28 @@ index a0f5a922..6a8a9bdf 100644
  				}
  				localDmg /= armorTypes.size();
  				localDmg *= std::pow(2.0f, (wd->IsDynDamageInverted() ? 1 : -1) * wd->GetDynDamageExp());
-@@ -479,6 +487,25 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
- 		waterDps += dps;
+@@ -471,14 +483,39 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+ 				adjustDamage(armor.waterTypes, waterDmg, waterDps);
+ 			}
+ 		}
+-		airDmg += dmg;
+-		airDps += dps;
+-		surfDmg += dmg;
+-		surfDps += dps;
+-		waterDmg += dmg;
+-		waterDps += dps;
++		// Anarva: a manual-fire weapon (the commander's D-gun) is not sustained dps: it fires only on order, and its
++		// one-shot damage is overkill against any single unit. Counted, it made a commander worth 113 Pawns (threat
++		// 158.5 vs 1.4) and our bigger army always read weaker (r=0.3 with 2938 vs 1407 metal, Throne 2026-11-25).
++		// The D-gun slot (dgunDef) still serves the D-gun action.
++		if (sustained) {
++			airDmg += dmg;
++			airDps += dps;
++			surfDmg += dmg;
++			surfDps += dps;
++			waterDmg += dmg;
++			waterDps += dps;
++		}
  
  		minRange = std::min(minRange, range);
 +		if (isLandWeapon && (weaponCat & circuit->GetLandCategory()) && (range > rangeModel.range) && !wd->IsShield()) {
@@ -5909,7 +5943,7 @@ index a0f5a922..6a8a9bdf 100644
  		if ((weaponCat & circuit->GetAirCategory()) && isAirWeapon) {
  			float& mr = maxRange[static_cast<RangeT>(RangeType::AIR)];
  			mr = std::max(mr, range);
-@@ -488,7 +515,7 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -488,7 +525,7 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  		}
  		if ((weaponCat & circuit->GetLandCategory()) && isLandWeapon) {
  			float& mr = maxRange[static_cast<RangeT>(RangeType::LAND)];
@@ -5918,7 +5952,7 @@ index a0f5a922..6a8a9bdf 100644
  			if (mr > maxRange[static_cast<RangeT>(maxRangeType)]) {
  				maxRangeType = RangeType::LAND;
  			}
-@@ -568,6 +595,26 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -568,6 +605,26 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  	}
  
  	isAttacker = (airDps > .1f) || (surfDps > .1f) || (waterDps > .1f);
@@ -5945,7 +5979,7 @@ index a0f5a922..6a8a9bdf 100644
  	if (IsMobile() && !IsAttacker()) {  // mobile bomb?
  		WeaponDef* wd = def->GetDeathExplosion();
  		aoe = wd->GetAreaOfEffect();
-@@ -619,11 +666,15 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -619,11 +676,15 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  	//       health /= def->GetArmoredMultiple();
  	const float dmg = std::max(std::max(waterDmg, surfDmg), airDmg);
  	const float dps = std::max(std::max(waterDps, surfDps), airDps);
@@ -5966,7 +6000,7 @@ index a0f5a922..6a8a9bdf 100644
  #if 0
  	circuit->LOG("THREAT %s | def=%f air=%f surf=%f water=%f", def->GetName(), defThreat,
  			airThrDmg * sqrtf(health + maxShield * SHIELD_MOD),
-@@ -843,3 +894,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
+@@ -843,3 +904,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
  }
  
  } // namespace circuit
