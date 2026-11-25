@@ -58,6 +58,63 @@ local function around(uid, team, r)
 	return own, enemy, nearest
 end
 
+-- all state and helpers before the first callin (a later local is an undefined global inside earlier functions)
+local firstHit = {}
+local lastCombat = {}
+local lastHeading = {}
+local motion = {}  -- team -> kind -> {n, speedFrac, turnFrac}
+local function kindOf(ud)
+	local md = ud.moveDef and ud.moveDef.name or ""
+	if md:find("boat") then return "boat" elseif md:find("hover") then return "hover"
+	elseif md:find("tank") then return "tank" elseif md:find("bot") or md:find("kbot") then return "bot" end
+	return "other"
+end
+local function sampleMotion(n)
+	for uid, f in pairs(lastCombat) do
+		if n - f > 150 then
+			lastCombat[uid] = nil; lastHeading[uid] = nil
+		else
+			local udid = Spring.GetUnitDefID(uid)
+			local ud = udid and UnitDefs[udid]
+			local team = Spring.GetUnitTeam(uid)
+			if ud and team and ud.canMove and not ud.canFly and #(ud.weapons or {}) > 0 and (ud.speed or 0) > 0 then
+				local vx, _, vz = Spring.GetUnitVelocity(uid)
+				local h = Spring.GetUnitHeading(uid)
+				if vx and h then
+					local sp = math.sqrt(vx * vx + vz * vz) * 30 / ud.speed
+					local tf = 0
+					if lastHeading[uid] and (ud.turnRate or 0) > 0 then
+						local dh = math.abs(h - lastHeading[uid]) % 65536
+						if dh > 32768 then dh = 65536 - dh end
+						tf = (dh / 15) / ud.turnRate  -- heading units per frame vs max per frame
+					end
+					lastHeading[uid] = h
+					local k = kindOf(ud)
+					motion[team] = motion[team] or {}
+					local m = motion[team][k] or {0, 0, 0}
+					m[1] = m[1] + 1; m[2] = m[2] + math.min(sp, 1.5); m[3] = m[3] + math.min(tf, 1.5)
+					motion[team][k] = m
+				end
+			end
+		end
+	end
+end
+
+
+local function dumpMatrix()
+	for a, row in pairs(dmgM) do
+		for v, d in pairs(row) do
+			local ad, vd = UnitDefs[a], UnitDefs[v]
+			if ad and vd then
+				Spring.Echo(string.format("[REPLAY] DMG att=%s vic=%s dmg=%d killM=%d", ad.name, vd.name, d, (killM[a] and killM[a][v]) or 0))
+			end
+		end
+	end
+end
+
+
+local dumped = false
+
 function widget:Initialize()
 	for k, v in pairs(CMD) do if type(v) == "number" and type(k) == "string" and k:upper() == k then cmdName[v] = k end end
 	Spring.SendCommands("specfullview 1")
@@ -162,17 +219,6 @@ function widget:UnitCreated(unitID, unitDefID, teamID, builderID)
 	end
 end
 
-local function dumpMatrix()
-	for a, row in pairs(dmgM) do
-		for v, d in pairs(row) do
-			local ad, vd = UnitDefs[a], UnitDefs[v]
-			if ad and vd then
-				Spring.Echo(string.format("[REPLAY] DMG att=%s vic=%s dmg=%d killM=%d", ad.name, vd.name, d, (killM[a] and killM[a][v]) or 0))
-			end
-		end
-	end
-end
-
 function widget:UnitDestroyed(unitID, unitDefID, teamID, attackerID, attackerDefID, attackerTeam)
 	if attackerDefID and unitDefID and enemies(attackerTeam, teamID) then
 		local vd = UnitDefs[unitDefID]
@@ -210,47 +256,6 @@ function widget:UnitFinished(unitID, unitDefID, teamID)
 	end
 end
 
-local firstHit = {}
-local lastCombat = {}
-local lastHeading = {}
-local motion = {}  -- team -> kind -> {n, speedFrac, turnFrac}
-local function kindOf(ud)
-	local md = ud.moveDef and ud.moveDef.name or ""
-	if md:find("boat") then return "boat" elseif md:find("hover") then return "hover"
-	elseif md:find("tank") then return "tank" elseif md:find("bot") or md:find("kbot") then return "bot" end
-	return "other"
-end
-local function sampleMotion(n)
-	for uid, f in pairs(lastCombat) do
-		if n - f > 150 then
-			lastCombat[uid] = nil; lastHeading[uid] = nil
-		else
-			local udid = Spring.GetUnitDefID(uid)
-			local ud = udid and UnitDefs[udid]
-			local team = Spring.GetUnitTeam(uid)
-			if ud and team and ud.canMove and not ud.canFly and #(ud.weapons or {}) > 0 and (ud.speed or 0) > 0 then
-				local vx, _, vz = Spring.GetUnitVelocity(uid)
-				local h = Spring.GetUnitHeading(uid)
-				if vx and h then
-					local sp = math.sqrt(vx * vx + vz * vz) * 30 / ud.speed
-					local tf = 0
-					if lastHeading[uid] and (ud.turnRate or 0) > 0 then
-						local dh = math.abs(h - lastHeading[uid]) % 65536
-						if dh > 32768 then dh = 65536 - dh end
-						tf = (dh / 15) / ud.turnRate  -- heading units per frame vs max per frame
-					end
-					lastHeading[uid] = h
-					local k = kindOf(ud)
-					motion[team] = motion[team] or {}
-					local m = motion[team][k] or {0, 0, 0}
-					m[1] = m[1] + 1; m[2] = m[2] + math.min(sp, 1.5); m[3] = m[3] + math.min(tf, 1.5)
-					motion[team][k] = m
-				end
-			end
-		end
-	end
-end
-
 function widget:UnitDamaged(unitID, unitDefID, unitTeam, damage, paralyzer, weaponDefID, projectileID, attackerID, attackerDefID, attackerTeam)
 	local fr = Spring.GetGameFrame()
 	if attackerDefID and unitDefID and not paralyzer and damage > 0 and enemies(attackerTeam, unitTeam) then
@@ -269,7 +274,6 @@ function widget:UnitDamaged(unitID, unitDefID, unitTeam, damage, paralyzer, weap
 	end
 end
 
-local dumped = false
 function widget:Shutdown()
 	if not dumped then dumpMatrix(); dumped = true end  -- a replay cut by the wall clock never reaches GameOver
 	Spring.Echo("[REPLAY] END f=" .. Spring.GetGameFrame())
