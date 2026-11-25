@@ -1620,6 +1620,8 @@ void Update(bool jamAlert)
  */
 CCircuitDef@ turT1, turT2, turT3, wallDef;
 int lastFortify = 0, forts = 0;
+IUnitTask@ fortPending = null;
+void OnTaskRemoved(IUnitTask@ t) { if (t is fortPending) @fortPending = null; }
 // terrain defence bookkeeping: build the next turret only once the last one stands AND something has
 // come at us since (event-driven, no timer flood: one order per real attack)
 int terrainBuilt = 0;
@@ -1761,12 +1763,24 @@ void Fortify()
 	// turret and it would survive; it stands on our side of the cell by its own range, so it covers the cell. One
 	// order at a time, for the order's lifetime (3 min, below).
 	if (ai.frame - lastFortify < OrderLife(terrainDef, basePos)) return;
+	if (fortPending !is null) return;  // the last tower first (252 orders in 12 minutes, Gasbag 2026-11-25)
 	CCircuitDef@ tur = BestTurret();
 	if (tur is null || !tur.IsAvailable(ai.frame) || !HasBase()) return;
+	// a cell a tower of ours already covers is answered: its heat is the loss before the tower stood
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
 	int best = -1;
 	float bestHeat = Economist::MetalValue(tur);
-	for (uint c = 0; c < Brain::Intel::heat.length(); ++c)
-		if (Brain::Intel::heat[c] > bestHeat) { bestHeat = Brain::Intel::heat[c]; best = int(c); }
+	for (uint c = 0; c < Brain::Intel::heat.length(); ++c) {
+		if (Brain::Intel::heat[c] <= bestHeat) continue;
+		const AIFloat3 cc = Brain::Intel::CellCenter(c);
+		bool covered = false;
+		for (uint k = 0; k < mine.length() && !covered; ++k) {
+			const CCircuitDef@ d = mine[k].circuitDef;
+			covered = !d.IsMobile() && d.GetMaxRange() > 0.f && mine[k].GetPos(ai.frame).distance2D(cc) <= d.GetMaxRange();
+		}
+		if (covered) continue;
+		bestHeat = Brain::Intel::heat[c]; best = int(c);
+	}
 	if (best < 0) return;
 	const AIFloat3 hot = Brain::Intel::CellCenter(best);
 	AIFloat3 dir = hot - basePos;
@@ -1776,7 +1790,7 @@ void Fortify()
 	if (!TurretSurvives(tur, tpos)) return;
 	lastFortify = ai.frame;
 	++forts;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, tpos, tur.GetRadius() * 2.f, true, OrderLife(tur, tpos)));  // a site within its own footprint
+	@fortPending = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, tpos, tur.GetRadius() * 2.f, true, OrderLife(tur, tpos)));  // a site within its own footprint
 	AiLog("[ANV] Fortify: " + tur.GetName() + " covering the cell where we lost " + int(bestHeat) + " metal");
 }
 
@@ -4417,7 +4431,7 @@ IUnitTask@ CommSafeJob(const AIFloat3& in from) { ++commRetreats; return CommBes
  * takes the best spot when that beats the job it has.
  */
 int commFwd = 0, fwdCalls = 0, fwdBusy = 0, fwdNone = 0; float fwdBestSeen = 0.f, fwdCurSeen = 0.f; IUnitTask@ commFwdTask = null; float lastFwdGain = 0.f; int fwdDue = 0, fwdFailed = 0;
-void OnBuilderTaskRemoved(IUnitTask@ task) { MexPorc::OnTaskRemoved(task); Opening::OnTaskRemoved(task); if (task is commFwdTask) @commFwdTask = null; if (task is commGuardTask) @commGuardTask = null; }
+void OnBuilderTaskRemoved(IUnitTask@ task) { MexPorc::OnTaskRemoved(task); Strategic::OnTaskRemoved(task); Opening::OnTaskRemoved(task); if (task is commFwdTask) @commFwdTask = null; if (task is commGuardTask) @commGuardTask = null; }
 IUnitTask@ CommForward(const AIFloat3& in from, float curScore)
 {
 	if (Brain::Economist::mexT1 is null) return null;
