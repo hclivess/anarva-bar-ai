@@ -77,56 +77,129 @@ def _wpool(per, weights):
     return out
 
 
-def winners_curve(db_path, map_name=None, maps_json=None):
-    """The winners' curve for this map. Every 1v1 winner game counts, weighted by how alike its map is to this one:
-    w = exp(-d^2 / 2h^2), d the distance in standardized map features (area, extractor spots, water, start distance,
-    mean wind). The width h is chosen by fit: each replay map is held out (with its games) and predicted from the
-    others; the h with the smallest error wins. (k whole nearest maps let one 1-game neighbour become 'the top
-    players' on Throne.) Returns the curve, a description, and per minute the effective number of games."""
+GAME_FEATURES = ("dstart", "ownspots", "water", "wind")
+
+
+def game_features(start_me, start_them, mapf):
+    """What a player faces in one game: the distance between the two actual starts, the extractor spots that are his
+    (nearer to him than to the opponent and within that distance of his start), the map's water and mean wind.
+    (Map-wide features described the 8v8 layout: a 1v1 on Supreme Isthmus started 3700 apart, ours on Throne 10569.)"""
+    import math
+    d = math.dist(start_me, start_them)
+    own = sum(1 for sp in mapf.get("spots") or []
+              if math.dist(sp, start_me) < math.dist(sp, start_them) and math.dist(sp, start_me) <= d)
+    return {"dstart": d, "ownspots": own, "water": mapf.get("water"), "wind": mapf.get("wind")}
+
+
+def _games(db, feats):
+    """Every 1v1 winner game with its own features and its curve rows."""
+    starts = {}
+    for rid, team, x, z in db.execute(
+            "select replay_id, team, x, z from comm c where frame = "
+            "(select min(frame) from comm c2 where c2.replay_id=c.replay_id and c2.team=c.team)"):
+        starts.setdefault(rid, {})[team] = (x, z)
+    games = []
+    q = ("select r.id, r.map, t.team from replays r join teams t on t.replay_id=r.id "
+         "where r.format='1v1' and r.status='done' and t.won=1")
+    for rid, mp, team in db.execute(q).fetchall():
+        st = starts.get(rid, {})
+        other = [t for t in st if t != team]
+        if team not in st or not other or mp not in feats or not feats[mp].get("spots"):
+            continue
+        f = game_features(st[team], st[other[0]], feats[mp])
+        if any(f[k] is None for k in GAME_FEATURES):
+            continue
+        rows = {}
+        for minute, army, mex, builders, facs, e_inc in db.execute(
+                "select minute, army, mex, builders, facs, e_inc from stats where replay_id=? and team=?", (rid, team)):
+            rows[minute] = [(army, mex, builders, facs, e_inc)]
+        games.append({"map": mp, "f": f, "rows": rows})
+    return games
+
+
+def _gpool(games, weights):
+    """Weighted winner per minute over games; also the effective number of games and the weighted spread."""
+    acc = {}
+    for g, w in zip(games, weights):
+        if w <= 0:
+            continue
+        for minute, rs in g["rows"].items():
+            for r in rs:
+                acc.setdefault(minute, []).append((w, r))
+    out = {}
+    for minute, wr in acc.items():
+        sw = sum(w for w, _ in wr)
+        sw2 = sum(w * w for w, _ in wr)
+        mean = [sum(w * r[i] for w, r in wr) / sw for i in range(5)]
+        sd = [(sum(w * (r[i] - mean[i]) ** 2 for w, r in wr) / sw) ** 0.5 for i in range(5)]
+        out[minute] = tuple(mean) + (sw * sw / sw2, sd)
+    return out
+
+
+def winners_curve(db_path, map_name=None, maps_json=None, starts=None):
+    """The winners' curve for this game. Every 1v1 winner game counts, weighted by how alike the game it was is to
+    ours: w = exp(-d^2 / 2h^2), d the distance in standardized game features (start distance, own extractor spots,
+    water, wind). The width h is chosen by fit: each map's games are held out and predicted from the other maps'; the
+    h with the smallest error wins. `starts` = (ours, theirs) as actually played."""
+    import math
     if not os.path.exists(db_path):
         return {}, "no replay database"
     db = sqlite3.connect(db_path)
-    per = _curves(db)
-    feats = map_features(maps_json) if maps_json else {}
-    for m, v in db.execute("select r.map, e.value from events e join replays r on r.id=e.replay_id where e.kind='WIND'"):
-        lo, hi, _ = (float(x) for x in v.split(","))
-        if m in feats and lo >= 0 and hi >= 0:
-            feats[m]["wind"] = (lo + hi) / 2
-    known = [m for m in per if m in feats and all(feats[m][f] is not None for f in FEATURES)]
-    if not map_name or map_name not in feats or len(known) < 2 or any(feats[map_name][f] is None for f in FEATURES):
-        return _wpool(per, {m: 1.0 for m in per}), f"all {len(per)} replay maps alike (no features for {map_name!r})"
-    mu = {f: sum(feats[m][f] for m in known) / len(known) for f in FEATURES}
-    sd = {f: (sum((feats[m][f] - mu[f]) ** 2 for m in known) / len(known)) ** 0.5 or 1.0 for f in FEATURES}
-    z = lambda m: [(feats[m][f] - mu[f]) / sd[f] for f in FEATURES]
+    feats = {}
+    if maps_json and os.path.exists(maps_json):
+        import json
+        for r in json.load(open(maps_json)):
+            w = r.get("wind")
+            feats[r["name"]] = {"water": r.get("water"), "wind": (w[0] + w[1]) / 2 if w else None, "spots": r.get("spots")}
+    games = _games(db, feats)
+    if not games:
+        return {}, "no replay games with starts"
+    ours = None
+    if map_name in feats and starts and feats[map_name].get("spots"):
+        ours = game_features(starts[0], starts[1], feats[map_name])
+    if ours is None or any(ours[k] is None for k in GAME_FEATURES):
+        return _gpool(games, [1.0] * len(games)), f"all {len(games)} winner games alike (no starts or spots for {map_name!r})"
+    mu = {k: sum(g["f"][k] for g in games) / len(games) for k in GAME_FEATURES}
+    sd = {k: (sum((g["f"][k] - mu[k]) ** 2 for g in games) / len(games)) ** 0.5 or 1.0 for k in GAME_FEATURES}
+    z = lambda f: [(f[k] - mu[k]) / sd[k] for k in GAME_FEATURES]
+    zs = [z(g["f"]) for g in games]
     dist = lambda x, y: sum((p - q) ** 2 for p, q in zip(x, y)) ** 0.5
-    zk = {m: z(m) for m in known}
-    rows = [r for m in known for rs in per[m].values() for r in rs]
+    rows = [r for g in games for rs in g["rows"].values() for r in rs]
     msd = [(sum((r[i] - sum(x[i] for x in rows) / len(rows)) ** 2 for r in rows) / len(rows)) ** 0.5 or 1.0 for i in range(5)]
-    # candidate widths: the distances that occur between replay maps (data, not picked numbers)
-    pair = sorted({round(dist(zk[a], zk[b]), 3) for a in known for b in known if a < b})
-    cands = [h for h in pair if h > 0] or [1.0]
-    import math
-
-    def weights(target_z, h, exclude=None):
-        return {m: math.exp(-dist(zk[m], target_z) ** 2 / (2 * h * h)) for m in known if m != exclude}
+    pair = sorted({round(dist(zs[i], zs[j]), 3) for i in range(len(games)) for j in range(i + 1, len(games))})
+    pair = [x for x in pair if x > 0] or [1.0]
+    # candidate widths: the deciles of the distances that occur between games (the error is smooth in h)
+    cands = sorted({pair[int(q * (len(pair) - 1) / 10)] for q in range(11)})
+    maps = sorted({g["map"] for g in games})
 
     def err(h):
         e, n = 0.0, 0
-        for hm in known:
-            pred, true = _wpool(per, weights(zk[hm], h, hm)), _wpool(per, {hm: 1.0})
-            for minute, t in true.items():
-                if minute in pred:
-                    for i in METRICS:
-                        e += ((pred[minute][i] - t[i]) / msd[i]) ** 2
-                        n += 1
+        for hm in maps:
+            for i, g in enumerate(games):
+                if g["map"] != hm:
+                    continue
+                w = [0.0 if games[j]["map"] == hm else math.exp(-dist(zs[j], zs[i]) ** 2 / (2 * h * h))
+                     for j in range(len(games))]
+                if sum(w) <= 0:  # nothing alike: predicted from every other map's games, its error counts in full
+                    w = [0.0 if games[j]["map"] == hm else 1.0 for j in range(len(games))]
+                pred = _gpool(games, w)
+                for minute, rs in g["rows"].items():
+                    if minute in pred:
+                        for k in METRICS:
+                            e += ((pred[minute][k] - rs[0][k]) / msd[k]) ** 2
+                            n += 1
         return e / max(1, n)
     h = min(cands, key=err)
-    w = weights(z(map_name), h)
-    curve = _wpool(per, w)
-    top = sorted(w.items(), key=lambda kv: -kv[1])[:4]
+    zo = z(ours)
+    w = [math.exp(-dist(zg, zo) ** 2 / (2 * h * h)) for zg in zs]
+    curve = _gpool(games, w)
+    top = sorted(zip(w, range(len(games))), key=lambda t: -t[0])[:4]
     n8 = curve.get(8, (0,) * 5 + (0, None))[5]
-    return curve, (f"all {len(known)} replay maps weighted by likeness (width {h:.2f} by held-out fit; ~{n8:.1f} effective games at minute 8); "
-                   "most alike: " + ", ".join(f"{m} (w {x:.2f})" for m, x in top))
+    return curve, (f"{len(games)} winner games weighted by likeness to ours (start distance {ours['dstart']:.0f}, "
+                   f"own spots {ours['ownspots']}, water {ours['water']}, wind {ours['wind']}; width {h:.2f} by held-out "
+                   f"fit; ~{n8:.1f} effective games at minute 8); most alike: "
+                   + ", ".join(f"{games[i]['map']} (start distance {games[i]['f']['dstart']:.0f}, own spots "
+                               f"{games[i]['f']['ownspots']}, w {x:.2f})" for x, i in top))
 
 
 def parse(game_dir):
@@ -155,7 +228,10 @@ def parse(game_dir):
     if os.path.exists(script):
         mm = re.search(r"^\s*mapname=([^;]+);", open(script, encoding="utf-8", errors="replace").read(), re.M | re.I)
         mapname = mm.group(1).strip() if mm else None
-    return checks, truth, me, mapname
+    starts = {}
+    for m in re.finditer(r"\[HARNESS\] start team=(\d+) x=(-?\d+) z=(-?\d+)", text):
+        starts[int(m.group(1))] = (int(m.group(2)), int(m.group(3)))
+    return checks, truth, me, mapname, starts
 
 
 def frac(a, b):
@@ -166,8 +242,13 @@ def frac(a, b):
 
 
 def report(game_dir, db_path, maps_json):
-    checks, truth, me, mapname = parse(game_dir)
-    curve, basis = winners_curve(db_path, mapname, maps_json)
+    checks, truth, me, mapname, starts = parse(game_dir)
+    pair = None
+    if me is not None and me in starts:
+        other = [t for t in starts if t != me]
+        if other:
+            pair = (starts[me], starts[other[0]])
+    curve, basis = winners_curve(db_path, mapname, maps_json, pair)
     print(f"\n=== {game_dir}  (Anarva team {me})")
     if not checks:
         print("  no [ANV-CHECK] lines: the AI build predates the self-assessment")

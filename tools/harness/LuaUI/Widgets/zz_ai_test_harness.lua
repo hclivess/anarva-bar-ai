@@ -90,6 +90,15 @@ function widget:GameFrame(n)
 	if n % 1800 == 0 then
 		logAll("stats")
 	end
+	if n == 5 then  -- where each team actually started (its first unit: the commander), for the per-game yardstick
+		for _, t in ipairs(Spring.GetTeamList()) do
+			local us = Spring.GetTeamUnits(t)
+			if us and #us > 0 then
+				local x, _, z = Spring.GetUnitPosition(us[1])
+				Spring.Echo(string.format("[HARNESS] start team=%d x=%d z=%d", t, x, z))
+			end
+		end
+	end
 	if n >= MAX_FRAMES then
 		logAll("timeout")
 		Spring.Echo("[HARNESS] RESULT timeout")
