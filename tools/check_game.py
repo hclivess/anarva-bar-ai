@@ -57,51 +57,76 @@ def _pool(per, maps):
     return {minute: tuple(sum(r[i] for r in rows) / len(rows) for i in range(5)) + (len(rows),) for minute, rows in acc.items()}
 
 
+def _wpool(per, weights):
+    """Weighted average winner per minute: each map's games weighted by the map's similarity. Also returns, per
+    minute, the effective number of games n = (sum w)^2 / sum w^2 and the weighted spread (sd) of each metric."""
+    acc = {}
+    for m, w in weights.items():
+        if w <= 0:
+            continue
+        for minute, rows in per.get(m, {}).items():
+            for r in rows:
+                acc.setdefault(minute, []).append((w, r))
+    out = {}
+    for minute, wr in acc.items():
+        sw = sum(w for w, _ in wr)
+        sw2 = sum(w * w for w, _ in wr)
+        mean = [sum(w * r[i] for w, r in wr) / sw for i in range(5)]
+        sd = [(sum(w * (r[i] - mean[i]) ** 2 for w, r in wr) / sw) ** 0.5 for i in range(5)]
+        out[minute] = tuple(mean) + (sw * sw / sw2, sd)
+    return out
+
+
 def winners_curve(db_path, map_name=None, maps_json=None):
-    """The winners' curve for this map: the 1v1 winners on the maps nearest to it by measured features (the map
-    itself at distance 0 when it's in the database). Features are standardized over the replay maps; the number
-    of nearest maps is chosen by fit: hold out each replay map, predict its winners from its nearest others,
-    keep the count with the smallest error. Without a map (or its features), every 1v1 winner."""
+    """The winners' curve for this map. Every 1v1 winner game counts, weighted by how alike its map is to this one:
+    w = exp(-d^2 / 2h^2), d the distance in standardized map features (area, extractor spots, water, start distance,
+    mean wind). The width h is chosen by fit: each replay map is held out (with its games) and predicted from the
+    others; the h with the smallest error wins. (k whole nearest maps let one 1-game neighbour become 'the top
+    players' on Throne.) Returns the curve, a description, and per minute the effective number of games."""
     if not os.path.exists(db_path):
         return {}, "no replay database"
     db = sqlite3.connect(db_path)
     per = _curves(db)
     feats = map_features(maps_json) if maps_json else {}
-    # the engine's wind where replays recorded it (the widget's WIND line) beats the parsed mapinfo.lua
     for m, v in db.execute("select r.map, e.value from events e join replays r on r.id=e.replay_id where e.kind='WIND'"):
         lo, hi, _ = (float(x) for x in v.split(","))
         if m in feats and lo >= 0 and hi >= 0:
             feats[m]["wind"] = (lo + hi) / 2
     known = [m for m in per if m in feats and all(feats[m][f] is not None for f in FEATURES)]
     if not map_name or map_name not in feats or len(known) < 2 or any(feats[map_name][f] is None for f in FEATURES):
-        return _pool(per, per), f"all {len(per)} replay maps (no features for {map_name!r})"
-    # standardize each feature over the replay maps
+        return _wpool(per, {m: 1.0 for m in per}), f"all {len(per)} replay maps alike (no features for {map_name!r})"
     mu = {f: sum(feats[m][f] for m in known) / len(known) for f in FEATURES}
     sd = {f: (sum((feats[m][f] - mu[f]) ** 2 for m in known) / len(known)) ** 0.5 or 1.0 for f in FEATURES}
     z = lambda m: [(feats[m][f] - mu[f]) / sd[f] for f in FEATURES]
     dist = lambda x, y: sum((p - q) ** 2 for p, q in zip(x, y)) ** 0.5
     zk = {m: z(m) for m in known}
-    # each metric's spread over minutes and maps, so the fit error weighs them alike
-    allc = _pool(per, known)
-    rows = [r for m in known for minute, rs in per[m].items() for r in rs]
+    rows = [r for m in known for rs in per[m].values() for r in rs]
     msd = [(sum((r[i] - sum(x[i] for x in rows) / len(rows)) ** 2 for r in rows) / len(rows)) ** 0.5 or 1.0 for i in range(5)]
+    # candidate widths: the distances that occur between replay maps (data, not picked numbers)
+    pair = sorted({round(dist(zk[a], zk[b]), 3) for a in known for b in known if a < b})
+    cands = [h for h in pair if h > 0] or [1.0]
+    import math
 
-    def err(k):
+    def weights(target_z, h, exclude=None):
+        return {m: math.exp(-dist(zk[m], target_z) ** 2 / (2 * h * h)) for m in known if m != exclude}
+
+    def err(h):
         e, n = 0.0, 0
-        for h in known:
-            near = sorted((m for m in known if m != h), key=lambda m: dist(zk[m], zk[h]))[:k]
-            pred, true = _pool(per, near), _pool(per, [h])
+        for hm in known:
+            pred, true = _wpool(per, weights(zk[hm], h, hm)), _wpool(per, {hm: 1.0})
             for minute, t in true.items():
                 if minute in pred:
                     for i in METRICS:
                         e += ((pred[minute][i] - t[i]) / msd[i]) ** 2
                         n += 1
         return e / max(1, n)
-    k = min(range(1, len(known)), key=err)
-    zt = z(map_name)
-    near = sorted(known, key=lambda m: dist(zk[m], zt))[:k]
-    return _pool(per, near), f"{k} nearest replay map(s) by measured features (k by held-out fit): " + ", ".join(
-        f"{m} ({sum(len(v) for v in per[m].values()) // max(1, len(per[m]))} games, d={dist(zk[m], zt):.2f})" for m in near)
+    h = min(cands, key=err)
+    w = weights(z(map_name), h)
+    curve = _wpool(per, w)
+    top = sorted(w.items(), key=lambda kv: -kv[1])[:4]
+    n8 = curve.get(8, (0,) * 5 + (0, None))[5]
+    return curve, (f"all {len(known)} replay maps weighted by likeness (width {h:.2f} by held-out fit; ~{n8:.1f} effective games at minute 8); "
+                   "most alike: " + ", ".join(f"{m} (w {x:.2f})" for m, x in top))
 
 
 def parse(game_dir):
@@ -196,7 +221,7 @@ def report(game_dir, db_path, maps_json):
             if mc["microStillHit"] > 0: flags["micro: units standing still under fire"].append(minute)
     # the yardstick: the winners of top-player 1v1 games, minute by minute (CHECKLIST.md header)
     print(f"  yardstick for {mapname}: winners on {basis}")
-    print("  vs top 1v1 winners (Anarva / winners):  min  extractors  constructors  factories  energy/s  army")
+    print("  vs top 1v1 winners (Anarva / winners +- spread, n = effective games):  min  extractors  constructors  factories  energy/s  army  n")
     behind = {"extractors": [], "constructors": [], "factories": [], "energy": [], "army": []}
     for minute in sorted(checks):
         c = checks[minute]
@@ -212,7 +237,9 @@ def report(game_dir, db_path, maps_json):
         except ValueError:
             einc = 0.0
         army = int(c.get("army", 0))
-        print(f"  {'':38s}{minute:4d}  {mex:4d}/{top[1]:5.1f}  {cons:5d}/{top[2]:5.1f}  {facs:4d}/{top[3]:4.1f}  {einc:6.0f}/{top[4]:5.0f}  {army:5d}/{top[0]:5.0f}")
+        sdv = top[6] if len(top) > 6 and top[6] else [0.0] * 5
+        print(f"  {'':38s}{minute:4d}  {mex:4d}/{top[1]:5.1f}+-{sdv[1]:4.1f}  {cons:5d}/{top[2]:5.1f}+-{sdv[2]:4.1f}  {facs:4d}/{top[3]:4.1f}"
+              f"  {einc:6.0f}/{top[4]:5.0f}+-{sdv[4]:4.0f}  {army:5d}/{top[0]:5.0f}+-{sdv[0]:5.0f}  {top[5]:4.1f}")
         for k, mine, theirs in (("extractors", mex, top[1]), ("constructors", cons, top[2]), ("factories", facs, top[3]),
                                 ("energy", einc, top[4]), ("army", army, top[0])):
             if mine < theirs:
