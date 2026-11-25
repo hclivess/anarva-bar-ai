@@ -12,3 +12,4 @@ build/
 runs/
 core-bin/
 ref/lib/**/*.sdfz
+runs/replay_work/

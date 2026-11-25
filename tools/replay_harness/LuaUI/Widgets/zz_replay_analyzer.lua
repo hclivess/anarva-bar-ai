@@ -7,6 +7,14 @@ end
 local SPEED = 80
 local gaia = Spring.GetGaiaTeamID()
 
+-- declared before every callin that uses them: as later locals, UnitDestroyed saw undefined globals, the first kill
+-- raised an error and the widget was removed (no STAT/DMG after that)
+local dmgM, killM = {}, {}  -- [attackerDefID][victimDefID] = damage / metal killed (enemy pairs only)
+local function enemies(t1, t2)
+	if not t1 or not t2 or t1 == gaia or t2 == gaia then return false end
+	return select(6, Spring.GetTeamInfo(t1, false)) ~= select(6, Spring.GetTeamInfo(t2, false))
+end
+
 local function teamTag(t)
 	local _, leader, _, isAI, side, ally = Spring.GetTeamInfo(t, false)
 	local name = leader and Spring.GetPlayerInfo(leader, false) or "?"
@@ -112,20 +120,30 @@ function widget:GameFrame(n)
 		for i = 1, #teams do
 			local t = teams[i]
 			if t ~= gaia then
-				local _, _, _, mInc = Spring.GetTeamResources(t, "metal")
-				local _, _, _, eInc = Spring.GetTeamResources(t, "energy")
+				local mCur, mSto, mPull, mInc, mExp = Spring.GetTeamResources(t, "metal")
+				local eCur, eSto, ePull, eInc, eExp = Spring.GetTeamResources(t, "energy")
 				local units = Spring.GetTeamUnits(t) or {}
 				local army, eco, def = 0, 0, 0
+				local builders, bp, mex, facs, mexInc = 0, 0, 0, 0, 0
 				for j = 1, #units do
 					local ud = UnitDefs[Spring.GetUnitDefID(units[j])]
 					if ud then
 						if ud.canMove and #ud.weapons > 0 and not ud.isBuilder then army = army + ud.metalCost
 						elseif not ud.canMove and #ud.weapons > 0 then def = def + ud.metalCost
 						elseif not ud.canMove then eco = eco + ud.metalCost end
+						if ud.isFactory then facs = facs + 1
+						elseif ud.isBuilder and (ud.buildSpeed or 0) > 0 then builders = builders + 1; bp = bp + ud.buildSpeed end
+						if (ud.extractsMetal or 0) > 0 then
+							mex = mex + 1
+							local mm = Spring.GetUnitResources(units[j])
+							mexInc = mexInc + (mm or 0)
+						end
 					end
 				end
-				Spring.Echo(string.format("[REPLAY] STAT min=%d team=%d m_inc=%.1f e_inc=%.0f army=%d def=%d eco=%d units=%d",
-					n / 1800, t, mInc or 0, eInc or 0, army, def, eco, #units))
+				Spring.Echo(string.format("[REPLAY] STAT min=%d team=%d m_inc=%.1f e_inc=%.0f army=%d def=%d eco=%d units=%d"
+					.. " m_cur=%d m_sto=%d m_exp=%.1f e_cur=%d e_sto=%d e_exp=%.0f builders=%d bp=%d mex=%d mex_inc=%.1f facs=%d",
+					n / 1800, t, mInc or 0, eInc or 0, army, def, eco, #units,
+					mCur or 0, mSto or 0, mExp or 0, eCur or 0, eSto or 0, eExp or 0, builders, bp, mex, mexInc, facs))
 			end
 		end
 	end
@@ -233,11 +251,6 @@ local function sampleMotion(n)
 	end
 end
 
-local dmgM, killM = {}, {}  -- [attackerDefID][victimDefID] = damage / metal killed (enemy pairs only)
-local function enemies(t1, t2)
-	if not t1 or not t2 or t1 == gaia or t2 == gaia then return false end
-	return select(6, Spring.GetTeamInfo(t1, false)) ~= select(6, Spring.GetTeamInfo(t2, false))
-end
 function widget:UnitDamaged(unitID, unitDefID, unitTeam, damage, paralyzer, weaponDefID, projectileID, attackerID, attackerDefID, attackerTeam)
 	local fr = Spring.GetGameFrame()
 	if attackerDefID and unitDefID and not paralyzer and damage > 0 and enemies(attackerTeam, unitTeam) then
@@ -256,8 +269,14 @@ function widget:UnitDamaged(unitID, unitDefID, unitTeam, damage, paralyzer, weap
 	end
 end
 
+local dumped = false
+function widget:Shutdown()
+	if not dumped then dumpMatrix(); dumped = true end  -- a replay cut by the wall clock never reaches GameOver
+	Spring.Echo("[REPLAY] END f=" .. Spring.GetGameFrame())
+end
+
 function widget:GameOver(winners)
-	dumpMatrix()
+	dumpMatrix(); dumped = true
 	Spring.Echo("[REPLAY] WINNERS ally=" .. table.concat(winners or {}, ",") .. " f=" .. Spring.GetGameFrame())
 	Spring.SendCommands("quitforce")
 end
