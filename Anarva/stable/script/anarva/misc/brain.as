@@ -2654,6 +2654,19 @@ void Update()
 	array<CCircuitUnit@> freeUnits;
 	for (uint i = 0; i < force.length(); ++i)
 		if (!assigned.exists("" + force[i].id)) freeUnits.insertLast(force[i]);
+	// concentration: free units reinforce the most valuable defended fight already running (the square law rewards
+	// every unit added there); undefended raids keep their single unit
+	{
+		int bestOp = -1;
+		for (uint o = 0; o < ops.length(); ++o)
+			if (ops[o].defence > 0.f && (bestOp < 0 || ops[o].value > ops[bestOp].value)) bestOp = int(o);
+		if (bestOp >= 0 && freeUnits.length() > 0) {
+			for (uint i = 0; i < freeUnits.length(); ++i) ops[bestOp].units.insertLast(freeUnits[i]);
+			ops[bestOp].route.resize(0);  // re-route the bigger squad
+			AiLog("[ANV-CMD] reinforce (" + int(ops[bestOp].pos.x) + "," + int(ops[bestOp].pos.z) + ") +" + freeUnits.length() + " units");
+			freeUnits.resize(0);
+		}
+	}
 
 	// new ops, best first, while the free units can win them
 	if (freeUnits.length() > 0) {
@@ -2695,7 +2708,11 @@ void Update()
 			array<float> dist(freeUnits.length());
 			array<bool> used(freeUnits.length());
 			for (uint k = 0; k < freeUnits.length(); ++k) { dist[k] = freeUnits[k].GetPos(ai.frame).distance2D(cp[best]); used[k] = false; }
-			while (S <= need || pick.length() == 0) {
+			// Square law: the loss is our metal x (defence / strength)^2, so every unit added to a defended fight lowers
+			// it: a defended objective takes every free unit (concentration; just-enough squads of 2-4 bled and pulled
+			// back 23 times on Avalanche, 2026-11-25). An undefended one takes the single nearest: nothing there can hurt it.
+			const bool defended = dfc[best] > 0.f;
+			while (defended || pick.length() == 0) {
 				int nk = -1;
 				for (uint k = 0; k < freeUnits.length(); ++k)
 					if (!used[k] && (nk < 0 || dist[k] < dist[nk])) nk = int(k);
