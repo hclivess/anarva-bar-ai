@@ -2956,7 +2956,7 @@ index f752cb27..17442cdc 100644
  	float GetCommDefRad(float baseDist) const { return defence->GetCommRad(baseDist); }
  	unsigned int GetGuardTaskNum() const { return defence->GetGuardTaskNum(); }
 diff --git a/src/circuit/module/TaskModule.cpp b/src/circuit/module/TaskModule.cpp
-index e6c27f5f..b0a402f6 100644
+index e6c27f5f..e7014bb7 100644
 --- a/src/circuit/module/TaskModule.cpp
 +++ b/src/circuit/module/TaskModule.cpp
 @@ -62,7 +62,17 @@ void ITaskModule::Release()
@@ -2978,6 +2978,31 @@ index e6c27f5f..b0a402f6 100644
  	task->AssignTo(unit);
  	task->Start(unit);
  }
+@@ -97,6 +107,11 @@ void ITaskModule::TaskRemoved(IUnitTask* task, bool done)
+ 	static_cast<ITaskModuleScript*>(script)->TaskRemoved(task, done);
+ }
+ 
++IUnitTask* ITaskModule::GetPlayerTask() const
++{
++	return reinterpret_cast<IUnitTask*>(playerTask);
++}
++
+ void ITaskModule::AssignPlayerTask(CCircuitUnit* unit)
+ {
+ 	AssignTask(unit, playerTask);
+diff --git a/src/circuit/module/TaskModule.h b/src/circuit/module/TaskModule.h
+index e2094ce1..2b2812a3 100644
+--- a/src/circuit/module/TaskModule.h
++++ b/src/circuit/module/TaskModule.h
+@@ -61,6 +61,8 @@ public:
+ 	void DelMetalPull(float value) { metalPull -= value; }
+ 	float GetMetalPull() const { return metalPull; }
+ 
++public:
++	IUnitTask* GetPlayerTask() const;  // Anarva: units the script commands itself (no task logic)
+ protected:
+ 	void UpdateIdle();
+ 	void Update();
 diff --git a/src/circuit/resource/MetalManager.cpp b/src/circuit/resource/MetalManager.cpp
 index 97de6587..646f5590 100644
 --- a/src/circuit/resource/MetalManager.cpp
@@ -3030,7 +3055,7 @@ index 0be6a835..50601754 100644
  }
  
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..989b1751 100644
+index c3aaefe5..d9e1553d 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -3138,7 +3163,7 @@ index c3aaefe5..989b1751 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +776,178 @@ void CInitScript::RegisterCore()
+@@ -735,9 +776,192 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -3182,6 +3207,20 @@ index c3aaefe5..989b1751 100644
 +		++i;
 +	}
 +	return n;
++}
++
++// Anarva: direct orders for script-commanded units
++static void CCircuitUnit_CmdMoveTo(CCircuitUnit* u, const AIFloat3& p) { TRY_UNIT(bridgeAI, u, u->CmdMoveTo(p, 0, NO_EXPIRY);) }
++static void CCircuitUnit_CmdFightTo(CCircuitUnit* u, const AIFloat3& p) { TRY_UNIT(bridgeAI, u, u->CmdFightTo(p, 0, NO_EXPIRY);) }
++static void CCircuitUnit_CmdStop(CCircuitUnit* u) { TRY_UNIT(bridgeAI, u, u->CmdStop();) }
++static bool CCircuitUnit_CmdAttackEnemy(CCircuitUnit* u, int enemyId)
++{
++	CEnemyInfo* e = bridgeAI->GetEnemyInfo(enemyId);
++	if ((e == nullptr) || (e->GetUnit() == nullptr)) {
++		return false;
++	}
++	TRY_UNIT(bridgeAI, u, u->GetUnit()->Attack(e->GetUnit(), 0, NO_EXPIRY);)
++	return true;
 +}
 +
 +// The core's own clustering of enemy units: centre, metal cost, threat (influence).
@@ -3317,7 +3356,7 @@ index c3aaefe5..989b1751 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +977,30 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +991,34 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -3325,6 +3364,10 @@ index c3aaefe5..989b1751 100644
 +	// ---- Anarva bridge ----
 +	bridgeAI = circuit;
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemies(array<AIFloat3>@+, array<AIFloat3>@+, array<CCircuitDef@>@+, array<float>@+, array<int>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemies), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdMoveTo(const AIFloat3& in)", asFUNCTION(CCircuitUnit_CmdMoveTo), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdFightTo(const AIFloat3& in)", asFUNCTION(CCircuitUnit_CmdFightTo), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdStop()", asFUNCTION(CCircuitUnit_CmdStop), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CCircuitUnit", "bool CmdAttackEnemy(int)", asFUNCTION(CCircuitUnit_CmdAttackEnemy), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyGroups(array<AIFloat3>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemyGroups), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetWrecks(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetWrecks), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHighGroundArty", &anarva::switches.highGroundArty); ASSERT(r >= 0);
@@ -3348,7 +3391,7 @@ index c3aaefe5..989b1751 100644
  }
  
  bool CInitScript::Init()
-@@ -920,22 +1154,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1172,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  
@@ -3388,7 +3431,7 @@ index bc7d286a..5fc79dcd 100644
  	void SendMessage(const std::string& msg, int toTeamId = -1);
  	void ReceiveMessage(const std::string& msg, int fromTeamId);
 diff --git a/src/circuit/script/MilitaryScript.cpp b/src/circuit/script/MilitaryScript.cpp
-index 89633988..199a4e6e 100644
+index 89633988..cf9dd498 100644
 --- a/src/circuit/script/MilitaryScript.cpp
 +++ b/src/circuit/script/MilitaryScript.cpp
 @@ -8,6 +8,7 @@
@@ -3430,8 +3473,11 @@ index 89633988..199a4e6e 100644
  CMilitaryScript::CMilitaryScript(CScriptManager* scr, CMilitaryManager* mgr)
  		: ITaskModuleScript(scr, mgr)
  {
-@@ -35,6 +60,13 @@ CMilitaryScript::CMilitaryScript(CScriptManager* scr, CMilitaryManager* mgr)
+@@ -33,8 +58,16 @@ CMilitaryScript::CMilitaryScript(CScriptManager* scr, CMilitaryManager* mgr)
+ 	r = engine->RegisterObjectType("CMilitaryManager", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
+ 	r = engine->RegisterGlobalProperty("CMilitaryManager aiMilitaryMgr", manager); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ DefaultMakeTask(CCircuitUnit@)", asMETHOD(CMilitaryManager, DefaultMakeTask), asCALL_THISCALL); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ GetPlayerTask()", asMETHOD(CMilitaryManager, GetPlayerTask), asCALL_THISCALL); ASSERT(r >= 0);  // Anarva: script-commanded units
  	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ Enqueue(const SFightTask& in)", asMETHODPR(CMilitaryManager, Enqueue, (const TaskF::SFightTask&), IFighterTask*), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ EnqueueRetreat()", asMETHOD(CMilitaryManager, EnqueueRetreat), asCALL_THISCALL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ EnqueueDefendAt(const AIFloat3& in, float)", asMETHOD(CMilitaryManager, EnqueueDefendAt), asCALL_THISCALL); ASSERT(r >= 0);

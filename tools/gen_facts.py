@@ -22,7 +22,7 @@ def scan(units_dir):
             if not re.search(r"\b%s\s*=\s*\{" % re.escape(name), text):
                 continue
             d = {"name": name}
-            for key in ("metalcost", "energycost", "workertime", "extractsmetal", "energyupkeep", "buildtime", "metalmake"):
+            for key in ("metalcost", "energycost", "workertime", "extractsmetal", "energyupkeep", "buildtime", "metalmake", "energymake"):
                 m = re.search(r"\b%s\s*=\s*(-?[\d.]+)" % key, text, re.I)
                 if m:
                     d[key] = float(m.group(1))
@@ -136,7 +136,7 @@ def main():
     lines.append("")
     for key, fn in (("stockpiletime", "StockpileTime"), ("metalpershot", "ShotMetal"), ("shieldradius", "ShieldRadius"),
                     ("extractsmetal", "ExtractsMetal"), ("energyupkeep", "EnergyUpkeep"), ("factorytier", "FactoryTier"),
-                    ("needgeo", "NeedsGeo"), ("metalmake", "MetalMake")):
+                    ("needgeo", "NeedsGeo"), ("metalmake", "MetalMake"), ("energymake", "EnergyMake")):
         items = sorted((n, d[key]) for n, d in defs.items() if key in d)
         lines.append("dictionary %s_ = {" % key)
         lines.append(",\n".join('\t{"%s", %g}' % (n, v) for n, v in items))

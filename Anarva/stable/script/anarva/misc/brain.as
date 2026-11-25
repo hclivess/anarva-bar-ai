@@ -179,86 +179,7 @@ void OnRemoved(CCircuitUnit@ unit)
 	RemoveUnit(scouts, unit);
 }
 
-/*
- * Broken-squad recall. The core keeps a raid going until its *leader* dies, and an attack until it
- * drops under the quota it was created with, so the last survivors keep walking into the enemy one
- * at a time. We track each squad's peak power and abort it once it's lost most of it: survivors go
- * back into the gather pipeline and come out again as part of a full squad.
- */
-array<IFighterTask@> squads;
-array<float> squadPeak;
-array<int> squadStart;
-int recalls = 0;
-
-int tasksSeen = 0, fightersSeen = 0;
-
-void OnTaskAdded(IUnitTask@ task)
-{
-	++tasksSeen;
-	if (task.GetType() != Task::Type::FIGHTER)
-		return;
-	IFighterTask@ f = cast<IFighterTask>(task);
-	if (f is null)
-		return;
-	++fightersSeen;
-	const int ft = int(f.GetFightType()) & 0xFF;
-	if (ft != Task::FightType::RAID && ft != Task::FightType::ATTACK)
-		return;
-	squads.insertLast(f);
-	squadPeak.insertLast(0.f);
-	squadStart.insertLast(ai.frame);
-}
-
-void OnTaskRemoved(IUnitTask@ task)
-{
-	Hold::OnTaskRemoved(task);
-	IFighterTask@ f = cast<IFighterTask>(task);
-	if (f is null)
-		return;
-	int idx = squads.findByRef(f);
-	if (idx >= 0) {
-		squads.removeAt(idx);
-		squadPeak.removeAt(idx);
-		squadStart.removeAt(idx);
-	}
-}
-
-float SquadPower(IFighterTask@ task)
-{
-	const array<CCircuitUnit@>@ units = task.GetUnits();
-	float p = 0.f;
-	for (uint i = 0; i < units.length(); ++i)
-		p += units[i].circuitDef.power;
-	return p;
-}
-
-void CheckSquads()
-{
-	for (int i = int(squads.length()) - 1; i >= 0; --i) {
-		IFighterTask@ task = squads[i];
-		const float p = SquadPower(task);
-		if (p > squadPeak[i])
-			squadPeak[i] = p;
-		if (squadPeak[i] <= 0.f)
-			continue;
-		// Keep a squad that is still bigger than what we'd send out fresh.
-		const bool isRaid = task.GetFightType() == Task::FightType::RAID;
-		const float fresh = isRaid ? aiMilitaryMgr.quota.raid.min : aiMilitaryMgr.quota.attack;
-		// Recall once the squad has bled and is now weaker than what we'd send fresh, scaled by how well we trade.
-		// decide: it has bled and what is left, at our trade rate, no longer beats what a fresh squad is sized against
-		// it has bled, and what is left, at our trade rate, no longer beats what a fresh squad is sized against
-		const bool recall = p < squadPeak[i] && p * Brain::Assess::trade < fresh;
-		if (recall) {
-			++recalls;
-			AiLog("[ANV] Army: recalling broken " + (isRaid ? "raid" : "attack") + " squad power "
-				+ F1(p) + "/" + F1(squadPeak[i]) + " (" + task.GetUnits().length() + " units)");
-			squads.removeAt(i);
-			squadPeak.removeAt(i);
-			squadStart.removeAt(i);
-			task.Abort();
-		}
-	}
-}
+// (BARb squad tracking and broken-squad recall removed with BARb's army handling; Command pulls back itself.)
 
 }  // namespace Army
 
@@ -373,6 +294,7 @@ void Update()
 }  // namespace RezLab
 
 namespace EcoPos {
+array<AIFloat3> raidPos; array<float> raidVal;  // expected enemy economy (Command objectives)
 // the cheapest mobile constructor any factory we own can build (unit facts via Facts::BuildOptions)
 CCircuitDef@ CheapestConstructor()
 {
@@ -454,9 +376,11 @@ void Update()
 			}
 			if (pTaken <= 0.f) continue;
 			rp.insertLast(msp[i]);
-			rv.insertLast(pTaken * mexV);
+			// what killing their extractor there is worth: its cost + what it would extract over our horizon
+			const float yieldH = (Economist::mexT1 is null) ? 0.f : msi[i] * Facts::ExtractsMetal(Economist::mexT1.GetName()) * Economist::Horizon();
+			rv.insertLast(pTaken * (mexV + yieldH));
 		}
-		aiMilitaryMgr.SetRaidTargets(rp, rv);
+		raidPos = rp; raidVal = rv;
 	}
 	behind = ours < theirs;
 	// the core's constructor rule (decide): builds constructors while build power < income x ratio. A constructor
@@ -667,139 +591,8 @@ string Status() { return "scout: worthy=" + worthy + " top=" + int(topValue) + "
 }  // namespace Scout
 
 /* ======================================================================== */
-// ---- Hold: just-in-time defence of extractors (needs the C++ bridge) ----
-// Each armed enemy is assigned to the extractor it is closing on soonest (its velocity says where it goes).
-// An extractor with incoming threat T gets a hold task sized to T, filled by the units that can be there
-// before the enemy, nearest first. If those units cannot reach T in time we do not commit: feeding units
-// one by one into a lost fight costs more than the extractor. When nothing is coming any more, release.
-namespace Hold {
-
-class SHold { CCircuitUnit@ mex; IUnitTask@ task; float need; }
-array<SHold@> holds;
-uint opened = 0, skipped = 0;
-
-float Power(const array<CCircuitUnit@>@ units)
-{
-	float p = 0.f;
-	for (uint i = 0; i < units.length(); ++i) p += units[i].circuitDef.power;
-	return p;
-}
-
-int Find(CCircuitUnit@ mex)
-{
-	for (uint i = 0; i < holds.length(); ++i) if (holds[i].mex is mex) return int(i);
-	return -1;
-}
-
-void OnTaskRemoved(IUnitTask@ task)
-{
-	for (uint i = 0; i < holds.length(); ++i) if (holds[i].task is task) { holds.removeAt(i); return; }
-}
-
-void Update()
-{
-	// assets to defend: every constructor and structure of ours
-	array<CCircuitUnit@> mexes;
-	{
-		const array<CCircuitUnit@>@ own = AiGetTeamUnits();
-		for (uint k = 0; k < own.length(); ++k) {
-			const CCircuitDef@ d = own[k].circuitDef;
-			if (!d.IsMobile() || (d.IsRoleAny(Unit::Role::BUILDER.mask) && own[k] !is commander)) mexes.insertLast(own[k]);
-		}
-	}
-	const uint M = mexes.length();
-	if (M == 0) return;
-	array<AIFloat3> mp(M);
-	for (uint m = 0; m < M; ++m) mp[m] = mexes[m].GetPos(ai.frame);
-
-	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
-	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
-	array<float> incoming(M, 0.f), eta(M, 1e9f);
-	for (uint i = 0; i < n; ++i) {
-		CCircuitDef@ d = ed[i];
-		if (d is null || !d.IsMobile() || d.threat <= 0.f) continue;
-		int best = -1; float bestEta = 1e9f;
-		for (uint m = 0; m < M; ++m) {
-			const float dist = ep[i].distance2D(mp[m]);
-			float t;
-			if (dist <= d.GetMaxRange()) t = 0.f;  // already shooting it
-			else {
-				const float closing = ((mp[m].x - ep[i].x) * ev[i].x + (mp[m].z - ep[i].z) * ev[i].z) / dist * 30.f;  // elmo/s
-				if (closing <= 0.f) continue;
-				t = (dist - d.GetMaxRange()) / closing;
-			}
-			if (t < bestEta) { bestEta = t; best = int(m); }
-		}
-		if (best < 0) continue;
-		incoming[best] += d.threat;
-		eta[best] = AiMin(eta[best], bestEta);
-	}
-
-	// release holds whose extractor is gone or no longer threatened
-	for (int h = int(holds.length()) - 1; h >= 0; --h) {
-		int m = -1;
-		for (uint k = 0; k < M; ++k) if (mexes[k] is holds[h].mex) { m = int(k); break; }
-		if (m < 0 || incoming[m] <= 0.f) {
-			aiMilitaryMgr.AbortTask(holds[h].task);  // OnTaskRemoved drops it from the list
-		}
-	}
-
-	// candidate responders: our armed ground/hover units on ordinary fighter tasks
-	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
-	array<CCircuitUnit@> free;
-	for (uint i = 0; i < all.length(); ++i) {
-		CCircuitUnit@ u = all[i];
-		const CCircuitDef@ d = u.circuitDef;
-		if (!d.IsMobile() || d.power <= 0.f || d.IsAbleToFly() || u is commander) continue;
-		if (d.IsRoleAny(Unit::Role::BUILDER.mask | Unit::Role::SCOUT.mask)) continue;
-		if (u.task is null || u.task.GetType() != Task::Type::FIGHTER) continue;
-		bool held = false;
-		for (uint h = 0; h < holds.length() && !held; ++h) held = holds[h].task is u.task;
-		if (!held) free.insertLast(u);
-	}
-
-	for (uint m = 0; m < M; ++m) {
-		if (incoming[m] <= 0.f) continue;
-		const int h = Find(mexes[m]);
-		float have = (h >= 0) ? Power(holds[h].task.GetUnits()) : 0.f;
-		if (have >= incoming[m]) continue;
-		// who can be there before the enemy, nearest first
-		array<float> arr; array<uint> idx;
-		// A raid already on the asset (eta 0) can't be beaten to it; what matters then is whether anything of ours is
-		// still there when help arrives: the assets within the raiders' reach of this one after our travel time.
-		float raidSpeed = 1.f;
-		for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile() && ep[i].distance2D(mp[m]) <= ed[i].GetMaxRange() + ed[i].speed) raidSpeed = AiMax(raidSpeed, ed[i].speed);
-		for (uint i = 0; i < free.length(); ++i) {
-			if (free[i] is null) continue;
-			const float t = MoveTime(free[i].circuitDef, free[i].GetPos(ai.frame).distance2D(mp[m]));
-			if (eta[m] <= 0.f) {
-				float stake = 0.f;
-				for (uint k = 0; k < M; ++k) if (mp[k].distance2D(mp[m]) <= raidSpeed * t + mexes[k].circuitDef.GetMaxRange()) stake += mexes[k].circuitDef.costM;
-				if (stake <= 0.f) continue;
-			} else if (t > eta[m]) continue;
-			uint k = 0; while (k < arr.length() && arr[k] < t) ++k;
-			arr.insertAt(k, t); idx.insertAt(k, i);
-		}
-		float add = 0.f; uint take = 0;
-		while (take < idx.length() && have + add < incoming[m]) { add += free[idx[take]].circuitDef.power; ++take; }
-		if (have + add < incoming[m]) { ++skipped; continue; }  // cannot win it in time: do not feed units in
-		IUnitTask@ task;
-		if (h >= 0) @task = holds[h].task;
-		else {
-			@task = aiMilitaryMgr.EnqueueDefendAt(mp[m], incoming[m]);
-			SHold hd; @hd.mex = mexes[m]; @hd.task = task; hd.need = incoming[m];
-			holds.insertLast(hd); ++opened;
-		}
-		for (uint k = 0; k < take; ++k) {
-			aiMilitaryMgr.AssignTask(free[idx[k]], task);
-			@free[idx[k]] = null;
-		}
-	}
-}
-
-string Status() { return "holds=" + holds.length() + " opened=" + opened + " skipped=" + skipped; }
-
-}  // namespace Hold
+// (Hold, the just-in-time extractor defence built on BARb defend tasks, was removed with BARb's army handling: Command
+// defends what enemies threaten through OursThreatened.)
 
 
 namespace Recycler {
@@ -2625,6 +2418,279 @@ void OnUnitFinished(CCircuitUnit@ unit)
 }
 
 /*
+ * Command: Anarva's own army (owner, 2026-11-25: scrap BARb's army handling and rebuild it). BARb's squads, quotas,
+ * promotions and raid/attack/defend tasks no longer get our combat units: military.as hands every armed mobile unit
+ * to the module's player task, and this decides what each one does, every second.
+ *
+ *  1. Objectives: every known enemy unit and building (value = what it cost them + what it would yield them over our
+ *     horizon + our buildings it threatens), and every spot we expect their economy at (EcoPos raid targets).
+ *  2. Defence of an objective = the threat of every armed enemy that covers it: within its reach, or able to get in
+ *     reach while we travel there.
+ *  3. Assignment: objectives by value per second of travel; each takes the nearest free units until our strength
+ *     beats its defence at our trade rate, and only if the square-law loss is below its value (no feeding).
+ *  4. Execution: a defended objective is approached to just outside its defenders' reach and attacked when the squad
+ *     has gathered there; in a fight every unit shoots the enemy in its reach worth most per point of health, and a
+ *     unit that out-ranges the nearest enemy holds its own range from it (top 1v1 players' units keep moving in
+ *     combat: 0.68 of top speed for bots and tanks, replays.db motion, 69 games).
+ *  5. A squad whose strength no longer beats what defends its objective pulls back home.
+ *  Free units wait at home. Every decision is logged ([ANV-CMD]).
+ */
+namespace Command {
+class Op {
+	int enemyId = -1;  // -1: a place (expected economy)
+	AIFloat3 pos;
+	float value = 0.f;
+	float defence = 0.f;
+	bool engaged = false;
+	array<CCircuitUnit@> units;
+}
+array<Op@> ops;
+dictionary lastOrder;  // unit id -> last order key (re-issued only when it changes)
+int created = 0, retreats = 0;
+
+// every armed mobile unit (BARb's scout role also covers raiders such as the Grunt, so it can't exclude anything)
+bool Owns(const CCircuitDef@ d) { return IsArmy(d); }
+
+// enemy snapshot, refreshed each second
+array<AIFloat3> ePos; array<AIFloat3> eVel; array<CCircuitDef@> eDef; array<float> eCost, eHp, eBuilt; array<int> eFlags, eIds;
+float spotIncome = 0.f;
+
+float EnemyValue(uint i, float H)
+{
+	const CCircuitDef@ d = eDef[i];
+	if (d is null) return eCost[i];
+	const string nm = d.GetName();
+	float v = Economist::MetalValue(d);
+	const float upkeep = Facts::EnergyUpkeep(nm);
+	const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
+	const float yield = Facts::ExtractsMetal(nm) * spotIncome + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
+	if (yield > 0.f) v += yield * H;
+	return v;
+}
+// armed enemies covering p: in their reach now, or able to get there within t seconds
+float Cover(const AIFloat3& in p, float t)
+{
+	float d = 0.f;
+	for (uint i = 0; i < ePos.length(); ++i) {
+		const CCircuitDef@ ed = eDef[i];
+		if (ed is null || ed.threat <= 0.f || ed.surfThrDmg <= 0.f) continue;
+		const float reach = ed.GetMaxRange() + (ed.IsMobile() ? ed.speed * t : 0.f);
+		if (ePos[i].distance2D(p) <= reach) d += ed.threat;
+	}
+	return d;
+}
+// value of our buildings an enemy threatens (killing it saves them)
+float OursThreatened(uint i, const array<CCircuitUnit@>@ mine)
+{
+	const CCircuitDef@ ed = eDef[i];
+	if (ed is null || ed.surfThrDmg <= 0.f) return 0.f;
+	float v = 0.f;
+	for (uint k = 0; k < mine.length(); ++k) {
+		const CCircuitDef@ d = mine[k].circuitDef;
+		if (d.IsMobile()) continue;
+		if (mine[k].GetPos(ai.frame).distance2D(ePos[i]) <= ed.GetMaxRange() + ed.speed) v += Economist::MetalValue(d);
+	}
+	return v;
+}
+void Order(CCircuitUnit@ u, const string& in key, int kind, const AIFloat3& in p, int target)
+{
+	string prev;
+	if (lastOrder.get("" + u.id, prev) && prev == key) return;
+	lastOrder.set("" + u.id, key);
+	if (kind == 0) u.CmdMoveTo(p);
+	else if (kind == 1) u.CmdFightTo(p);
+	else if (!u.CmdAttackEnemy(target)) u.CmdFightTo(p);
+}
+float Strength(const array<CCircuitUnit@>@ us)
+{
+	float s = 0.f;
+	for (uint i = 0; i < us.length(); ++i) s += us[i].circuitDef.threat;
+	return s;
+}
+
+void Update()
+{
+	if (!HasBase()) return;
+	const IUnitTask@ mine = aiMilitaryMgr.GetPlayerTask();
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	array<CCircuitUnit@> force;
+	for (uint i = 0; i < all.length(); ++i)
+		if (Owns(all[i].circuitDef) && all[i].task is mine) force.insertLast(all[i]);
+	const uint n = AiGetEnemies(ePos, eVel, eDef, eCost, eFlags, eHp, eBuilt);
+	AiGetEnemyIds(eIds);
+	{
+		array<AIFloat3> sp; array<float> si; array<bool> so;
+		const uint ns = AiGetMetalSpots(sp, si, so);
+		float sum = 0.f;
+		for (uint i = 0; i < ns; ++i) sum += si[i];
+		const float avg = (ns > 0) ? sum / float(ns) : 0.f;
+		spotIncome = (Economist::mexT1 is null) ? 0.f : avg * Facts::ExtractsMetal(Economist::mexT1.GetName());
+	}
+	const float H = AiMax(1.f, Economist::Horizon());
+	const float trade = AiMax(1e-3f, Assess::trade);
+
+	// keep live ops: drop dead units, finished targets, and fights we no longer win
+	dictionary assigned;
+	for (int o = int(ops.length()) - 1; o >= 0; --o) {
+		Op@ op = ops[o];
+		for (int k = int(op.units.length()) - 1; k >= 0; --k)
+			if (force.findByRef(op.units[k]) < 0) op.units.removeAt(k);
+		bool alive = op.enemyId < 0;
+		for (uint i = 0; i < n && !alive; ++i)
+			if (eIds[i] == op.enemyId) { alive = true; op.pos = ePos[i]; }
+		if (op.enemyId < 0 && AiIsInLOS(op.pos)) {
+			bool there = false;
+			for (uint i = 0; i < n && !there; ++i)
+				if (eDef[i] !is null && !eDef[i].IsMobile() && ePos[i].distance2D(op.pos) <= eDef[i].GetRadius() * 2.f) there = true;
+			alive = there;  // the place is in sight and holds nothing: nothing to raid there
+		}
+		const float S = Strength(op.units);
+		op.defence = Cover(op.pos, 0.f);
+		if (!alive || op.units.length() == 0 || S * trade <= op.defence) {
+			if (alive && op.units.length() > 0) {
+				++retreats;
+				AiLog("[ANV-CMD] pull back from (" + int(op.pos.x) + "," + int(op.pos.z) + "): strength " + F1(S) + " x trade "
+					+ F1(trade) + " <= defence " + F1(op.defence));
+				for (uint k = 0; k < op.units.length(); ++k) Order(op.units[k], "home", 0, basePos, -1);
+			}
+			ops.removeAt(o);
+			continue;
+		}
+		for (uint k = 0; k < op.units.length(); ++k) assigned.set("" + op.units[k].id, true);
+	}
+	array<CCircuitUnit@> freeUnits;
+	for (uint i = 0; i < force.length(); ++i)
+		if (!assigned.exists("" + force[i].id)) freeUnits.insertLast(force[i]);
+
+	// new ops, best first, while the free units can win them
+	if (freeUnits.length() > 0) {
+		AIFloat3 fc(0.f, 0.f, 0.f);
+		float fSpeed = 1e9f;
+		for (uint i = 0; i < freeUnits.length(); ++i) { fc = fc + freeUnits[i].GetPos(ai.frame); fSpeed = AiMin(fSpeed, freeUnits[i].circuitDef.speed); }
+		fc = fc / float(freeUnits.length());
+		fSpeed = AiMax(1.f, fSpeed);
+		array<AIFloat3> cp; array<float> cv; array<int> cid;
+		for (uint i = 0; i < n; ++i) {
+			if (eDef[i] is null || eDef[i].IsAbleToFly() || (eFlags[i] & 2) == 0) continue;
+			bool taken = false;
+			for (uint o = 0; o < ops.length() && !taken; ++o) if (ops[o].enemyId == eIds[i]) taken = true;
+			if (taken) continue;
+			cp.insertLast(ePos[i]); cv.insertLast(EnemyValue(i, H) + OursThreatened(i, all)); cid.insertLast(eIds[i]);
+		}
+		for (uint i = 0; i < EcoPos::raidPos.length(); ++i) {
+			if (AiIsInLOS(EcoPos::raidPos[i])) continue;  // in sight: the known enemies above cover it
+			cp.insertLast(EcoPos::raidPos[i]); cv.insertLast(EcoPos::raidVal[i]); cid.insertLast(-1);
+		}
+		array<float> score(cp.length());
+		array<float> dfc(cp.length());
+		for (uint i = 0; i < cp.length(); ++i) {
+			const float t = fc.distance2D(cp[i]) / fSpeed;
+			dfc[i] = Cover(cp[i], t);
+			score[i] = cv[i] / AiMax(1.f, t);
+		}
+		while (freeUnits.length() > 0) {
+			int best = -1;
+			float bestScore = 0.f;
+			for (uint i = 0; i < cp.length(); ++i)
+				if (score[i] > bestScore) { bestScore = score[i]; best = int(i); }
+			if (best < 0) break;
+			score[best] = 0.f;
+			// the nearest free units until our strength beats the defence at our trade rate
+			const float need = dfc[best] / trade;
+			array<CCircuitUnit@> pick;
+			float S = 0.f, metal = 0.f;
+			array<float> dist(freeUnits.length());
+			array<bool> used(freeUnits.length());
+			for (uint k = 0; k < freeUnits.length(); ++k) { dist[k] = freeUnits[k].GetPos(ai.frame).distance2D(cp[best]); used[k] = false; }
+			while (S <= need || pick.length() == 0) {
+				int nk = -1;
+				for (uint k = 0; k < freeUnits.length(); ++k)
+					if (!used[k] && (nk < 0 || dist[k] < dist[nk])) nk = int(k);
+				if (nk < 0) break;
+				used[nk] = true;
+				pick.insertLast(freeUnits[nk]);
+				S += freeUnits[nk].circuitDef.threat;
+				metal += freeUnits[nk].circuitDef.costM;
+			}
+			if (S <= need) continue;  // what is free can't win it
+			const float r = dfc[best] / AiMax(1e-6f, S);
+			const float loss = metal * r * r;  // square law
+			if (cv[best] <= loss) continue;  // it costs more than it is worth
+			Op op;
+			op.enemyId = cid[best]; op.pos = cp[best]; op.value = cv[best]; op.defence = dfc[best]; op.engaged = dfc[best] <= 0.f;
+			for (uint k = 0; k < pick.length(); ++k) op.units.insertLast(pick[k]);
+			ops.insertLast(op);
+			++created;
+			AiLog("[ANV-CMD] op " + (op.enemyId < 0 ? "raid spot" : ("enemy " + op.enemyId)) + " at (" + int(op.pos.x) + "," + int(op.pos.z)
+				+ ") value " + int(op.value) + " defence " + F1(op.defence) + " strength " + F1(S) + " units " + pick.length() + " loss~" + int(loss));
+			for (int k = int(freeUnits.length()) - 1; k >= 0; --k)
+				if (used[k]) freeUnits.removeAt(k);
+		}
+	}
+
+	// execute
+	for (uint o = 0; o < ops.length(); ++o) {
+		Op@ op = ops[o];
+		AIFloat3 oc(0.f, 0.f, 0.f);
+		float minReach = 1e9f;
+		for (uint k = 0; k < op.units.length(); ++k) { oc = oc + op.units[k].GetPos(ai.frame); minReach = AiMin(minReach, op.units[k].circuitDef.GetMaxRange()); }
+		oc = oc / float(op.units.length());
+		minReach = AiMax(1.f, minReach);
+		if (!op.engaged) {
+			// gather just outside the defenders' reach, on our side; engage once everyone is within its reach of the spot
+			float defReach = 0.f;
+			for (uint i = 0; i < n; ++i)
+				if (eDef[i] !is null && eDef[i].threat > 0.f && ePos[i].distance2D(op.pos) <= eDef[i].GetMaxRange() + eDef[i].speed)
+					defReach = AiMax(defReach, eDef[i].GetMaxRange());
+			AIFloat3 dir = oc - op.pos;
+			const float len = AiMax(1.f, dir.Length2D());
+			const AIFloat3 stage = op.pos + dir * ((defReach + minReach) / len);
+			bool gathered = true;
+			for (uint k = 0; k < op.units.length() && gathered; ++k)
+				if (op.units[k].GetPos(ai.frame).distance2D(stage) > op.units[k].circuitDef.GetMaxRange()) gathered = false;
+			if (!gathered) {
+				for (uint k = 0; k < op.units.length(); ++k)
+					Order(op.units[k], "stage" + o + ":" + int(stage.x / minReach) + "," + int(stage.z / minReach), 0, stage, -1);
+				continue;
+			}
+			op.engaged = true;
+			AiLog("[ANV-CMD] engage (" + int(op.pos.x) + "," + int(op.pos.z) + ") with " + op.units.length() + " units");
+		}
+		for (uint k = 0; k < op.units.length(); ++k) {
+			CCircuitUnit@ u = op.units[k];
+			const AIFloat3 p = u.GetPos(ai.frame);
+			const float reach = AiMax(1.f, u.circuitDef.GetMaxRange());
+			int bi = -1, ni = -1;
+			float bv = 0.f, nd = 1e9f;
+			for (uint i = 0; i < n; ++i) {
+				if (eDef[i] is null || eDef[i].IsAbleToFly()) continue;
+				const float dd = ePos[i].distance2D(p);
+				if (eDef[i].threat > 0.f && dd < nd) { nd = dd; ni = int(i); }
+				if (dd > reach) continue;
+				const float v = EnemyValue(i, H) / AiMax(1.f, eHp[i] * eDef[i].health);
+				if (bi < 0 || v > bv) { bv = v; bi = int(i); }
+			}
+			if (ni >= 0 && reach > eDef[ni].GetMaxRange() && nd < eDef[ni].GetMaxRange()) {
+				// we out-range the nearest armed enemy and stand inside its reach: step back to our own range from it
+				AIFloat3 away = p - ePos[ni];
+				const float l = AiMax(1.f, away.Length2D());
+				const AIFloat3 back = ePos[ni] + away * (reach / l);
+				Order(u, "kite" + eIds[ni] + ":" + int(back.x / reach) + "," + int(back.z / reach), 0, back, -1);
+			} else if (bi >= 0) {
+				Order(u, "atk" + eIds[bi], 2, ePos[bi], eIds[bi]);
+			} else {
+				Order(u, "fight" + o + ":" + int(op.pos.x / reach) + "," + int(op.pos.z / reach), 1, op.pos, -1);
+			}
+		}
+	}
+	// free units wait at home
+	for (uint i = 0; i < freeUnits.length(); ++i)
+		if (freeUnits[i].GetPos(ai.frame).distance2D(basePos) > freeUnits[i].circuitDef.GetMaxRange()) Order(freeUnits[i], "home", 0, basePos, -1);
+}
+string Status() { return "ops=" + ops.length() + " created=" + created + " pulledBack=" + retreats; }
+}  // namespace Command
+
+/*
  * Self-assessment, once per game minute (owner #92, CHECKLIST.md). Every verdict is measured from the game:
  *  - waste: storage is full and income exceeds spending -> the excess is thrown away (per second)
  *  - stall: stock is below one second of the deficit (spending exceeds income and nothing is left to draw on)
@@ -2696,6 +2762,7 @@ void Update()
 		+ " killed=" + int(killed) + " lost=" + int(lost)
 		+ " idleBuilders=" + idleBuilders + "/" + builders + " idleFactories=" + idleFacs + "/" + facs
 		+ " mInc=" + F1(aiEconomyMgr.metal.income) + " eInc=" + F1(aiEconomyMgr.energy.income)
+		+ " " + Command::Status()
 		+ " microContact=" + minContact + " microFired=" + minFired + " microNoReply=" + minNoReply
 		+ " microOutranged=" + minOutranged + " microIdleInRange=" + minIdleInRange + " microStillHit=" + minStillHit);
 	minContact = minFired = minNoReply = minOutranged = minIdleInRange = minStillHit = 0;
@@ -2754,8 +2821,8 @@ void Micro()
 	minIdleInRange += idleInRange; minStillHit += stillHit;
 	// squad spread: mean distance from the squad centre, over the squad's shortest reach
 	string spread = "";
-	for (uint q = 0; q < Army::squads.length(); ++q) {
-		const array<CCircuitUnit@>@ su = Army::squads[q].GetUnits();
+	for (uint q = 0; q < Command::ops.length(); ++q) {
+		const array<CCircuitUnit@>@ su = Command::ops[q].units;
 		if (su.length() < 2) continue;
 		AIFloat3 c(0.f, 0.f, 0.f); float minReach = 1e9f;
 		for (uint k = 0; k < su.length(); ++k) { c = c + su[k].GetPos(ai.frame); minReach = AiMin(minReach, su[k].circuitDef.GetMaxRange()); }
@@ -3177,44 +3244,12 @@ void Update()  // every 30 frames
 	Intel::Update();
 	Assess::Update();
 	Director::Update();
-	// no config floors (quota.attack 60, raid min): an attack launches with the power needed to beat what we know of
-	// the enemy at our trade rate; a raid with what beats the raiders that will answer it
-	// #91: a fight is local. An attack needs to beat what defends its target plus what can get there before we do,
-	// not the enemy's whole army (needPower held 130 raiders at home at ratio 6.7 on Throne, 2026-11-25). For each
-	// known enemy group: its threat + the threat of every other group that reaches it sooner than we do from base;
-	// the quota is the cheapest such fight at our trade rate. No group known: the whole known/assumed army.
-	float fightNeed = Director::needPower;
-	if (HasBase()) {
-		array<AIFloat3> gp; array<float> gc, gt;
-		const uint g = AiGetEnemyGroups(gp, gc, gt);
-		const float ourSpeed = AiMax(1.f, Director::allSpeed);
-		float enemySpeed = ourSpeed;
-		{
-			array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
-			const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
-			float sp = 0.f; uint cnt = 0;
-			for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile() && ed[i].surfThrDmg > 0.f) { sp += ed[i].speed; ++cnt; }
-			if (cnt > 0) enemySpeed = AiMax(1.f, sp / float(cnt));
-		}
-		for (uint i = 0; i < g; ++i) {
-			const float tUs = basePos.distance2D(gp[i]) / ourSpeed;
-			float need = gt[i];
-			for (uint k = 0; k < g; ++k)
-				if (k != i && gp[k].distance2D(gp[i]) / enemySpeed < tUs) need += gt[k];
-			fightNeed = (i == 0) ? need : AiMin(fightNeed, need);
-		}
-		if (g > 0) fightNeed /= AiMax(1e-3f, Assess::trade);
-	}
-	aiMilitaryMgr.quota.attack = fightNeed;
-	aiMilitaryMgr.SetValueHorizon(Economist::Horizon());  // the core values targets' lost output over our horizon (#90)
-	aiMilitaryMgr.quota.raid.min = aiEnemyMgr.GetEnemyThreat(RT::RAIDER) / AiMax(1e-3f, Assess::trade);
-	// a raid fills up to what its fight needs now (was the highest need ever seen: it only grew)
-	aiMilitaryMgr.quota.raid.avg = aiMilitaryMgr.quota.raid.min;
-	Army::CheckSquads();
+	// (BARb's attack/raid quotas and the core raid task's targets are gone: no combat unit is in a BARb task any more;
+	// Brain::Command decides each fight from its own defence estimate)
+	Command::Update();  // Anarva's own army (BARb squads, recalls and holds retired)
 	// every module re-decides on the engine's own slow-update tick (no per-module polling periods)
 	Recycler::Update();
 	Strategic::Update(Intel::jamAlert);
-	Hold::Update();
 	Scout::Update();
 	EcoPos::Update();
 	RezLab::Update();
@@ -3247,11 +3282,10 @@ void Update()  // every 30 frames
 			+ " E inc=" + F1(aiEconomyMgr.energy.income) + " E " + int(aiEconomyMgr.energy.current) + "/" + int(aiEconomyMgr.energy.storage)
 			+ " stall=" + aiEconomyMgr.isEnergyStalling + " bpTarget=" + F1(aiEconomyMgr.metal.income * aiFactoryMgr.buildpowerRatio));
 		Intel::BridgeLog();
-		AiLog("[ANV] hold " + Hold::Status());
 
 		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | allPow=" + F1(Director::MeasuredPower()) + " units=" + Army::ground.length()
-			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " recalls=" + Army::recalls
-			+ " quota.attack=" + F1(aiMilitaryMgr.quota.attack) + " raidMin=" + F1(aiMilitaryMgr.quota.raid.min)
+			+ " raiders=" + Army::raiders.length() + " " + Command::Status()
+
 			+ " enemyMob=" + F1(Brain::Economist::KnownEnemyThreat()) + " coreMob=" + F1(aiEnemyMgr.mobileThreat) + " jamCost=" + F1(Intel::jammerCost)
 			+ " maxHeat=" + F1(Intel::MaxHeat()) + " eyes=" + Intel::eyes.length() + "/" + Intel::eyesOrdered
 			+ " | " + Production::Status() + " | " + Recycler::Status() + " | " + Strategic::Status()

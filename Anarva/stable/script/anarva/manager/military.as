@@ -6,17 +6,21 @@ namespace Military {
 
 IUnitTask@ AiMakeTask(CCircuitUnit@ unit)
 {
+	// Anarva commands its own army (Brain::Command); BARb's squads/quotas/raid tasks no longer get combat units.
+	// Every armed mobile unit (BARb tags raiders like the Grunt as scouts too); unarmed scouts aren't army.
+	if (Brain::Command::Owns(unit.circuitDef))
+		return aiMilitaryMgr.GetPlayerTask();
 	return aiMilitaryMgr.DefaultMakeTask(unit);
 }
 
 void AiTaskAdded(IUnitTask@ task)
 {
-	Brain::Army::OnTaskAdded(task);
+	// (BARb squad tracking removed; Brain::Command owns the army)
 }
 
 void AiTaskRemoved(IUnitTask@ task, bool done)
 {
-	Brain::Army::OnTaskRemoved(task);
+	// (BARb squad tracking removed)
 }
 
 void AiUnitAdded(CCircuitUnit@ unit, Unit::UseAs usage)
