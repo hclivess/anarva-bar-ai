@@ -422,7 +422,21 @@ void Update()
 	}
 	const float N = float(AiMax(1, int(aiBuilderMgr.GetWorkerCount())));
 	const float saved = claimYield * claimWork / 2.f * (1.f / N - 1.f / (N + 1.f));
-	const bool work = unclaimed > 0 && conDef !is null && saved > Economist::MetalValue(conDef) && Director::ratio >= 1.f;
+	// A constructor without a building job proves the work we can claim now is covered: one more saves nothing (25
+	// constructors, 12 idle and 3 extractors at minute 8 while the raiders made every free spot unsafe: Eye of Horus
+	// 1v1, 2026-11-25). The lab builds the army that makes spots claimable instead.
+	int unemployed = 0;
+	{
+		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+		for (uint i = 0; i < mine.length(); ++i) {
+			CCircuitUnit@ u = mine[i];
+			if (u is commander || !u.circuitDef.IsMobile() || !u.circuitDef.IsRoleAny(Unit::Role::BUILDER.mask) || u.task is null) continue;
+			if (u.task.GetType() == Task::Type::NIL) continue;  // still in the factory
+			IBuilderTask@ bt = cast<IBuilderTask>(u.task);
+			if (bt is null || bt.buildDef is null) ++unemployed;
+		}
+	}
+	const bool work = unclaimed > 0 && unemployed == 0 && conDef !is null && saved > Economist::MetalValue(conDef) && Director::ratio >= 1.f;
 	wantConstructor = work;
 	aiFactoryMgr.buildpowerRatio = work ? 1e9f
 		: aiBuilderMgr.GetBuildPower() / AiMax(1e-3f, aiEconomyMgr.metal.income);  // otherwise hold constructors where they are
@@ -2033,6 +2047,36 @@ float Horizon()
 	return V / AiMax(1e-3f, theirInc) + cross;
 }
 
+// How long a producing building (extractor, energy plant) of ours actually lives in this game: building-seconds
+// survived / buildings lost (the exponential-lifetime estimate). The threat horizon above is the earliest the enemy
+// could take everything, a floor; valuing extractors over it alone (~160 s by minute 8) made resurrecting a wreck
+// worth more than a new extractor while the winners hold 17-19 extractors at minutes 8-10 (Eye of Horus 1v1).
+float producerExposure = 0.f;  // building-seconds
+int producerLosses = 0;
+int producerFrame = -1;
+bool IsProducer(const CCircuitDef@ d)
+{
+	if (d is null || d.IsMobile()) return false;
+	const string nm = d.GetName();
+	return Facts::ExtractsMetal(nm) > 0.f || Facts::EnergyMake(nm) > 0.f || Facts::EnergyUpkeep(nm) < 0.f;
+}
+void UpdateProducerLife()
+{
+	const int f = ai.frame;
+	if (producerFrame >= 0) {
+		int n = 0;
+		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+		for (uint i = 0; i < mine.length(); ++i) if (IsProducer(mine[i].circuitDef)) ++n;
+		producerExposure += float(n) * float(f - producerFrame) / SECOND;
+	}
+	producerFrame = f;
+}
+float ProducerLife()
+{
+	const float floorH = Horizon();
+	return (producerLosses > 0) ? AiMax(floorH, producerExposure / float(producerLosses)) : AiMax(floorH, producerExposure);
+}
+
 // Enemy mobile threat; when we see nothing, assume they grew at least as fast as we did.
 int knownThreatFrame = -1; float knownThreat = 0.f;
 float KnownEnemyThreat()
@@ -3210,6 +3254,23 @@ void Update()
 	}
 	const float killed = Assess::killedTotal - lastKilled, lost = (Assess::lostNearTotal + Assess::lostFarTotal) - lastLost;
 	lastKilled = Assess::killedTotal; lastLost = Assess::lostNearTotal + Assess::lostFarTotal;
+	{  // what every constructor is doing (job def, or task type when it has none)
+		array<string> jk; array<int> jn;
+		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+		for (uint i = 0; i < mine.length(); ++i) {
+			CCircuitUnit@ u = mine[i];
+			const CCircuitDef@ d = u.circuitDef;
+			if (!d.IsMobile() || !d.IsRoleAny(Unit::Role::BUILDER.mask) || u is commander) continue;
+			IBuilderTask@ bt = cast<IBuilderTask>(u.task);
+			const string k = (bt !is null && bt.buildDef !is null) ? bt.buildDef.GetName() : ((u.task is null) ? "none" : ("type" + int(u.task.GetType()) + (bt !is null ? ("/b" + int(bt.GetBuildType())) : "")));
+			const int at = jk.find(k);
+			if (at < 0) { jk.insertLast(k); jn.insertLast(1); } else ++jn[at];
+		}
+		string line = "";
+		for (uint i = 0; i < jk.length(); ++i) line += " " + jk[i] + ":" + jn[i];
+		AiLog("[ANV-JOBS] t=" + Minute() + "m" + line + " | producer life " + int(Economist::ProducerLife()) + " s (threat floor " + int(Economist::Horizon())
+			+ ", lost " + Economist::producerLosses + ")");
+	}
 	AiLog("[ANV-CHECK] t=" + Minute() + "m metal=" + Res(aiEconomyMgr.metal, aiEconomyMgr.metal.pull)
 		+ " energy=" + Res(aiEconomyMgr.energy, Economist::RealPull())
 		+ " banked=" + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
@@ -3675,9 +3736,27 @@ void CommGuardUpdate()
 	AiLog("[ANV] CommRisk: leaving job, risk " + int(lastRisk) + " > gain " + int(lastGain) + " (danger " + F1(commDanger) + " cover " + F1(commCover) + " dps " + F1(commDps) + " V " + int(lastV) + ")");
 }
 
+string NearestEnemyText(const AIFloat3& in p)
+{
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	int best = -1; float bd = 1e30f;
+	for (uint i = 0; i < n; ++i) { const float d = ep[i].distance2D(p); if (d < bd) { bd = d; best = int(i); } }
+	if (best < 0) return "none";
+	return ((ed[best] is null) ? "unknown" : ed[best].GetName()) + "@" + int(bd) + " flags=" + ef[best];
+}
 void OnUnitDestroyed(CCircuitUnit@ unit)
 {
 	Command::OnDestroyed(unit);
+	if (Economist::IsProducer(unit.circuitDef)) ++Economist::producerLosses;
+	{  // every loss, for the checklist: what, where, on which job
+		const AIFloat3 p = unit.GetPos(ai.frame);
+		IBuilderTask@ bt = cast<IBuilderTask>(unit.task);
+		AiLog("[ANV-DEAD] t=" + (ai.frame / SECOND) + "s " + unit.circuitDef.GetName() + " m=" + int(unit.circuitDef.costM)
+			+ " at (" + int(p.x) + "," + int(p.z) + ") fromBase=" + int(HasBase() ? basePos.distance2D(p) : -1.f)
+			+ " job=" + ((bt !is null && bt.buildDef !is null) ? bt.buildDef.GetName() : (unit.task is null ? "-" : ("task" + int(unit.task.GetType()))))
+			+ " nearestEnemy=" + NearestEnemyText(p));
+	}
 	if (unit.circuitDef.IsRoleAny(Unit::Role::COMM.mask)) {
 		const AIFloat3 p = unit.GetPos(ai.frame);
 		AiLog("[ANV] COMMANDER LOST at (" + int(p.x) + "," + int(p.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(p) : -1.f)
@@ -3716,6 +3795,10 @@ void Update()  // every 30 frames
 	Intel::Update();
 	Assess::Update();
 	Director::Update();
+	// the core values builder jobs and smooths energy demand over the same horizon as the script (it was never set:
+	// the core ran on a 1-second horizon)
+	Economist::UpdateProducerLife();
+	aiMilitaryMgr.SetValueHorizon(Economist::ProducerLife());
 	// (BARb's attack/raid quotas and the core raid task's targets are gone: no combat unit is in a BARb task any more;
 	// Brain::Command decides each fight from its own defence estimate)
 	Opening::Update();  // map-based opening, re-planned after every job (#94)
