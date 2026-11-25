@@ -413,11 +413,16 @@ void Update()
 		const float conSpeed = AiMax(1.f, conDef.speed);
 		const float conBuild = Economist::mexT1.buildTime / AiMax(1.f, conDef.buildSpeed);
 		const float ext = Economist::Extract(Economist::mexT1.GetName());
+		// Players expand behind their army: a spot on their side of the map is ours only as far as our army controls
+		// it, our strength / (ours + theirs) (20 constructors and an army of 54-420 against the winners' 15 and
+		// 648-3395: spots nobody could hold drove constructor production, Gasbag Grabens 2026-11-25)
+		const float control = Production::ArmyControl();
 		for (int i = 0; i < ns2; ++i)
 			if (mso2[i] && !OwnSpot(msp2[i])) {
 				// weighted by the share we keep: how much sooner we reach the spot than they do
 				const float dUs = basePos.distance2D(msp2[i]), dThem = AiEnemyBasePos().distance2D(msp2[i]);
-				const float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;
+				float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;
+				if (dThem < dUs) keep *= control;
 				claimWork += keep * (dUs / conSpeed + conBuild);
 				claimYield += keep * msi2[i] * ext;
 			}
@@ -480,7 +485,10 @@ void Update()
 // ranking keeps. Only turrets against a raid and the opener are NOW: with cameras, storage, shields NOW too, six
 // constructors built cameras at minute 9 while extractors stood at 4 (Canis River, 2026-11-25) - as a
 	// plain job it counted at its cost only and was never built (3 orders, 0 towers on Canis River, 2026-11-25)
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, p, 0.f, true, OrderLife(tur, p)));
+	// next to the extractor, not on it: the build site is searched within the two footprints side by side (at the
+	// extractor's own position with radius 0 the job could never be placed: 8 orders, 1 tower, Gasbag Grabens)
+	const float around = tur.GetRadius() * 2.f + best.circuitDef.GetRadius() * 2.f;
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, p, around, true, OrderLife(tur, p)));
 	AiLog("[ANV] MexPorc: " + tur.GetName() + " at raided extractor (lost " + int(bestHeat) + " metal around it > turret " + int(cost) + ")");
 }
 }  // namespace MexPorc
@@ -1718,7 +1726,7 @@ void Fortify()
 	if (!TurretSurvives(tur, tpos)) return;
 	lastFortify = ai.frame;
 	++forts;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, tpos, 0.f, true, OrderLife(tur, tpos)));
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, tpos, tur.GetRadius() * 2.f, true, OrderLife(tur, tpos)));  // a site within its own footprint
 	AiLog("[ANV] Fortify: " + tur.GetName() + " covering the cell where we lost " + int(bestHeat) + " metal");
 }
 
@@ -2053,6 +2061,23 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		+ " (value " + int(bestV) + " per metal " + F2(bestRatio) + "; S air/surf " + int(sAir) + "/" + int(sSurf) + " E " + int(eAir) + "/" + int(eSurf) + ")" + " |" + why);
 	return aiFactoryMgr.Enqueue(TaskS::Recruit(bestJob == 1 ? Task::RecruitType::BUILDPOWER : Task::RecruitType::FIREPOWER,
 		Task::Priority::NORMAL, bestDef, fpos, fac.circuitDef.GetRadius()));
+}
+// our army's share of control: our strength (armed units and commander) against theirs, as seen (unseen: at least
+// ours), on the linear share below
+float ArmyControl()
+{
+	float S = 0.f, E = 0.f;
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	for (uint i = 0; i < mine.length(); ++i) {
+		const CCircuitDef@ d = mine[i].circuitDef;
+		if (!IsArmy(d) && mine[i] !is commander) continue;
+		S += sqrt(AiMax(0.f, d.GetSustainedDps()) * AiMax(1.f, d.health));
+	}
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	for (uint i = 0; i < ne; ++i)
+		if (ed[i] !is null && ed[i].IsMobile() && ed[i].GetSustainedDps() > 0.f) E += sqrt(ed[i].GetSustainedDps() * AiMax(1.f, eh[i] * ed[i].health));
+	return WinShare(S, AiMax(E, S));
 }
 // The share of what is contested that strength S holds against E. Fights come piecemeal (raids, local fights),
 // where each unit adds in proportion (Lanchester's linear law); the square law over one big battle made a small army
@@ -3942,7 +3967,8 @@ void Update()
 		}
 		string line = "";
 		for (uint i = 0; i < jk.length(); ++i) line += " " + jk[i] + ":" + jn[i];
-		AiLog("[ANV-JOBS] t=" + Minute() + "m" + line + " | producer life " + int(Economist::ProducerLife()) + " s (threat floor " + int(Economist::Horizon())
+		AiLog("[ANV-JOBS] t=" + Minute() + "m" + line + " | metal income " + F1(aiEconomyMgr.metal.income) + " pull " + F1(aiEconomyMgr.metal.pull)
+			+ " bank " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage) + " | producer life " + int(Economist::ProducerLife()) + " s (threat floor " + int(Economist::Horizon())
 			+ ", lost " + Economist::producerLosses + ")");
 	}
 	AiLog("[ANV-CHECK] t=" + Minute() + "m metal=" + Res(aiEconomyMgr.metal, aiEconomyMgr.metal.pull)
