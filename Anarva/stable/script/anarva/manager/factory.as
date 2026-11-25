@@ -122,7 +122,13 @@ bool AiIsSwitchAllowed(CCircuitDef@ facDef)
 
 CCircuitDef@ AiGetFactoryToBuild(const AIFloat3& in pos, bool isStart, bool isReset)
 {
-	return aiFactoryMgr.DefaultGetFactoryToBuild(pos, isStart, isReset);
+	// Which factory is our decision (#97, think like the player): a higher tier only when the tech decision allows
+	// it; otherwise the T1 lab the opener judges best for this map (strength per metal it fields, units that reach
+	// their side). BARb's pick rebuilt a lost lab as an advanced lab with one extractor standing (Canis River).
+	CCircuitDef@ d = aiFactoryMgr.DefaultGetFactoryToBuild(pos, isStart, isReset);
+	if (d !is null && Brain::Tech::Tier(d) > 1 && Brain::Tech::Allowed(d)) return d;
+	CCircuitDef@ lab = Brain::Opening::BestLab();
+	return (lab !is null) ? lab : d;
 }
 
 /* --- Utils --- */

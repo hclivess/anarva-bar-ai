@@ -2709,6 +2709,17 @@ bool planning = false;
 const CCircuitDef@ planDef = null;
 AIFloat3 planHome, planThem;
 const CCircuitDef@ ComDef() { return planning ? planDef : commander.circuitDef; }
+// the T1 lab worth most for this map: strength per metal of the units it fields (as the opener chooses)
+CCircuitDef@ BestLab()
+{
+	if (!ready && commander !is null) Init();
+	CCircuitDef@ best = null; float bv = -1e30f;
+	for (uint k = 0; k < labs.length(); ++k) {
+		const float v = labs[k].strength / AiMax(1.f, Economist::MetalValue(labs[k].answer));
+		if (v > bv) { bv = v; @best = labs[k].def; }
+	}
+	return best;
+}
 AIFloat3 Home() { if (planning) return planHome; return HasBase() ? basePos : commander.GetPos(ai.frame); }
 AIFloat3 Them() { return planning ? planThem : AiEnemyBasePos(); }
 float Strength(const CCircuitDef@ d) { return sqrt(AiMax(0.f, d.GetSustainedDps()) * AiMax(1.f, d.health)); }
