@@ -476,7 +476,11 @@ void Update()
 	if (!TurretSurvives(tur, p)) return;
 	guarded.set("" + best.id, ai.frame);
 	++orders;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, tur, p, 0.f, true, OrderLife(tur, p)));
+	// An explicit decision while metal is being lost here (the losses beat the turret): NOW, the one band the builders'
+// ranking keeps. Only turrets against a raid and the opener are NOW: with cameras, storage, shields NOW too, six
+// constructors built cameras at minute 9 while extractors stood at 4 (Canis River, 2026-11-25) - as a
+	// plain job it counted at its cost only and was never built (3 orders, 0 towers on Canis River, 2026-11-25)
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, p, 0.f, true, OrderLife(tur, p)));
 	AiLog("[ANV] MexPorc: " + tur.GetName() + " at raided extractor (lost " + int(bestHeat) + " metal around it > turret " + int(cost) + ")");
 }
 }  // namespace MexPorc
@@ -1515,7 +1519,7 @@ void Update(bool jamAlert)
 	const uint wantAmd = (amds.length() == 0 && NukeRisk() >= 1.f) ? 1
 		: ((enemyNuke && InfraValue() > 2.f * Brain::Economist::MetalValue(amdDef) * float(amds.length() + 1)) ? amds.length() + 1 : amds.length());
 	if (amds.length() < wantAmd && Ready(ORDER_AMD, amdDef)) {
-		Order(ORDER_AMD, amdDef, basePos, enemyNuke ? Task::Priority::NOW : Task::Priority::HIGH, 0.f);  // no scatter: the block map spaces by blast radius
+		Order(ORDER_AMD, amdDef, basePos, enemyNuke ? Task::Priority::NORMAL : Task::Priority::HIGH, 0.f);  // no scatter: the block map spaces by blast radius
 		return;
 	}
 	// Juno: EMP missile that wipes radar, jammers and mines in its blast. Worth it when the enemy jammers it can wipe
@@ -1664,7 +1668,7 @@ bool TerrainFortify()
 	const AIFloat3 choke(m.cx[myStart], 0.f, m.cz[myStart]);
 	if (!TurretSurvives(tur, high)) { forts -= n; return true; }
 	for (int k = 0; k < n; ++k)
-		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, tur, high, tur.GetRadius() * 2.f * float(k), true, OrderLife(tur, high)));  // side by side, a turret width apart
+		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, high, tur.GetRadius() * 2.f * float(k), true, OrderLife(tur, high)));  // side by side, a turret width apart
 	if (wallDef !is null && wallDef.IsAvailable(ai.frame) && forts % 2 == 1) {
 		AIFloat3 dir = choke - AIFloat3(m.sx[myStart], 0.f, m.sz[myStart]);
 		const float len = AiMax(1.f, dir.Length2D());
@@ -1714,7 +1718,7 @@ void Fortify()
 	if (!TurretSurvives(tur, tpos)) return;
 	lastFortify = ai.frame;
 	++forts;
-	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, tur, tpos, 0.f, true, OrderLife(tur, tpos)));
+	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, tpos, 0.f, true, OrderLife(tur, tpos)));
 	AiLog("[ANV] Fortify: " + tur.GetName() + " covering the cell where we lost " + int(bestHeat) + " metal");
 }
 
@@ -4353,11 +4357,77 @@ bool CommWorth(const AIFloat3& in p, float gain)
 	return gain >= lastRisk;  // a tie (e.g. idle, out of danger) stays and looks for its best job
 }
 
+/*
+ * The commander defends home (players pull the commander onto raiders at their base; the guides: early defence is the
+ * commander and a laser tower). Each second, every armed enemy on our side is a candidate:
+ *   stake  = our buildings it reaches before we answer (Command::OursThreatened) + its own value
+ *   win    = commander + our armed units near it beat what fights there during the fight (Command::Cover)
+ *   risk   = P(commander dies there) x everything we own
+ * The best stake - risk > 0 that we can win gets the commander, on a builder wait task for the fight (the builders'
+ * ranking doesn't pull it back), attacking directly; when the target is gone it builds again. (Round 18: BARb's
+ * raiders killed 10 extractors while Command skipped them, strength 1.4 vs 10.2, and the commander built on.)
+ */
+IUnitTask@ commFightTask = null;
+int commFightTarget = -1, commFights = 0;
+void CommDefendUpdate()
+{
+	if (commander is null || !Opening::done || !HasBase()) return;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef, ids;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	AiGetEnemyIds(ids);
+	// still on a fight: keep at it while the target lives
+	if (commFightTask !is null && commander.task is commFightTask) {
+		for (uint i = 0; i < n && i < ids.length(); ++i)
+			if (ids[i] == commFightTarget) { commander.CmdAttackEnemy(commFightTarget); return; }
+		commFightTask.Abort(); @commFightTask = null; commFightTarget = -1;
+		return;
+	}
+	const AIFloat3 c = commander.GetPos(ai.frame);
+	const CCircuitDef@ cd = commander.circuitDef;
+	const float V = GameValue();
+	// the same arrays Command reads
+	Command::ePos = ep; Command::eDef = ed; Command::eFlags = ef; Command::eHp = eh; Command::eIds = ids; Command::eCost = ec;
+	int best = -1; float bestNet = 0.f;
+	for (uint i = 0; i < n && i < ids.length(); ++i) {
+		const CCircuitDef@ d = ed[i];
+		if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.surfThrDmg <= 0.f || (ef[i] & 2) == 0) continue;
+		if (!Assess::OnOurSide(ep[i])) continue;
+		const float t = c.distance2D(ep[i]) / AiMax(1.f, cd.speed);
+		const float stake = Command::OursThreatened(i, all, t) + Command::EnemyValue(i, Economist::Horizon());
+		// what fights there while we kill it, against the commander and our armed units within their reach
+		const float tFight = eh[i] * d.health / AiMax(1e-3f, cd.GetSustainedDps());
+		const float theirs = Command::Cover(ep[i], tFight);
+		float ours = cd.threat;
+		for (uint k = 0; k < all.length(); ++k) {
+			const CCircuitDef@ ud = all[k].circuitDef;
+			if (all[k] is commander || ud.threat <= 0.f || ud.surfThrDmg <= 0.f) continue;
+			const float reach = ud.GetMaxRange() + (ud.IsMobile() ? ud.speed * (t + tFight) : 0.f);
+			if (all[k].GetPos(ai.frame).distance2D(ep[i]) <= reach) ours += ud.threat;
+		}
+		if (ours <= theirs) continue;
+		const float risk = CommPDeath(ep[i], EscapeTime(ep[i])) * V;
+		const float net = stake - risk;
+		if (net > bestNet) { bestNet = net; best = int(i); }
+	}
+	if (best < 0) return;
+	const float t = c.distance2D(ep[best]) / AiMax(1.f, cd.speed);
+	const float tFight = eh[best] * ed[best].health / AiMax(1e-3f, cd.GetSustainedDps());
+	@commFightTask = aiBuilderMgr.Enqueue(TaskB::Wait(int((t + tFight) * SECOND) + SECOND));
+	if (commFightTask is null) return;
+	aiBuilderMgr.AssignTask(commander, commFightTask);
+	commFightTarget = ids[best];
+	commander.CmdAttackEnemy(commFightTarget);
+	++commFights;
+	AiLog("[ANV] CommDefend: commander -> " + ed[best].GetName() + " at (" + int(ep[best].x) + "," + int(ep[best].z) + "), stake-risk " + int(bestNet));
+}
+
 void CommGuardUpdate()
 {
 	if (!Opening::done) return;  // the opening directs the commander until its lab stands (#95)
 	if (commander is null || Brain::Intel::allFactories.length() == 0) return;
 	if (commGuardTask !is null && commander.task is commGuardTask) return;
+	if (commFightTask !is null && commander.task is commFightTask) return;  // defending: CommDefendUpdate decides
 	const AIFloat3 c = commander.GetPos(ai.frame);
 	IBuilderTask@ cur = cast<IBuilderTask>(commander.task);
 	// Worth staying: the core's ranking picks the commander's jobs (travel + payback, like every builder). The script's
@@ -4451,6 +4521,7 @@ void Update()  // every 30 frames
 	MexPorc::Update();
 	Storage::Update();
 	Storage::UpdateEnergy();
+	CommDefendUpdate();
 	CommGuardUpdate();
 	BuilderSafeUpdate();
 	ReclaimUpdate();
