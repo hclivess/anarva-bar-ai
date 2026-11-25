@@ -2591,7 +2591,7 @@ void Order(CCircuitUnit@ u, const string& in key, int kind, const AIFloat3& in p
 	string prev;
 	if (lastOrder.get("" + u.id, prev) && prev == key) return;
 	lastOrder.set("" + u.id, key);
-	(void)kind; (void)target;
+
 	u.CmdMoveTo(p);  // plain moves only: units fire at what is in reach while moving and can dodge
 }
 float Strength(const array<CCircuitUnit@>@ us)
