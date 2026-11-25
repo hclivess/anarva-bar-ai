@@ -45,10 +45,9 @@ void AiSave(OStream& ostream)
 
 void AiMakeDefence(int cluster, const AIFloat3& in pos)
 {
-	// a defence answers an army; none is worth its metal before any enemy army has been seen (no clock, no income gate)
-	if (aiEnemyMgr.mobileThreat > 0.f) {
-		aiMilitaryMgr.DefaultMakeDefence(cluster, pos);
-	}
+	// No BARb porcupine: a tower at every cluster from its config list once any enemy army was seen. Towers are decided
+	// by value in Brain::MexPorc (the raid loss they prevent vs their cost) and Fortify. Both ran: 12 towers built for
+	// 5 valued orders, up to 11 constructors on towers at minute 8 while extractors stopped at 10 (Feast 2026-11-25).
 }
 
 /*
