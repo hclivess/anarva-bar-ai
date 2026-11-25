@@ -4,6 +4,7 @@ distance and the narrowest corridor on it (chokes), water share and geo vents.
 Writes a JSON report and an AngelScript facts file the AI loads at game start.
 
 usage: python analyze_maps.py <maps_dir> <out.json> <out.as> [map file names...]
+       python analyze_maps.py --wind <maps_dir> <maps.json>   (adds the wind range to an existing report)
 Requires py7zr (dev only).
 """
 import heapq
@@ -210,6 +211,39 @@ def high_ground(grid, gw, gh, hm, hw, choke_cell, own_start):
         return None
     return ((best[0] + 0.5) * CELL * SQUARE, (best[1] + 0.5) * CELL * SQUARE, best[2])
 
+def parse_wind(info):
+    """The map's wind range (atmosphere minWind/maxWind in mapinfo.lua); None when the map doesn't set it."""
+    atm = re.search(r"atmosphere\s*=\s*\{(.*?)\}", info, re.S | re.I)
+    src = atm.group(1) if atm else info  # (no word boundaries: keys are unique in mapinfo)
+    lo = re.search(r"minwind\s*=\s*(-?[\d.]+)", src, re.I)
+    hi = re.search(r"maxwind\s*=\s*(-?[\d.]+)", src, re.I)
+    return [float(lo.group(1)), float(hi.group(1))] if lo and hi else None
+
+
+def read_info(path):
+    with py7zr.SevenZipFile(path, "r") as z:
+        names = z.getnames()
+    info = next((n for n in names if n.lower() == "mapinfo.lua"), None) or next((n for n in names if n.lower().endswith("/mapinfo.lua")), None)
+    if not info:
+        return ""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        with py7zr.SevenZipFile(path, "r") as z:
+            z.extract(path=tmp, targets=[info])
+        return open(os.path.join(tmp, *info.split("/")), "rb").read().decode("utf-8", "replace")
+
+
+def fill_wind(maps_dir, report):
+    reps = json.load(open(report))
+    for r in reps:
+        try:
+            r["wind"] = parse_wind(read_info(os.path.join(maps_dir, r["file"])))
+        except Exception as e:
+            print("FAIL", r["file"], e)
+    json.dump(reps, open(report, "w"), indent=1)
+    print(sum(1 for r in reps if r.get("wind")), "of", len(reps), "maps have a wind range")
+
+
 def analyze(path):
     files, smf_name, info_name = read_archive(path)
     info = files.get(info_name, b"").decode("utf-8", "replace") if info_name else ""
@@ -229,7 +263,7 @@ def analyze(path):
     grid, gw, gh, water = passability(smf)
     size = (smf["mapx"] * SQUARE, smf["mapy"] * SQUARE)
     rep = {"file": os.path.basename(path), "name": mapname, "size": size, "starts": starts[:16],
-           "mex": len(spots), "water": round(water, 3)}
+           "mex": len(spots), "water": round(water, 3), "wind": parse_wind(info)}
     if len(starts) >= 2:
         # overall: start 0 vs the start farthest from it (on team maps start 1 is often a teammate)
         far0 = max(range(len(starts)), key=lambda j: math.dist(starts[0], starts[j]))
@@ -255,6 +289,9 @@ def analyze(path):
 
 
 def main():
+    if sys.argv[1:2] == ["--wind"]:
+        fill_wind(sys.argv[2], sys.argv[3])
+        return
     maps_dir, out_json, out_as = sys.argv[1:4]
     wanted = sys.argv[4:]
     files = [os.path.join(maps_dir, f) for f in (wanted or sorted(os.listdir(maps_dir))) if f.endswith(".sd7")]

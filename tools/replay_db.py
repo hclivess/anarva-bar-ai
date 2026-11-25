@@ -125,6 +125,8 @@ def ingest(db, rid, log_text, meta):
         elif kind == "CBUILD":
             unit = rest.split()[2] if len(rest.split()) > 2 else "?"
             db.execute("INSERT INTO cbuild VALUES (?,?,?,?,?)", (rid, num(d, "f", int), num(d, "team", int), unit, num(d, "fromStart", int)))
+        elif kind == "WIND":
+            db.execute("INSERT INTO events VALUES (?,?,?,?,?)", (rid, kind, 0, -1, "%s,%s,%s" % (d.get("min"), d.get("max"), d.get("tidal"))))
         elif kind in ("CDEATH", "FIRSTHIT"):
             db.execute("INSERT INTO events VALUES (?,?,?,?,?)", (rid, kind, num(d, "f", int), num(d, "team", int), d.get("fromStart")))
         elif kind == "WINNERS":

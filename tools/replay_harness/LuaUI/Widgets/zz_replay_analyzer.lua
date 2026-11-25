@@ -125,6 +125,8 @@ function widget:Initialize()
 		end
 	end
 	Spring.Echo("[REPLAY] MAP " .. tostring(Game.mapName) .. " " .. Game.mapSizeX .. "x" .. Game.mapSizeZ)
+	-- the engine's own wind range and tidal strength (map defaults and overrides applied): the map's energy facts
+	Spring.Echo(string.format("[REPLAY] WIND min=%.2f max=%.2f tidal=%.2f", Game.windMin or -1, Game.windMax or -1, Game.tidal or -1))
 end
 
 local MAXF = 1e9  -- play to the end: late units (T3, Behemoth) matter for the counter matrix

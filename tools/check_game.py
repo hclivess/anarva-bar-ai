@@ -20,15 +20,88 @@ STAT = re.compile(r"\[HARNESS\] stats f=(\d+) dead=\w+ team=(\d) units=\d+ army_
 KV = re.compile(r"(\w+)=([^ ]+(?: [\d.]+/s(?: short)?)?)")
 
 
-def winners_curve(db_path):
-    """Average 1v1 winner per minute from the replay database: army metal, extractors, constructors, factories."""
-    if not os.path.exists(db_path):
+FEATURES = ("area", "mex", "water", "straight", "wind")  # measured per map by tools/analyze_maps.py
+METRICS = (1, 2, 3, 4, 0)  # curve columns used to choose k: extractors, constructors, factories, energy, army
+
+
+def map_features(maps_json):
+    """Measured features per map name: area, extractor spots, water share, start distance, mean wind."""
+    import json
+    if not os.path.exists(maps_json):
         return {}
-    db = sqlite3.connect(db_path)
-    q = """select s.minute, avg(s.army), avg(s.mex), avg(s.builders), avg(s.facs), avg(s.e_inc), count(*)
+    out = {}
+    for r in json.load(open(maps_json)):
+        w = r.get("wind")
+        out[r["name"]] = {"area": r["size"][0] * r["size"][1], "mex": r["mex"], "water": r["water"],
+                          "straight": r.get("base_straight"), "wind": (w[0] + w[1]) / 2 if w else None}
+    return out
+
+
+def _curves(db):
+    """Per map: per minute, the winners' rows (army, mex, builders, facs, e_inc)."""
+    q = """select r.map, s.minute, s.army, s.mex, s.builders, s.facs, s.e_inc
            from stats s join teams t on t.replay_id=s.replay_id and t.team=s.team join replays r on r.id=s.replay_id
-           where r.format='1v1' and r.status='done' and t.won=1 group by s.minute"""
-    return {m: (a, x, b, f, e, n) for m, a, x, b, f, e, n in db.execute(q)}
+           where r.format='1v1' and r.status='done' and t.won=1"""
+    per = {}
+    for m, minute, *v in db.execute(q):
+        per.setdefault(m, {}).setdefault(minute, []).append(v)
+    return per
+
+
+def _pool(per, maps):
+    """Average winner per minute over the replays of these maps."""
+    acc = {}
+    for m in maps:
+        for minute, rows in per.get(m, {}).items():
+            acc.setdefault(minute, []).extend(rows)
+    return {minute: tuple(sum(r[i] for r in rows) / len(rows) for i in range(5)) + (len(rows),) for minute, rows in acc.items()}
+
+
+def winners_curve(db_path, map_name=None, maps_json=None):
+    """The winners' curve for this map: the 1v1 winners on the maps nearest to it by measured features (the map
+    itself at distance 0 when it's in the database). Features are standardized over the replay maps; the number
+    of nearest maps is chosen by fit: hold out each replay map, predict its winners from its nearest others,
+    keep the count with the smallest error. Without a map (or its features), every 1v1 winner."""
+    if not os.path.exists(db_path):
+        return {}, "no replay database"
+    db = sqlite3.connect(db_path)
+    per = _curves(db)
+    feats = map_features(maps_json) if maps_json else {}
+    # the engine's wind where replays recorded it (the widget's WIND line) beats the parsed mapinfo.lua
+    for m, v in db.execute("select r.map, e.value from events e join replays r on r.id=e.replay_id where e.kind='WIND'"):
+        lo, hi, _ = (float(x) for x in v.split(","))
+        if m in feats and lo >= 0 and hi >= 0:
+            feats[m]["wind"] = (lo + hi) / 2
+    known = [m for m in per if m in feats and all(feats[m][f] is not None for f in FEATURES)]
+    if not map_name or map_name not in feats or len(known) < 2 or any(feats[map_name][f] is None for f in FEATURES):
+        return _pool(per, per), f"all {len(per)} replay maps (no features for {map_name!r})"
+    # standardize each feature over the replay maps
+    mu = {f: sum(feats[m][f] for m in known) / len(known) for f in FEATURES}
+    sd = {f: (sum((feats[m][f] - mu[f]) ** 2 for m in known) / len(known)) ** 0.5 or 1.0 for f in FEATURES}
+    z = lambda m: [(feats[m][f] - mu[f]) / sd[f] for f in FEATURES]
+    dist = lambda x, y: sum((p - q) ** 2 for p, q in zip(x, y)) ** 0.5
+    zk = {m: z(m) for m in known}
+    # each metric's spread over minutes and maps, so the fit error weighs them alike
+    allc = _pool(per, known)
+    rows = [r for m in known for minute, rs in per[m].items() for r in rs]
+    msd = [(sum((r[i] - sum(x[i] for x in rows) / len(rows)) ** 2 for r in rows) / len(rows)) ** 0.5 or 1.0 for i in range(5)]
+
+    def err(k):
+        e, n = 0.0, 0
+        for h in known:
+            near = sorted((m for m in known if m != h), key=lambda m: dist(zk[m], zk[h]))[:k]
+            pred, true = _pool(per, near), _pool(per, [h])
+            for minute, t in true.items():
+                if minute in pred:
+                    for i in METRICS:
+                        e += ((pred[minute][i] - t[i]) / msd[i]) ** 2
+                        n += 1
+        return e / max(1, n)
+    k = min(range(1, len(known)), key=err)
+    zt = z(map_name)
+    near = sorted(known, key=lambda m: dist(zk[m], zt))[:k]
+    return _pool(per, near), f"{k} nearest replay map(s) by measured features (k by held-out fit): " + ", ".join(
+        f"{m} ({sum(len(v) for v in per[m].values()) // max(1, len(per[m]))} games, d={dist(zk[m], zt):.2f})" for m in near)
 
 
 def parse(game_dir):
@@ -53,7 +126,11 @@ def parse(game_dir):
                 t = re.search(r"^\s*team=(\d+);", body, re.M)
                 me = int(t.group(1)) if t else None
                 break
-    return checks, truth, me
+    mapname = None
+    if os.path.exists(script):
+        mm = re.search(r"^\s*mapname=([^;]+);", open(script, encoding="utf-8", errors="replace").read(), re.M | re.I)
+        mapname = mm.group(1).strip() if mm else None
+    return checks, truth, me, mapname
 
 
 def frac(a, b):
@@ -63,8 +140,9 @@ def frac(a, b):
         return 0.0
 
 
-def report(game_dir, curve):
-    checks, truth, me = parse(game_dir)
+def report(game_dir, db_path, maps_json):
+    checks, truth, me, mapname = parse(game_dir)
+    curve, basis = winners_curve(db_path, mapname, maps_json)
     print(f"\n=== {game_dir}  (Anarva team {me})")
     if not checks:
         print("  no [ANV-CHECK] lines: the AI build predates the self-assessment")
@@ -117,6 +195,7 @@ def report(game_dir, curve):
             if mc["microOutranged"] > mc["microFired"]: flags["micro: more outranged hits than shots fired"].append(minute)
             if mc["microStillHit"] > 0: flags["micro: units standing still under fire"].append(minute)
     # the yardstick: the winners of top-player 1v1 games, minute by minute (CHECKLIST.md header)
+    print(f"  yardstick for {mapname}: winners on {basis}")
     print("  vs top 1v1 winners (Anarva / winners):  min  extractors  constructors  factories  energy/s  army")
     behind = {"extractors": [], "constructors": [], "factories": [], "energy": [], "army": []}
     for minute in sorted(checks):
@@ -149,10 +228,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("games", nargs="+")
     ap.add_argument("--db", default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "runs", "replays.db"))
+    ap.add_argument("--maps", default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ref", "maps.json"))
     a = ap.parse_args()
-    curve = winners_curve(a.db)
     for g in a.games:
-        report(g, curve)
+        report(g, a.db, a.maps)
 
 
 if __name__ == "__main__":
