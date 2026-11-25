@@ -120,8 +120,8 @@ def main():
     ap.add_argument("--pool", default="std", choices=["std", "big"])
     ap.add_argument("--minutes", type=float, default=60.0)
     ap.add_argument("--game-minutes", type=float, default=30.0, help="game-time cap before scoring by points")
-    ap.add_argument("--startpos", default="alternate", choices=["choose", "fixed", "alternate"],
-                    help="choose in game, fixed, or alternate by game (both happen in real games)")
+    ap.add_argument("--startpos", default="choose", choices=["choose", "fixed", "alternate"],
+                    help="choose in game (as every 1v1 replay: the default, so games compare with players), fixed, alternate")
     ap.add_argument("--startpos-offset", type=int, default=0, help="shift the alternation (swap modes per map between rounds)")
     args = ap.parse_args()
     if args.maps is None:

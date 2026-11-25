@@ -2,6 +2,21 @@
 
 These are the owner's standing rules. They apply to every change, every claim and every comment.
 
+## PRIORITY 1: Think like the player
+
+Owner, 2026-11-25: "you have to think like the player does ... make it priority n1", after Anarvā was being
+compared with top players while it could not even pick its starting location.
+
+- **Every decision a player makes is a decision Anarvā makes, the way a player makes it.** Start location, faction,
+  lab, first builds, scouting, what to build, where to fight. A decision Anarvā doesn't make, or that is still a
+  BARb default, a fixed rule or a harness setting, is the first thing to fix.
+- **Before comparing with players, play under their conditions.** Same start rules (choose in game), the start
+  boxes they had, the maps they play 1v1 on, the same game setup. A comparison under different conditions measures
+  the setup, not Anarvā; don't report it as a gap.
+- **Ask what the player sees and why they act.** From the replays: what situation the player was in, what they
+  wanted, what it bought them. Then make Anarvā see the same and decide from it (the rest of these rules: no
+  constants, no tables, values from the live game).
+
 ## 0. Work ethic: improve first, test later
 
 From the owner, 2026-11-24, after watching Anarva play like BARb while ~200 test games were spent on small tweaks:

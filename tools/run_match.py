@@ -43,16 +43,45 @@ handicap=0;
 """
 
 
+def replay_boxes(map_name):
+    """The start boxes top players had on this map in 1v1 (the most frequent pair in the replay library), as
+    startrect fractions; None when no 1v1 replay of the map exists. A comparison with players holds only under their
+    conditions (owner, 2026-11-25)."""
+    import gzip, re, sqlite3, collections
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    db_path = os.path.join(root, "runs", "replays.db")
+    if not os.path.exists(db_path):
+        return None
+    seen = collections.Counter()
+    for (f,) in sqlite3.connect(db_path).execute("select file from replays where format='1v1' and map=?", (map_name,)):
+        path = os.path.join(root, "ref", "lib", f)
+        if not os.path.exists(path):
+            continue
+        raw = gzip.open(path).read(300000)
+        i = raw.find(b"[game]")
+        st = raw[i:i + 80000].decode("latin-1")
+        boxes = []
+        for a, body in sorted(re.findall(r"\[allyteam(\d+)\]\s*\{([^}]*)\}", st)):
+            g = dict(re.findall(r"startrect(left|right|top|bottom)=([\d.]+)", body))
+            if len(g) == 4:
+                boxes.append(tuple(g[k] for k in ("left", "right", "top", "bottom")))
+        if len(boxes) == 2:
+            seen[tuple(boxes)] += 1
+    return seen.most_common(1)[0][0] if seen else None
+
+
 def make_script(args):
+    boxes = replay_boxes(args.map) or (("0", "0.25", "0", "0.25"), ("0.75", "1", "0.75", "1"))
+    b0, b1 = boxes
     return f"""[game]
 {{
 [allyteam0]
 {{
-startrectleft=0; startrectright=0.25; startrecttop=0; startrectbottom=0.25; numallies=0;
+startrectleft={b0[0]}; startrectright={b0[1]}; startrecttop={b0[2]}; startrectbottom={b0[3]}; numallies=0;
 }}
 [allyteam1]
 {{
-startrectleft=0.75; startrectright=1; startrecttop=0.75; startrectbottom=1; numallies=0;
+startrectleft={b1[0]}; startrectright={b1[1]}; startrecttop={b1[2]}; startrectbottom={b1[3]}; numallies=0;
 }}
 {ai_block(0, args.ai0)}
 {"".join(ai_block(1 + k, args.ai1, 1) for k in range(args.n1))}

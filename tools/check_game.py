@@ -202,6 +202,67 @@ def winners_curve(db_path, map_name=None, maps_json=None, starts=None):
                                f"{games[i]['f']['ownspots']}, w {x:.2f})" for x, i in top))
 
 
+
+def _box_of(script_text, ally, size):
+    """A start box from a game script ([allyteamN] startrect*, fractions of the map size)."""
+    for a, body in re.findall(r'\[allyteam(\d+)\]\s*\{([^}]*)\}', script_text):
+        if int(a) != ally:
+            continue
+        g = {k: float(v) for k, v in re.findall(r'startrect(left|right|top|bottom)=([\d.]+)', body)}
+        if len(g) == 4:
+            return (g['left'] * size[0], g['right'] * size[0], g['top'] * size[1], g['bottom'] * size[1])
+    return None
+
+
+def start_features(pos, box, enemy_box, spots):
+    """Where a start sits: 0 at the back edge of its box .. 1 at the front (toward the enemy box), and the distance
+    to its 3rd-nearest extractor spot (what the commander reaches without walking)."""
+    import math
+    L, R, T, B = box
+    cx, cz = (L + R) / 2, (T + B) / 2
+    ex, ez = (enemy_box[0] + enemy_box[1]) / 2, (enemy_box[2] + enemy_box[3]) / 2
+    n = math.hypot(ex - cx, ez - cz) or 1.0
+    ux, uz = (ex - cx) / n, (ez - cz) / n
+    proj = [x * ux + z * uz for x, z in ((L, T), (L, B), (R, T), (R, B))]
+    fwd = (pos[0] * ux + pos[1] * uz - min(proj)) / ((max(proj) - min(proj)) or 1.0)
+    near = sorted(math.dist(pos, sp) for sp in spots)
+    return fwd, (near[2] if len(near) > 2 else None)
+
+
+def winners_starts(db_path, maps_json, cache):
+    """Forward position and 3rd-nearest spot of every 1v1 winner's start (replay scripts + commander at frame 0)."""
+    import gzip, json
+    if os.path.exists(cache) and os.path.getmtime(cache) >= os.path.getmtime(db_path):
+        return json.load(open(cache))
+    db = sqlite3.connect(db_path)
+    maps = {x['name']: x for x in json.load(open(maps_json))}
+    starts = {}
+    for rid, team, x, z in db.execute("select replay_id, team, x, z from comm c where frame = (select min(frame) from comm c2 "
+                                      "where c2.replay_id=c.replay_id and c2.team=c.team)"):
+        starts.setdefault(rid, {})[team] = (x, z)
+    out = []
+    lib = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ref', 'lib')
+    for rid, f, mp in db.execute("select id, file, map from replays where format='1v1' and status='done'").fetchall():
+        path = os.path.join(lib, f)
+        if not os.path.exists(path) or rid not in starts or mp not in maps or not maps[mp].get('spots'):
+            continue
+        raw = gzip.open(path).read(300000)
+        i = raw.find(b'[game]')
+        st = raw[i:i + 80000].decode('latin-1')
+        team_ally = {int(t): int(a) for t, a in re.findall(r'\[team(\d+)\]\s*\{[^}]*?allyteam=(\d+)', st)}
+        for team, won in db.execute("select team, won from teams where replay_id=?", (rid,)).fetchall():
+            if won != 1 or team not in starts[rid] or team not in team_ally:
+                continue
+            a = team_ally[team]
+            box = _box_of(st, a, maps[mp]['size'])
+            other = [x for x in set(team_ally.values()) if x != a]
+            ebox = _box_of(st, other[0], maps[mp]['size']) if other else None
+            if box and ebox:
+                fwd, third = start_features(starts[rid][team], box, ebox, maps[mp]['spots'])
+                out.append([fwd, third])
+    json.dump(out, open(cache, 'w'))
+    return out
+
 def parse(game_dir):
     log = os.path.join(game_dir, "infolog.txt")
     text = open(log, encoding="utf-8", errors="replace").read()
@@ -302,6 +363,26 @@ def report(game_dir, db_path, maps_json):
             if mc["microStillHit"] > 0: flags["micro: units standing still under fire"].append(minute)
     # the yardstick: the winners of top-player 1v1 games, minute by minute (CHECKLIST.md header)
     print(f"  yardstick for {mapname}: winners on {basis}")
+    # the start, against where winners start (a fixed start is judged the same way: it is what we had to play)
+    try:
+        import json, statistics as stt
+        script = open(os.path.join(game_dir, "_script.txt"), encoding="utf-8", errors="replace").read()
+        spt = re.search(r"startpostype=(\d+)", script)
+        maps = {x['name']: x for x in json.load(open(maps_json))}
+        if pair and mapname in maps and maps[mapname].get('spots'):
+            allies = {int(t): int(a) for t, a in re.findall(r'\[team(\d+)\]\s*\{[^}]*?allyteam=(\d+)', script)}
+            ourA = allies.get(me)
+            box = _box_of(script, ourA, maps[mapname]['size']) if ourA is not None else None
+            ebox = _box_of(script, [a for a in set(allies.values()) if a != ourA][0], maps[mapname]['size']) if box else None
+            if box and ebox:
+                fwd, third = start_features(pair[0], box, ebox, maps[mapname]['spots'])
+                ws = winners_starts(db_path, maps_json, os.path.join(os.path.dirname(db_path), "winners_starts.json"))
+                q = stt.quantiles([w[0] for w in ws], n=4)
+                q3 = stt.quantiles([w[1] for w in ws if w[1] is not None], n=4)
+                print(f"  start ({'chosen' if spt and spt.group(1) == '2' else 'given'}): forward {fwd:.2f} (winners {q[0]:.2f}-{q[2]:.2f}), "
+                      f"3rd-nearest spot {third:.0f} (winners {q3[0]:.0f}-{q3[2]:.0f})")
+    except Exception as e:
+        print(f"  start: not assessed ({e})")
     print("  vs top 1v1 winners (Anarva / winners +- spread, n = effective games):  min  extractors  constructors  factories  energy/s  army  n")
     behind = {"extractors": [], "constructors": [], "factories": [], "energy": [], "army": []}
     for minute in sorted(checks):
