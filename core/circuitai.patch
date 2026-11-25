@@ -344,7 +344,7 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
-index e4c1d126..4211c9c1 100644
+index e4c1d126..876ae32f 100644
 --- a/src/circuit/module/BuilderManager.cpp
 +++ b/src/circuit/module/BuilderManager.cpp
 @@ -6,9 +6,12 @@
@@ -754,7 +754,21 @@ index e4c1d126..4211c9c1 100644
  	return const_cast<IBuilderTask*>(task);
  }
  
-@@ -1162,22 +1295,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1142,10 +1275,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+ //	CTerrainManager::CorrectPosition(pos);
+ 
+ 	CEconomyManager* economyMgr = circuit->GetEconomyManager();
+-	task = economyMgr->CheckMobileAssistRequired(pos, unit);
+-	if (task != nullptr) {
+-		return const_cast<IBuilderTask*>(task);
+-	}
++	// Anarva: no BARb assist rule (any builder within 600 elmos of a factory assisted it for 10 s whenever resources
++	// covered 8 s: new constructors spawn there and never left - Throne 1v1, 3 extractors all game, 2026-11-25).
++	// Assisting a factory is valued like every other job (GUARD in AnarvaJobTime).
+ 
+ 	economyMgr->MakeEconomyTasks(pos, unit);
+ 	const bool isNotReady = !economyMgr->IsExcessed();
+@@ -1162,22 +1294,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
@@ -780,7 +794,7 @@ index e4c1d126..4211c9c1 100644
  
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
-@@ -1234,27 +1354,22 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1234,27 +1353,22 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -822,7 +836,7 @@ index e4c1d126..4211c9c1 100644
  		}
  	}
  
-@@ -1263,9 +1378,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1263,9 +1377,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  	{
  		CCircuitUnit* vip = circuit->GetFactoryManager()->GetClosestFactory(pos);
  		if (vip != nullptr) {
@@ -834,7 +848,21 @@ index e4c1d126..4211c9c1 100644
  		}
  	}
  
-@@ -1294,7 +1409,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1282,10 +1396,9 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+ //	CTerrainManager::CorrectPosition(pos);
+ 
+ 	CEconomyManager* economyMgr = circuit->GetEconomyManager();
+-	task = economyMgr->CheckMobileAssistRequired(pos, unit);
+-	if (task != nullptr) {
+-		return const_cast<IBuilderTask*>(task);
+-	}
++	// Anarva: no BARb assist rule (any builder within 600 elmos of a factory assisted it for 10 s whenever resources
++	// covered 8 s: new constructors spawn there and never left - Throne 1v1, 3 extractors all game, 2026-11-25).
++	// Assisting a factory is valued like every other job (GUARD in AnarvaJobTime).
+ 
+ 	// FIXME: MakeEconomyTasks doesn't check CanAssignTo() and may create task irrelevant for unit
+ 	/*task = */economyMgr->MakeEconomyTasks(pos, unit);
+@@ -1294,7 +1407,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  //	}
  
  	const bool isStalling = economyMgr->IsMetalEmpty() &&
@@ -843,7 +871,7 @@ index e4c1d126..4211c9c1 100644
  							(metalPull > economyMgr->GetPullMtoS() * circuit->GetFactoryManager()->GetMetalPull());
  	const bool isNotReady = !economyMgr->IsExcessed() || isStalling/* || economyMgr->IsEnergyStalling()*/;
  
-@@ -1317,7 +1432,8 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1317,7 +1430,8 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  	const float maxSpeed = cdef->GetSpeed() / pathfinder->GetSquareSize() * COST_BASE;
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
@@ -853,7 +881,7 @@ index e4c1d126..4211c9c1 100644
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
  			if (!candidate->CanAssignTo(unit)
-@@ -1352,7 +1468,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1352,7 +1466,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			float distCost;
  			const float rawSqDist = pos.SqDistance2D(buildPos);  // TODO: add target's radius to rawSqDist
@@ -861,7 +889,7 @@ index e4c1d126..4211c9c1 100644
  			if (rawSqDist < buildSqDistance) {
  				distCost = sqrtf(rawSqDist) / pathfinder->GetSquareSize() * COST_BASE * 0.5f;
  			} else {
-@@ -1364,28 +1479,23 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1364,28 +1477,23 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -905,7 +933,7 @@ index e4c1d126..4211c9c1 100644
  		}
  	}
  
-@@ -1396,6 +1506,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1396,6 +1504,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  		task = CreateBuilderTask(pos, unit);
  	}
  
@@ -913,7 +941,7 @@ index e4c1d126..4211c9c1 100644
  	return const_cast<IBuilderTask*>(task);
  }
  
-@@ -1403,7 +1514,7 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1403,7 +1512,7 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  {
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  	if (terrainMgr->IsZoneAlly(position)) {
@@ -922,7 +950,7 @@ index e4c1d126..4211c9c1 100644
  	}
  
  	CEconomyManager* ecoMgr = circuit->GetEconomyManager();
-@@ -1420,10 +1531,13 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1420,10 +1529,13 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  	CMilitaryManager* militaryMgr = circuit->GetMilitaryManager();
  	const float energyIncome = ecoMgr->GetAvgEnergyIncome() * ecoMgr->GetEcoFactor();
  	const float metalIncome = std::min(ecoMgr->GetAvgMetalIncome() * ecoMgr->GetEcoFactor(), energyIncome);
@@ -939,7 +967,7 @@ index e4c1d126..4211c9c1 100644
  		{
  			const std::set<IBuilderTask*>& tasks = GetTasks(IBuilderTask::BuildType::BIG_GUN);
  			if (tasks.empty()) {
-@@ -1445,14 +1559,14 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1445,14 +1557,14 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  			? circuit->GetFactoryManager()->GetClosestFactory(position)
  			: militaryMgr->GetClosestLeader({IFighterTask::FightType::ATTACK, IFighterTask::FightType::DEFEND}, position);
  	if (vip != nullptr) {

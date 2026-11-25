@@ -308,6 +308,7 @@ CCircuitDef@ CheapestConstructor()
 		for (uint k = 0; k < opts.length(); ++k) {
 			CCircuitDef@ d = ai.GetCircuitDef(opts[k]);
 			if (d is null || !d.IsMobile() || !d.IsRoleAny(Unit::Role::BUILDER.mask) || d.buildSpeed <= 0.f) continue;
+			if (Economist::mexT1 is null || !d.CanBuild(Economist::mexT1)) continue;  // it must be able to claim a spot
 			if (best is null || d.costM < best.costM) @best = d;
 		}
 	}
@@ -432,6 +433,9 @@ void Update()
 		for (uint i = 0; i < mine.length(); ++i) {
 			CCircuitUnit@ u = mine[i];
 			if (u is commander || !u.circuitDef.IsMobile() || !u.circuitDef.IsRoleAny(Unit::Role::BUILDER.mask) || u.task is null) continue;
+			// only builders that can claim a spot: a minelayer (builder role, mines only) guarding the lab zeroed the
+			// constructor's value and Throne kept 3 extractors all game (2026-11-25)
+			if (Economist::mexT1 is null || !u.circuitDef.CanBuild(Economist::mexT1)) continue;
 			if (u.task.GetType() == Task::Type::NIL) continue;  // still in the factory
 			IBuilderTask@ bt = cast<IBuilderTask>(u.task);
 			if (bt is null || bt.buildDef is null) ++unemployed;
@@ -2004,7 +2008,8 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		}
 		float vFight = 0.f, vBuild = 0.f, vScout = 0.f;
 		if (d.IsRoleAny(Unit::Role::BUILDER.mask) && d.buildSpeed > 0.f) {
-			vBuild = EcoPos::constructorValue;
+			// the value is claiming free spots: only for a builder that can build an extractor
+			if (Economist::mexT1 !is null && d.CanBuild(Economist::mexT1)) vBuild = EcoPos::constructorValue;
 		} else if (d.GetSustainedDps() > 0.f) {
 			const float hp = AiMax(1.f, d.health);
 			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp), us = sqrt(AiMax(0.f, d.surfThrDmg) * hp);
