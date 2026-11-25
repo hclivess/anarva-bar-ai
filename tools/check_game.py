@@ -310,6 +310,38 @@ def parse(game_dir):
     return checks, truth, me, mapname, starts
 
 
+def opening_vs_winners(game_dir, db_path, mapname, until_s=180):
+    """What we built by 3:00 next to what the 1v1 winners on this map built (replays.db; owner, 2026-11-25: real
+    players and the parsed replays are the main cross-reference, not BARb)."""
+    import collections
+    import sqlite3
+    log = os.path.join(game_dir, "infolog.txt")
+    if not os.path.exists(log) or not os.path.exists(db_path):
+        return
+    ours = collections.Counter()
+    for m in re.finditer(r"\[ANV\] built ([a-z]+) t=(\d+)", open(log, encoding="utf-8", errors="replace").read()):
+        if int(m.group(2)) <= until_s and not m.group(1)[3:].startswith("com"):
+            ours[m.group(1)[3:]] += 1
+    db = sqlite3.connect(db_path)
+    key = (mapname or "").split(" ")[0] + "%"
+    rows = db.execute("""select b.replay_id, b.team, b.unit from built b join replays r on r.id=b.replay_id
+        join teams t on t.replay_id=b.replay_id and t.team=b.team
+        where r.format='1v1' and r.status='done' and t.won=1 and b.frame<=? and r.map like ?""", (until_s * 30, key)).fetchall()
+    games = collections.defaultdict(collections.Counter)
+    for rid, team, u in rows:
+        games[(rid, team)][u[3:]] += 1
+    n = len(games)
+    if n == 0:
+        print(f"  opening by {until_s // 60}:{until_s % 60:02d}: no winner replays on {mapname}")
+        return
+    theirs = collections.Counter()
+    for c in games.values():
+        theirs.update(c)
+    units = sorted(set(ours) | {u for u, c in theirs.items() if c / n >= 0.2}, key=lambda u: -(theirs[u] / n + ours[u]))
+    print(f"  opening by {until_s // 60}:{until_s % 60:02d}, ours/winners on this map ({n} games, replays.db):")
+    print("    " + "  ".join(f"{u}={ours[u]}/{theirs[u] / n:.1f}" for u in units if u != "com"))
+
+
 def frac(a, b):
     try:
         return int(a) / max(1, int(b))
@@ -328,6 +360,7 @@ def report(game_dir, db_path, maps_json):
             sides = (coms.get(me), coms.get(other[0]))
     curve, basis = winners_curve(db_path, mapname, maps_json, pair, sides)
     print(f"\n=== {game_dir}  (Anarva team {me})")
+    opening_vs_winners(game_dir, db_path, mapname)
     if not checks:
         print("  no [ANV-CHECK] lines: the AI build predates the self-assessment")
         return

@@ -504,6 +504,7 @@ void Update()
 	 * (less the tower's build time), a raid goes where our value is, so the loss expected at an unguarded spot is its
 	 * value in the tower's reach x its share of all our exposed producer value. A tower pays when that beats it.
 	 */
+	const bool seen = best !is null;  // a raid that has already hit there: urgent
 	const float now = float(ai.frame) / SECOND;
 	const float tBuild = tur.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower());
 	if (best is null && now + tBuild >= Opening::raidArrive) {
@@ -542,8 +543,15 @@ void Update()
 	// next to the extractor, not on it: the build site is searched within the two footprints side by side (at the
 	// extractor's own position with radius 0 the job could never be placed: 8 orders, 1 tower, Gasbag Grabens)
 	const float around = tur.GetRadius() * 2.f + best.circuitDef.GetRadius() * 2.f;
-	@pending = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, p, around, true, OrderLife(tur, p)));
-	AiLog("[ANV] MexPorc: " + tur.GetName() + " at extractor (loss there, seen or expected from the raid, " + int(bestHeat) + " > turret " + int(cost) + ")");
+	// Urgent only against a raid that has hit (seen loss beats the tower). Before that the tower is worth the loss it
+	// is expected to prevent and competes on that value with every other job: as NOW it skipped the comparison and
+	// took the commander off extractors and wind twice before minute 2.5 (Theta, round 29), while winners build 0.2
+	// towers by 3:00 against 8.4 turbines and 5 extractors (replays.db, 107 wins).
+	@pending = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, seen ? Task::Priority::NOW : Task::Priority::NORMAL,
+		tur, p, around, true, OrderLife(tur, p)));
+	IBuilderTask@ pbt = cast<IBuilderTask>(pending);
+	if (pbt !is null) pbt.value = bestHeat;
+	AiLog("[ANV] MexPorc: " + tur.GetName() + (seen ? " NOW" : " valued") + " at extractor (loss there, seen or expected from the raid, " + int(bestHeat) + " > turret " + int(cost) + ")");
 }
 }  // namespace MexPorc
 
