@@ -1,5 +1,11 @@
 # Game checklist
 
+> **The yardstick is the best winning players, never BARb** (owner, 2026-11-25: "always compare your gameplay to the
+> best winning players so you can make an assessment. Don't compare with the fucking barbarian"). Every assessment
+> sets Anarvā's per-minute curves beside the winners of top-player games in `runs/replays.db`: extractors,
+> constructors, factories, energy, army value, army share, and what the army does. BARb's numbers are only the
+> opponent's state inside a fight (is our army idle while stronger?), never a target.
+
 Every game Anarvā plays is assessed with these questions (owner, 2026-11-25, #92). A test is read against this
 list before anything else. The final score against BARb comes last: an army that never moves is visible in
 minute 3 of the log without another match.

@@ -25,10 +25,10 @@ def winners_curve(db_path):
     if not os.path.exists(db_path):
         return {}
     db = sqlite3.connect(db_path)
-    q = """select s.minute, avg(s.army), avg(s.mex), avg(s.builders), avg(s.facs), count(*)
+    q = """select s.minute, avg(s.army), avg(s.mex), avg(s.builders), avg(s.facs), avg(s.e_inc), count(*)
            from stats s join teams t on t.replay_id=s.replay_id and t.team=s.team join replays r on r.id=s.replay_id
            where r.format='1v1' and r.status='done' and t.won=1 group by s.minute"""
-    return {m: (a, x, b, f, n) for m, a, x, b, f, n in db.execute(q)}
+    return {m: (a, x, b, f, e, n) for m, a, x, b, f, e, n in db.execute(q)}
 
 
 def parse(game_dir):
@@ -116,6 +116,30 @@ def report(game_dir, curve):
             if mc["microNoReply"] > mc["microFired"]: flags["micro: more units hit without replying than firing"].append(minute)
             if mc["microOutranged"] > mc["microFired"]: flags["micro: more outranged hits than shots fired"].append(minute)
             if mc["microStillHit"] > 0: flags["micro: units standing still under fire"].append(minute)
+    # the yardstick: the winners of top-player 1v1 games, minute by minute (CHECKLIST.md header)
+    print("  vs top 1v1 winners (Anarva / winners):  min  extractors  constructors  factories  energy/s  army")
+    behind = {"extractors": [], "constructors": [], "factories": [], "energy": [], "army": []}
+    for minute in sorted(checks):
+        c = checks[minute]
+        top = curve.get(minute)
+        if not top:
+            continue
+        mex = int(c.get("mex", 0) or 0)
+        ib = c.get("idleBuilders", "0/0").split("/")
+        ifac = c.get("idleFactories", "0/0").split("/")
+        cons, facs = int(ib[1] or 0), int(ifac[1] or 0)
+        try:
+            einc = float(c.get("eInc", 0))
+        except ValueError:
+            einc = 0.0
+        army = int(c.get("army", 0))
+        print(f"  {'':38s}{minute:4d}  {mex:4d}/{top[1]:5.1f}  {cons:5d}/{top[2]:5.1f}  {facs:4d}/{top[3]:4.1f}  {einc:6.0f}/{top[4]:5.0f}  {army:5d}/{top[0]:5.0f}")
+        for k, mine, theirs in (("extractors", mex, top[1]), ("constructors", cons, top[2]), ("factories", facs, top[3]),
+                                ("energy", einc, top[4]), ("army", army, top[0])):
+            if mine < theirs:
+                behind[k].append(minute)
+    for k, v in behind.items():
+        flags[f"behind the winners: {k}"] = v
     print("  checklist:")
     for k, v in flags.items():
         print(f"    [{'FAIL' if v else ' ok '}] {k}" + (f": minutes {','.join(map(str, v))}" if v else ""))

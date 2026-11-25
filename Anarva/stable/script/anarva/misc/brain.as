@@ -2443,8 +2443,95 @@ class Op {
 	float defence = 0.f;
 	bool engaged = false;
 	array<CCircuitUnit@> units;
+	array<AIFloat3> route;  // waypoints (group movement, #93)
+	bool arrived = false;
+	AIFloat3 routeTo;
+	uint leg = 0;
 }
 array<Op@> ops;
+
+/*
+ * Group movement (#93, owner: BARb's movement is stupid; squads move and path as one). A route is a search over the
+ * Intel grid: a cell costs its length x (1 + enemy threat covering it / our squad's strength), so time under fire
+ * costs in proportion to how outmatched we are there, and cells our units can't stand on are skipped. The squad walks
+ * it waypoint by waypoint at its slowest member's speed, moving on only when every unit is within its own reach of
+ * the current waypoint.
+ */
+array<AIFloat3> Route(const AIFloat3& in from, const AIFloat3& in to, CCircuitUnit@ probe, float S)
+{
+	array<AIFloat3> path;
+	const int w = Intel::gw, h = Intel::gh;
+	const float cell = Intel::CELL;
+	if (w <= 0 || h <= 0 || cell <= 0.f) { path.insertLast(to); return path; }
+	const int sx = AiMin(w - 1, AiMax(0, int(from.x / cell))), sz = AiMin(h - 1, AiMax(0, int(from.z / cell)));
+	const int tx = AiMin(w - 1, AiMax(0, int(to.x / cell))), tz = AiMin(h - 1, AiMax(0, int(to.z / cell)));
+	const int N = w * h;
+	array<float> cost(N); array<int> prev(N); array<bool> done(N); array<float> thr(N); array<bool> pass(N);
+	for (int c = 0; c < N; ++c) {
+		cost[c] = 1e30f; prev[c] = -1; done[c] = false;
+		const AIFloat3 centre((float(c % w) + 0.5f) * cell, 0.f, (float(c / w) + 0.5f) * cell);
+		pass[c] = probe.CanMoveTo(centre);
+		thr[c] = pass[c] ? Cover(centre, 0.f) : 0.f;
+	}
+	const int start = sz * w + sx, goal = tz * w + tx;
+	pass[start] = true; pass[goal] = true;
+	cost[start] = 0.f;
+	const float strength = AiMax(1e-3f, S);
+	for (int it = 0; it < N; ++it) {
+		int u = -1; float best = 1e30f;
+		for (int c = 0; c < N; ++c) if (!done[c] && cost[c] < best) { best = cost[c]; u = c; }
+		if (u < 0 || u == goal) break;
+		done[u] = true;
+		const int ux = u % w, uz = u / w;
+		for (int dz = -1; dz <= 1; ++dz) for (int dx = -1; dx <= 1; ++dx) {
+			if (dx == 0 && dz == 0) continue;
+			const int vx = ux + dx, vz = uz + dz;
+			if (vx < 0 || vz < 0 || vx >= w || vz >= h) continue;
+			const int v = vz * w + vx;
+			if (done[v] || !pass[v]) continue;
+			const float len = cell * sqrt(float(dx * dx + dz * dz));
+			const float c2 = cost[u] + len * (1.f + thr[v] / strength);
+			if (c2 < cost[v]) { cost[v] = c2; prev[v] = u; }
+		}
+	}
+	array<int> cells;
+	for (int c = goal; c >= 0 && c != start; c = prev[c]) cells.insertLast(c);
+	for (int k = int(cells.length()) - 1; k >= 1; --k) {  // the goal cell itself is replaced by the exact target
+		const int c = cells[k];
+		path.insertLast(AIFloat3((float(c % w) + 0.5f) * cell, 0.f, (float(c / w) + 0.5f) * cell));
+	}
+	path.insertLast(to);
+	return path;
+}
+// move the op's squad toward dest as one; returns true once every unit is within its own reach of dest
+bool MoveGroup(Op@ op, uint o, const AIFloat3& in dest)
+{
+	if (op.units.length() == 0) return false;
+	CCircuitUnit@ lead = op.units[0];
+	float slowest = 1e9f;
+	AIFloat3 c(0.f, 0.f, 0.f);
+	for (uint k = 0; k < op.units.length(); ++k) { c = c + op.units[k].GetPos(ai.frame); slowest = AiMin(slowest, op.units[k].circuitDef.speed); }
+	c = c / float(op.units.length());
+	if (op.route.length() == 0 || op.routeTo.distance2D(dest) > Intel::CELL) {
+		op.route = Route(c, dest, lead, Strength(op.units));
+		op.routeTo = dest; op.leg = 0;
+		AiLog("[ANV-CMD] route for " + op.units.length() + " units: " + op.route.length() + " waypoints to (" + int(dest.x) + "," + int(dest.z) + ")");
+	}
+	bool atWp = true;
+	for (uint k = 0; k < op.units.length() && atWp; ++k)
+		if (op.units[k].GetPos(ai.frame).distance2D(op.route[op.leg]) > op.units[k].circuitDef.GetMaxRange()) atWp = false;
+	if (atWp && op.leg + 1 < op.route.length()) { ++op.leg; atWp = false; }
+	if (atWp && op.leg + 1 >= op.route.length()) return true;
+	for (uint k = 0; k < op.units.length(); ++k) {
+		string prevKey;
+		const string key = "grp" + o + ":" + op.leg + ":" + int(op.routeTo.x) + "," + int(op.routeTo.z);
+		if (lastOrder.get("" + op.units[k].id, prevKey) && prevKey == key) continue;
+		lastOrder.set("" + op.units[k].id, key);
+		op.units[k].CmdMoveTo(op.route[op.leg]);
+		op.units[k].CmdWantedSpeed(slowest);  // together: the squad moves at its slowest member's pace
+	}
+	return false;
+}
 dictionary lastOrder;  // unit id -> last order key (re-issued only when it changes)
 int created = 0, retreats = 0;
 
@@ -2636,6 +2723,12 @@ void Update()
 		for (uint k = 0; k < op.units.length(); ++k) { oc = oc + op.units[k].GetPos(ai.frame); minReach = AiMin(minReach, op.units[k].circuitDef.GetMaxRange()); }
 		oc = oc / float(op.units.length());
 		minReach = AiMax(1.f, minReach);
+		if (op.engaged && op.defence <= 0.f && oc.distance2D(op.pos) > minReach && !op.arrived) {
+			// undefended target far away: approach as one squad along the route, then fight
+			if (!MoveGroup(op, o, op.pos)) continue;
+			op.arrived = true;
+			for (uint k = 0; k < op.units.length(); ++k) op.units[k].CmdWantedSpeed(op.units[k].circuitDef.speed);
+		}
 		if (!op.engaged) {
 			// gather just outside the defenders' reach, on our side; engage once everyone is within its reach of the spot
 			float defReach = 0.f;
@@ -2645,15 +2738,9 @@ void Update()
 			AIFloat3 dir = oc - op.pos;
 			const float len = AiMax(1.f, dir.Length2D());
 			const AIFloat3 stage = op.pos + dir * ((defReach + minReach) / len);
-			bool gathered = true;
-			for (uint k = 0; k < op.units.length() && gathered; ++k)
-				if (op.units[k].GetPos(ai.frame).distance2D(stage) > op.units[k].circuitDef.GetMaxRange()) gathered = false;
-			if (!gathered) {
-				for (uint k = 0; k < op.units.length(); ++k)
-					Order(op.units[k], "stage" + o + ":" + int(stage.x / minReach) + "," + int(stage.z / minReach), 0, stage, -1);
-				continue;
-			}
+			if (!MoveGroup(op, o, stage)) continue;  // the squad walks there together
 			op.engaged = true;
+			for (uint k = 0; k < op.units.length(); ++k) op.units[k].CmdWantedSpeed(op.units[k].circuitDef.speed);  // fight at full speed
 			AiLog("[ANV-CMD] engage (" + int(op.pos.x) + "," + int(op.pos.z) + ") with " + op.units.length() + " units");
 		}
 		for (uint k = 0; k < op.units.length(); ++k) {
@@ -2762,6 +2849,7 @@ void Update()
 		+ " killed=" + int(killed) + " lost=" + int(lost)
 		+ " idleBuilders=" + idleBuilders + "/" + builders + " idleFactories=" + idleFacs + "/" + facs
 		+ " mInc=" + F1(aiEconomyMgr.metal.income) + " eInc=" + F1(aiEconomyMgr.energy.income)
+		+ " mex=" + Economist::mexes.length()
 		+ " " + Command::Status()
 		+ " microContact=" + minContact + " microFired=" + minFired + " microNoReply=" + minNoReply
 		+ " microOutranged=" + minOutranged + " microIdleInRange=" + minIdleInRange + " microStillHit=" + minStillHit);

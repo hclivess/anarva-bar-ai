@@ -3055,7 +3055,7 @@ index 0be6a835..50601754 100644
  }
  
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..d9e1553d 100644
+index c3aaefe5..d9c82e56 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -3163,7 +3163,7 @@ index c3aaefe5..d9e1553d 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +776,192 @@ void CInitScript::RegisterCore()
+@@ -735,9 +776,195 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -3213,6 +3213,9 @@ index c3aaefe5..d9e1553d 100644
 +static void CCircuitUnit_CmdMoveTo(CCircuitUnit* u, const AIFloat3& p) { TRY_UNIT(bridgeAI, u, u->CmdMoveTo(p, 0, NO_EXPIRY);) }
 +static void CCircuitUnit_CmdFightTo(CCircuitUnit* u, const AIFloat3& p) { TRY_UNIT(bridgeAI, u, u->CmdFightTo(p, 0, NO_EXPIRY);) }
 +static void CCircuitUnit_CmdStop(CCircuitUnit* u) { TRY_UNIT(bridgeAI, u, u->CmdStop();) }
++static void CCircuitUnit_CmdWantedSpeed(CCircuitUnit* u, float speed) { TRY_UNIT(bridgeAI, u, u->CmdWantedSpeed(speed);) }
++// can this unit's movement type stand at p (the core's terrain areas: water, slopes, cliffs)
++static bool CCircuitUnit_CanMoveTo(CCircuitUnit* u, const AIFloat3& p) { return bridgeAI->GetTerrainManager()->CanMoveToPos(u->GetArea(), p); }
 +static bool CCircuitUnit_CmdAttackEnemy(CCircuitUnit* u, int enemyId)
 +{
 +	CEnemyInfo* e = bridgeAI->GetEnemyInfo(enemyId);
@@ -3356,7 +3359,7 @@ index c3aaefe5..d9e1553d 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +991,34 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +994,36 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -3367,6 +3370,8 @@ index c3aaefe5..d9e1553d 100644
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdMoveTo(const AIFloat3& in)", asFUNCTION(CCircuitUnit_CmdMoveTo), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdFightTo(const AIFloat3& in)", asFUNCTION(CCircuitUnit_CmdFightTo), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdStop()", asFUNCTION(CCircuitUnit_CmdStop), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdWantedSpeed(float)", asFUNCTION(CCircuitUnit_CmdWantedSpeed), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CCircuitUnit", "bool CanMoveTo(const AIFloat3& in)", asFUNCTION(CCircuitUnit_CanMoveTo), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "bool CmdAttackEnemy(int)", asFUNCTION(CCircuitUnit_CmdAttackEnemy), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyGroups(array<AIFloat3>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemyGroups), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetWrecks(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetWrecks), asCALL_CDECL); ASSERT(r >= 0);
@@ -3391,7 +3396,7 @@ index c3aaefe5..d9e1553d 100644
  }
  
  bool CInitScript::Init()
-@@ -920,22 +1172,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1177,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  
