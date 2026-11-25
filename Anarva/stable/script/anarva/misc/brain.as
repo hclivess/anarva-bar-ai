@@ -4422,10 +4422,12 @@ void BuilderSafeUpdate()
 			continue;
 		}
 		IBuilderTask@ bt = cast<IBuilderTask>(u.task);
-		if (bt is null || bt.buildDef is null) continue;  // no job: nothing to weigh, the core gives it one
+		if (bt is null && u.task !is null && u.task.GetType() != Task::Type::BUILDER) continue;  // retreating etc.: the core has it
 		// the job is worth what it yields over the horizon, like the builder's own future (cost alone made every
-		// builder run: 134 evacuations in 5 minutes on Avalanche, 1-2 extractors standing, 2026-11-25)
-		const float jobV = (bt !is null && bt.buildDef !is null) ? Brain::Economist::AssetValue(bt.buildDef) : 0.f;
+		// builder run: 134 evacuations in 5 minutes on Avalanche, 1-2 extractors standing, 2026-11-25). A job that builds
+		// nothing (reclaim, resurrect, repair, waiting) is worth what its decision gave it: skipped before, rez bots
+		// stood in the open and died (owner, 2026-11-25: "standing with rezbots letting them die").
+		const float jobV = (bt !is null && bt.buildDef !is null) ? Brain::Economist::AssetValue(bt.buildDef) : ((bt !is null) ? bt.value : 0.f);
 		const float own = Brain::Economist::MetalValue(d);
 		// the job is at risk too (owner: kept upgrading a mex with 4 pawns on it): if the structure dies before it is
 		// finished, the metal sunk into it is lost (bounded by its full value; progress isn't visible to the script)
