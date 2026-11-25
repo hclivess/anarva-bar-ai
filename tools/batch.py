@@ -90,17 +90,19 @@ def run_one(args, i):
     m = args.maps[i % len(args.maps)]
     tac_team = 0 if args.n1 > 1 else ((i // len(args.maps)) % 2 if args.games > len(args.maps) else i % 2)
     out = os.path.join(args.out, f"g{i:02d}")
+    # starts: chosen in game (as every 1v1 replay) or fixed (the start is given: the AI must judge and play it)
+    spt = {"choose": 2, "fixed": 0}.get(args.startpos, 2 if (i + args.startpos_offset) % 2 == 0 else 0)
     ai = [args.me, args.opp]
     if tac_team == 1:
         ai.reverse()
     subprocess.run([sys.executable, "-I", os.path.join(HERE, "run_match.py"), out, "--ai0", ai[0], "--ai1", ai[1],
-                    "--map", m, "--minutes", str(args.minutes), "--game-minutes", str(args.game_minutes), "--n1", str(args.n1 if tac_team == 0 else 1)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    "--map", m, "--minutes", str(args.minutes), "--game-minutes", str(args.game_minutes), "--n1", str(args.n1 if tac_team == 0 else 1), "--startpostype", str(spt)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     r = parse(out, tac_team, args.n1)
-    r.update({"game": i, "map": m, "tac_team": tac_team})
+    r.update({"game": i, "map": m, "tac_team": tac_team, "start": "choose" if spt == 2 else "fixed"})
     t = r.get("teams", {})
     me = t.get(tac_team, {})
     op = {k: sum(v.get(k, 0) for tt, v in t.items() if tt != tac_team) for k in ("army", "static", "killed")}
-    print(f"g{i:02d} {MAP_KIND.get(m, '?'):5s} {m:26s} T{tac_team} {r['result']:9s} min={me.get('frame', 0) // 1800:3d} "
+    print(f"g{i:02d} {MAP_KIND.get(m, '?'):5s} {m:26s} T{tac_team} {r['start']:6s} {r['result']:9s} min={me.get('frame', 0) // 1800:3d} "
           f"army {me.get('army', 0):6d}/{op.get('army', 0):6d} static {me.get('static', 0):6d}/{op.get('static', 0):6d} "
           f"kills {me.get('killed', 0):4d}/{op.get('killed', 0):4d} err={r.get('script_errors', 0)}", flush=True)
     return r
@@ -118,6 +120,9 @@ def main():
     ap.add_argument("--pool", default="std", choices=["std", "big"])
     ap.add_argument("--minutes", type=float, default=60.0)
     ap.add_argument("--game-minutes", type=float, default=30.0, help="game-time cap before scoring by points")
+    ap.add_argument("--startpos", default="alternate", choices=["choose", "fixed", "alternate"],
+                    help="choose in game, fixed, or alternate by game (both happen in real games)")
+    ap.add_argument("--startpos-offset", type=int, default=0, help="shift the alternation (swap modes per map between rounds)")
     args = ap.parse_args()
     if args.maps is None:
         args.maps = ",".join(BIG_MAPS if args.pool == "big" else DEFAULT_MAPS)

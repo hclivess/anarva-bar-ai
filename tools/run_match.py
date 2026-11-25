@@ -72,7 +72,7 @@ hostip=127.0.0.1;
 hostport=0;
 numplayers=1;
 numusers={2 + args.n1};
-startpostype=2;
+startpostype={args.startpostype};
 gametype={GAME};
 mapname={args.map};
 myplayername=Observer;
@@ -91,6 +91,7 @@ def main():
     ap.add_argument("--n1", type=int, default=1, help="number of ai1 copies (all allied)")
     ap.add_argument("--minutes", type=float, default=20.0, help="wall-clock limit")
     ap.add_argument("--game-minutes", type=float, default=30.0, help="game-time cap (harness widget)")
+    ap.add_argument("--startpostype", type=int, default=2, help="0 fixed, 2 choose in game (every 1v1 replay)")
     args = ap.parse_args()
     args.out = os.path.abspath(args.out)  # the engine runs inside out/, so a relative script path breaks
 

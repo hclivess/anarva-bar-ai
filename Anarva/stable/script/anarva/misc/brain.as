@@ -2125,7 +2125,11 @@ float Horizon()
 	float V = Brain::Strategic::ownedMetal;
 	if (Brain::commander !is null)
 		V = AiMax(V, Brain::commander.circuitDef.costM);
-	const float ourInc = aiEconomyMgr.metal.income;
+	// at least what a commander makes (unit fact): before the first economy tick the income read 0 and the horizon
+	// came out at 2.7 million s, which made every opening plan and start candidate look alike
+	float ourInc = aiEconomyMgr.metal.income;
+	const CCircuitDef@ com = (Brain::commander !is null) ? Brain::commander.circuitDef : aiSetupMgr.commChoice;
+	if (com !is null) ourInc = AiMax(ourInc, Facts::MetalMake(com.GetName()));
 	const float theirInc = AiMax(Brain::EcoPos::theirs, ourInc * float(AiMax(1, ai.GetEnemyTeamSize())));
 	const float cross = AiTerrainDiagonal() / AiMax(1.f, Brain::Director::allSpeed);
 	return V / AiMax(1e-3f, theirInc) + cross;
@@ -2870,9 +2874,19 @@ AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3&
 	AiGetMetalSpots(sp, si, so);
 	array<AIFloat3> cands;
 	cands.insertLast(AIFloat3((lo.x + hi.x) / 2.f, 0.f, (lo.z + hi.z) / 2.f));
-	for (uint i = 0; i < sp.length(); ++i)
-		if (sp[i].x >= lo.x && sp[i].x <= hi.x && sp[i].z >= lo.z && sp[i].z <= hi.z) cands.insertLast(sp[i]);
-	const float H = AiMax(1.f, planDef.costM / AiMax(1e-3f, EcoPos::theirs)) + AiTerrainDiagonal() / AiMax(1.f, planDef.speed);
+	// each spot in the box offers the centre of the spots the commander can build from one place there (within its
+	// build distance of that spot): it builds them without walking - players start ~170 elmos from their nearest
+	// spot with 3 within ~210 (median of 106 winners, 1v1 replays.db)
+	const float reach = planDef.GetBuildDistance();
+	for (uint i = 0; i < sp.length(); ++i) {
+		if (!(sp[i].x >= lo.x && sp[i].x <= hi.x && sp[i].z >= lo.z && sp[i].z <= hi.z)) continue;
+		AIFloat3 c(0.f, 0.f, 0.f); int k = 0;
+		for (uint j = 0; j < sp.length(); ++j)
+			if (sp[j].distance2D(sp[i]) <= 2.f * reach) { c.x += sp[j].x; c.z += sp[j].z; ++k; }
+		cands.insertLast(AIFloat3(c.x / k, 0.f, c.z / k));
+	}
+	const float H = AiMax(1.f, Economist::Horizon());
+	const float ext = (Economist::mexT1 !is null) ? Facts::ExtractsMetal(Economist::mexT1.GetName()) : 0.f;
 	AIFloat3 bestP = cands[0]; float bestV = -1e30f;
 	for (uint c = 0; c < cands.length(); ++c) {
 		planHome = cands[c];
@@ -2887,8 +2901,16 @@ AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3&
 		for (uint i = 0; i < sp.length(); ++i) s0.usedSpot[i] = false;
 		array<Opt@> first = Options(s0, sp, si, so);
 		int b = -1;
-		const float v = BestPlan(s0, 0.f, H, first, b, planDef.buildSpeed, planDef.speed, sp, si, so);
-		AiLog("[ANV-START] candidate (" + int(planHome.x) + "," + int(planHome.z) + ") plan value " + int(v));
+		float v = BestPlan(s0, 0.f, H, first, b, planDef.buildSpeed, planDef.speed, sp, si, so);
+		// the territory it claims for the game: every spot's yield at the share we keep from here (nearer us than them)
+		// over the horizon - what a forward start buys; the plan already charges the earlier raid it invites
+		float terr = 0.f;
+		for (uint i = 0; i < sp.length(); ++i) {
+			const float dUs = planHome.distance2D(sp[i]), dThem = them.distance2D(sp[i]);
+			terr += si[i] * ext * ((dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f) * H;
+		}
+		v += terr;
+		AiLog("[ANV-START] candidate (" + int(planHome.x) + "," + int(planHome.z) + ") plan " + int(v - terr) + " + territory " + int(terr) + " = " + int(v));
 		if (v > bestV) { bestV = v; bestP = planHome; }
 	}
 	planning = false; ready = false; raidArrive = 1e9f;
