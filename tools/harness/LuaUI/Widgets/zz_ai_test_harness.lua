@@ -44,7 +44,9 @@ local function techLine(teamID)
 		local ud = UnitDefs[Spring.GetUnitDefID(units[i])]
 		if ud and (bp or 1) >= 1 then
 			local cp = ud.customParams or {}
-			local tl = tonumber(cp.techlevel) or 1
+			-- a level outside 1-3 (0 or a fraction on some units) indexed a missing key and killed the widget: every
+			-- Comet Catcher game read "incomplete at minute 1" (2026-11-25)
+			local tl = math.max(1, math.min(3, math.floor(tonumber(cp.techlevel) or 1)))
 			if ud.isFactory then
 				c["lab" .. math.min(tl, 3)] = c["lab" .. math.min(tl, 3)] + 1
 			elseif (ud.extractsMetal or 0) > 0 then
