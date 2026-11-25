@@ -429,6 +429,35 @@ void Update()
 		}
 	}
 	theirs = (float(enemyMex) + unseen) * perMex;
+	// Raid targets (#89, owner: "an early raid of a few blitz easily wins against barb"): every spot we don't hold,
+	// worth an extractor's metal times the chance the enemy holds it (seen enemy extractor: 1; unseen spot on their
+	// side: dark time / their crossing time, as above). The core sends a raid with nothing in sight to the best of
+	// these per second of travel that its power beats on the threat map (turrets included).
+	{
+		array<AIFloat3> rp; array<float> rv;
+		array<AIFloat3> msp; array<float> msi; array<bool> mso;
+		const uint ns = AiGetMetalSpots(msp, msi, mso);
+		float sp2 = 0.f; uint nm2 = 0;
+		for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile()) { sp2 += ed[i].speed; ++nm2; }
+		const float cross2 = AiTerrainDiagonal() / AiMax(1.f, nm2 > 0 ? sp2 / float(nm2) : Director::allSpeed);
+		const bool scouted2 = Scout::lastSeen.length() == uint(Intel::gw * Intel::gh);
+		const float mexV = (Economist::mexT1 is null) ? 0.f : Economist::MetalValue(Economist::mexT1);
+		for (uint i = 0; i < ns; ++i) {
+			if (OwnSpot(msp[i])) continue;
+			float pTaken = 0.f;
+			for (uint k = 0; k < n && pTaken < 1.f; ++k)
+				if (ed[k] !is null && !ed[k].IsMobile() && (ed[k].GetName().findFirst("mex") >= 0 || ed[k].GetName().findFirst("moho") >= 0)
+					&& ep[k].distance2D(msp[i]) <= ed[k].GetRadius() * 2.f) pTaken = 1.f;
+			if (pTaken < 1.f && !Assess::OnOurSide(msp[i]) && !AiIsInLOS(msp[i])) {
+				const float age = scouted2 ? float(ai.frame - Scout::lastSeen[Intel::CellOf(msp[i])]) / SECOND : float(ai.frame) / SECOND;
+				pTaken = AiMin(1.f, age / AiMax(1.f, cross2));
+			}
+			if (pTaken <= 0.f) continue;
+			rp.insertLast(msp[i]);
+			rv.insertLast(pTaken * mexV);
+		}
+		aiMilitaryMgr.SetRaidTargets(rp, rv);
+	}
 	behind = ours < theirs;
 	// the core's constructor rule (decide): builds constructors while build power < income x ratio. A constructor
 	// pays only through work the ones we have can't do: open extractor spots on our side to claim. Behind without, more constructors only spend (smoke 2026-11-25: 22 constructors,
@@ -2595,6 +2624,81 @@ void OnUnitFinished(CCircuitUnit@ unit)
 	Production::OnFinished(unit);
 }
 
+/*
+ * Self-assessment, once per game minute (owner #92, CHECKLIST.md). Every verdict is measured from the game:
+ *  - waste: storage is full and income exceeds spending -> the excess is thrown away (per second)
+ *  - stall: stock is below one second of the deficit (spending exceeds income and nothing is left to draw on)
+ *  - army: our armed mobile metal vs the enemy's known armed mobile metal
+ *  - moving: an army unit that covered at least one second of its own top speed since the last check
+ *  - fighting: army units on attack/raid tasks vs defend/guard/none; metal killed and lost since the last check
+ *  - idle: builders and factories with no job
+ * Logged as one [ANV-CHECK] line; tools/check_game.py turns a game's lines into the checklist.
+ */
+namespace Check {
+int lastFrame = NEVER;
+dictionary lastPos;  // unit id -> "x,z"
+float lastKilled = 0.f, lastLost = 0.f;
+string Res(const SResourceInfo@ r, float realPull)
+{
+	const float net = r.income - realPull;
+	if (r.current >= r.storage && net > 0.f) return "WASTE " + F1(net) + "/s";
+	if (net < 0.f && r.current < -net) return "STALL " + F1(-net) + "/s short";
+	return "ok";
+}
+void Update()
+{
+	if (lastFrame != NEVER && ai.frame - lastFrame < MINUTE) return;
+	lastFrame = ai.frame;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	float army = 0.f; uint armyN = 0, moved = 0, onAttack = 0, onRaid = 0, onDefend = 0, noFight = 0;
+	uint builders = 0, idleBuilders = 0, facs = 0, idleFacs = 0;
+	dictionary now;
+	for (uint i = 0; i < all.length(); ++i) {
+		CCircuitUnit@ u = all[i];
+		const CCircuitDef@ d = u.circuitDef;
+		const bool idle = u.task is null || u.task.GetType() == Task::Type::IDLE;
+		if (IsArmy(d)) {
+			army += d.costM; ++armyN;
+			const AIFloat3 p = u.GetPos(ai.frame);
+			now.set("" + u.id, p.x + "," + p.z);
+			string prev;
+			if (lastPos.get("" + u.id, prev)) {
+				const array<string>@ xz = prev.split(",");
+				const float dx = p.x - parseFloat(xz[0]), dz = p.z - parseFloat(xz[1]);
+				if (sqrt(dx * dx + dz * dz) >= d.speed) ++moved;  // at least one second of its top speed
+			}
+			IFighterTask@ ft = cast<IFighterTask>(u.task);
+			if (ft is null) ++noFight;
+			else if (ft.GetFightType() == Task::FightType::ATTACK) ++onAttack;
+			else if (ft.GetFightType() == Task::FightType::RAID) ++onRaid;
+			else ++onDefend;
+		} else if (d.IsMobile() && d.IsRoleAny(Unit::Role::BUILDER.mask) && d.buildSpeed > 0.f) {
+			++builders; if (idle) ++idleBuilders;
+		} else if (!d.IsMobile() && Facts::BuildOptions(d.GetName()).length() > 0) {
+			++facs; if (idle) ++idleFacs;
+		}
+	}
+	lastPos = now;
+	float enemyArmy = 0.f;
+	{
+		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+		const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+		for (uint i = 0; i < n; ++i)
+			if (ed[i] !is null && ed[i].IsMobile() && ed[i].defDmg > 0.f) enemyArmy += ec[i];
+	}
+	const float killed = Assess::killedTotal - lastKilled, lost = (Assess::lostNearTotal + Assess::lostFarTotal) - lastLost;
+	lastKilled = Assess::killedTotal; lastLost = Assess::lostNearTotal + Assess::lostFarTotal;
+	AiLog("[ANV-CHECK] t=" + Minute() + "m metal=" + Res(aiEconomyMgr.metal, aiEconomyMgr.metal.pull)
+		+ " energy=" + Res(aiEconomyMgr.energy, Economist::RealPull())
+		+ " banked=" + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage)
+		+ " army=" + int(army) + " enemyArmyKnown=" + int(enemyArmy) + " ratio=" + F1(Director::ratio)
+		+ " moving=" + moved + "/" + armyN + " attack=" + onAttack + " raid=" + onRaid + " defend=" + onDefend + " none=" + noFight
+		+ " killed=" + int(killed) + " lost=" + int(lost)
+		+ " idleBuilders=" + idleBuilders + "/" + builders + " idleFactories=" + idleFacs + "/" + facs
+		+ " mInc=" + F1(aiEconomyMgr.metal.income) + " eInc=" + F1(aiEconomyMgr.energy.income));
+}
+}  // namespace Check
+
 CCircuitUnit@ commander = null;
 int commRedirects = 0;
 
@@ -2991,6 +3095,7 @@ void OnUnitDestroyed(CCircuitUnit@ unit)
 void Update()  // every 30 frames
 {
 	CheckSide();
+	Check::Update();
 	aiSwitchHighGroundArty = true;
 	aiSwitchHeightSquads = true;
 	aiSwitchScoutMap = true;
@@ -3002,9 +3107,37 @@ void Update()  // every 30 frames
 	Director::Update();
 	// no config floors (quota.attack 60, raid min): an attack launches with the power needed to beat what we know of
 	// the enemy at our trade rate; a raid with what beats the raiders that will answer it
-	aiMilitaryMgr.quota.attack = Director::needPower;
+	// #91: a fight is local. An attack needs to beat what defends its target plus what can get there before we do,
+	// not the enemy's whole army (needPower held 130 raiders at home at ratio 6.7 on Throne, 2026-11-25). For each
+	// known enemy group: its threat + the threat of every other group that reaches it sooner than we do from base;
+	// the quota is the cheapest such fight at our trade rate. No group known: the whole known/assumed army.
+	float fightNeed = Director::needPower;
+	if (HasBase()) {
+		array<AIFloat3> gp; array<float> gc, gt;
+		const uint g = AiGetEnemyGroups(gp, gc, gt);
+		const float ourSpeed = AiMax(1.f, Director::allSpeed);
+		float enemySpeed = ourSpeed;
+		{
+			array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+			const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+			float sp = 0.f; uint cnt = 0;
+			for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile() && ed[i].surfThrDmg > 0.f) { sp += ed[i].speed; ++cnt; }
+			if (cnt > 0) enemySpeed = AiMax(1.f, sp / float(cnt));
+		}
+		for (uint i = 0; i < g; ++i) {
+			const float tUs = basePos.distance2D(gp[i]) / ourSpeed;
+			float need = gt[i];
+			for (uint k = 0; k < g; ++k)
+				if (k != i && gp[k].distance2D(gp[i]) / enemySpeed < tUs) need += gt[k];
+			fightNeed = (i == 0) ? need : AiMin(fightNeed, need);
+		}
+		if (g > 0) fightNeed /= AiMax(1e-3f, Assess::trade);
+	}
+	aiMilitaryMgr.quota.attack = fightNeed;
+	aiMilitaryMgr.SetValueHorizon(Economist::Horizon());  // the core values targets' lost output over our horizon (#90)
 	aiMilitaryMgr.quota.raid.min = aiEnemyMgr.GetEnemyThreat(RT::RAIDER) / AiMax(1e-3f, Assess::trade);
-	aiMilitaryMgr.quota.raid.avg = AiMax(aiMilitaryMgr.quota.raid.avg, aiMilitaryMgr.quota.raid.min);
+	// a raid fills up to what its fight needs now (was the highest need ever seen: it only grew)
+	aiMilitaryMgr.quota.raid.avg = aiMilitaryMgr.quota.raid.min;
 	Army::CheckSquads();
 	// every module re-decides on the engine's own slow-update tick (no per-module polling periods)
 	Recycler::Update();

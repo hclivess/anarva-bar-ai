@@ -86,6 +86,9 @@ is a decision nobody made.
   (owner, 2026-11-25: "you can start playing in moderation") and reading what the AI did: the build log,
   the builder pick log (`[ANV-PICK]`), the economy line and the Director's ratio, compared with the
   top players' curves in `runs/replays.db`.
+- **Every game is assessed with [CHECKLIST.md](CHECKLIST.md)** (owner, 2026-11-25, #92: "Why don't you have a basic
+  checklist?"): `python tools/check_game.py runs/<batch>/gNN`. Overflow, stalls, army value, whether the army moves
+  and fights come before the score. A failure there is fixed before anything else.
 - The replay analyzer runs at all times until every library replay is in `runs/replays.db`
   (`tools/replay_db.py run`). No replay is played twice.
 - Results and findings go into [PROGRESS.md](PROGRESS.md) and the issues. [FEATURES.md](FEATURES.md) is

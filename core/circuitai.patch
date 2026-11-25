@@ -298,7 +298,7 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
-index e4c1d126..8f4e270f 100644
+index e4c1d126..03dda27a 100644
 --- a/src/circuit/module/BuilderManager.cpp
 +++ b/src/circuit/module/BuilderManager.cpp
 @@ -6,6 +6,7 @@
@@ -309,7 +309,7 @@ index e4c1d126..8f4e270f 100644
  #include "module/EconomyManager.h"
  #include "module/MilitaryManager.h"
  #include "module/FactoryManager.h"
-@@ -54,6 +55,102 @@
+@@ -54,6 +55,110 @@
  
  #include "Log.h"
  
@@ -332,10 +332,18 @@ index e4c1d126..8f4e270f 100644
 +	//    and energy at 30/s (smoke 2026-11-25).
 +	// Overflow = income beyond what we can spend, not "full now" (the game starts full: extractors read worthless).
 +	// What we can spend: our builders' power at this job's metal per build time, plus what the factories draw.
-+	const float spendCap = circuit->GetBuilderManager()->GetBuildPower() * bd->GetCostM() / std::max(1.f, bd->GetBuildTime())
++	float spendCap = circuit->GetBuilderManager()->GetBuildPower() * bd->GetCostM() / std::max(1.f, bd->GetBuildTime())
 +		+ circuit->GetFactoryManager()->GetMetalRequire();
-+	const bool metalOver = eco->IsMetalFull() && (eco->GetAvgMetalIncome() > spendCap);
-+	const float pM = metalOver ? 0.f : 1.f;
++	// Build power spends nothing without energy: we can spend at most our energy income at the metal per energy of what
++	// we build (Avalanche 2026-11-25: metal full at 1300, energy at 0-76 for 6 minutes, extractors still ranked level
++	// with wind and the army stayed at 43-129 metal)
++	if (eco->GetSpendMetalPerEnergy() > 0.f) {
++		spendCap = std::min(spendCap, eco->GetAvgEnergyIncome() * eco->GetSpendMetalPerEnergy());
++	}
++	// The price of one more metal = the share of our metal income we can actually spend now (capacity / income, at
++	// most 1). "Storage full" read 900/1250 as fine while it piled up unspendable.
++	const float mInc = eco->GetAvgMetalIncome();
++	const float pM = (mInc > 0.f) ? std::min(1.f, spendCap / mInc) : 1.f;
 +	float pE = std::max(1e-9f, eco->GetEcoEM());
 +	// converters draw exactly the surplus: judge deficit and spending ratio on the pull without them (owner, #83)
 +	const float realPullE = eco->GetEnergyPullReal();
@@ -412,7 +420,7 @@ index e4c1d126..8f4e270f 100644
  namespace circuit {
  
  using namespace springai;
-@@ -64,7 +161,6 @@ CBuilderManager::CBuilderManager(CCircuitAI* circuit)
+@@ -64,7 +169,6 @@ CBuilderManager::CBuilderManager(CCircuitAI* circuit)
  		, guardCount(0)
  		, buildTasksCount(0)
  		, buildPower(.0f)
@@ -420,7 +428,7 @@ index e4c1d126..8f4e270f 100644
  {
  	circuit->GetScheduler()->RunOnInit(CScheduler::GameJob(&CBuilderManager::Init, this));
  
-@@ -263,11 +359,11 @@ void CBuilderManager::InitHandlers()
+@@ -263,11 +367,11 @@ void CBuilderManager::InitHandlers()
  
  	const Json::Value& root = circuit->GetSetupManager()->GetConfig();
  	const Json::Value& retreat = root["retreat"]["builder"];
@@ -437,7 +445,7 @@ index e4c1d126..8f4e270f 100644
  
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  	for (CCircuitDef& cdef : circuit->GetCircuitDefs()) {
-@@ -315,6 +411,11 @@ void CBuilderManager::InitHandlers()
+@@ -315,6 +419,11 @@ void CBuilderManager::InitHandlers()
  	ReadConfig();
  }
  
@@ -449,7 +457,7 @@ index e4c1d126..8f4e270f 100644
  void CBuilderManager::ReadConfig()
  {
  	const Json::Value& root = circuit->GetSetupManager()->GetConfig();
-@@ -325,17 +426,15 @@ void CBuilderManager::ReadConfig()
+@@ -325,17 +434,15 @@ void CBuilderManager::ReadConfig()
  	if (terraDef == nullptr) {
  		terraDef = circuit->GetEconomyManager()->GetSideInfo().defaultDef;
  	}
@@ -471,7 +479,7 @@ index e4c1d126..8f4e270f 100644
  	for (const std::string& catName : build.getMemberNames()) {
  		auto it = buildNames.find(catName);
  		if (it == buildNames.end()) {
-@@ -467,8 +566,7 @@ void CBuilderManager::Init()
+@@ -467,8 +574,7 @@ void CBuilderManager::Init()
  		scheduler->RunJobEvery(CScheduler::GameJob(&CBuilderManager::UpdateIdle, this), interval, offset + 0);
  		scheduler->RunJobEvery(CScheduler::GameJob(&CBuilderManager::Update, this), 1/*interval*/, offset + 1);
  
@@ -481,7 +489,7 @@ index e4c1d126..8f4e270f 100644
  								circuit->GetSkirmishAIId() * WATCHDOG_COUNT + 10);
  	};
  
-@@ -830,7 +928,7 @@ void CBuilderManager::FallbackTask(CCircuitUnit* unit)
+@@ -830,7 +936,7 @@ void CBuilderManager::FallbackTask(CCircuitUnit* unit)
  
  	const int frame = circuit->GetLastFrame();
  	const AIFloat3& pos = unit->GetPos(frame);
@@ -490,7 +498,7 @@ index e4c1d126..8f4e270f 100644
  	task->AssignTo(unit);
  	task->Start(unit);
  	static_cast<CBuilderScript*>(script)->TaskAssigned(unit);
-@@ -856,11 +954,9 @@ bool CBuilderManager::IsBuilderInArea(CCircuitDef* buildDef, const AIFloat3& pos
+@@ -856,11 +962,9 @@ bool CBuilderManager::IsBuilderInArea(CCircuitDef* buildDef, const AIFloat3& pos
  
  bool CBuilderManager::HasFreeAssists(CCircuitUnit* builder) const
  {
@@ -504,7 +512,7 @@ index e4c1d126..8f4e270f 100644
  }
  
  SBuildChain* CBuilderManager::GetBuildChain(IBuilderTask::BuildType buildType, CCircuitDef* cdef) const
-@@ -941,7 +1037,7 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
+@@ -941,7 +1045,7 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
  	const AIFloat3& pos = unit->GetPos(frame);
  
  	const CCircuitDef* cdef = unit->GetCircuitDef();
@@ -513,7 +521,7 @@ index e4c1d126..8f4e270f 100644
  	if ((cdef->GetPower() > THREAT_MIN)
  		&& (circuit->GetMilitaryManager()->FindBCombatTarget(unit, pos, POWER_MOD, true) != nullptr))
  	{
-@@ -966,30 +1062,8 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
+@@ -966,30 +1070,8 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
  
  	std::shared_ptr<CQueryCostMap> pQuery = std::static_pointer_cast<CQueryCostMap>(query);
  
@@ -546,7 +554,7 @@ index e4c1d126..8f4e270f 100644
  	return unit->IsAttrBase()
  			? MakeEnergizerTask(unit, pQuery.get())
  			: MakeBuilderTask(unit, pQuery.get());
-@@ -1020,8 +1094,8 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1020,8 +1102,8 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
@@ -557,7 +565,7 @@ index e4c1d126..8f4e270f 100644
  
  	constexpr std::array<std::pair<IBuilderTask::BuildType, float>, (int)IBuilderTask::BuildType::_SIZE_> prioTasks = {
  		std::make_pair(IBuilderTask::BuildType::ENERGY, SQUARE(10000.f)),
-@@ -1047,7 +1121,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1047,7 +1129,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	};
  
  	for (const std::pair<IBuilderTask::BuildType, float>& pair : prioTasks) {
@@ -566,7 +574,7 @@ index e4c1d126..8f4e270f 100644
  		for (const IBuilderTask* candidate : GetTasks(pair.first)) {
  			if (!candidate->CanAssignTo(unit)) {
  				continue;
-@@ -1067,8 +1141,9 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1067,8 +1149,9 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  
  				int index = metalMgr->FindNearestCluster(buildPos);
  				const AIFloat3& testPos = (index < 0) ? buildPos : clusters[index].position;
@@ -578,7 +586,7 @@ index e4c1d126..8f4e270f 100644
  					|| !terrainMgr->CanReachAt(unit, buildPos, cdef->GetBuildDistance())  // ensure that path always exists
  					|| (inflMap->GetInfluenceAt(testPos) < -INFL_EPS))  // safety check
  				{
-@@ -1090,32 +1165,23 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1090,32 +1173,23 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -623,7 +631,7 @@ index e4c1d126..8f4e270f 100644
  	}
  
  	if ((task == nullptr) &&
-@@ -1123,12 +1189,13 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1123,12 +1197,13 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	{
  		CCircuitUnit* vip = circuit->GetFactoryManager()->GetClosestFactory(pos);
  		if (vip != nullptr) {
@@ -639,7 +647,7 @@ index e4c1d126..8f4e270f 100644
  	return const_cast<IBuilderTask*>(task);
  }
  
-@@ -1162,22 +1229,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1162,22 +1237,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
@@ -665,7 +673,7 @@ index e4c1d126..8f4e270f 100644
  
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
-@@ -1234,27 +1288,19 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1234,27 +1296,19 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -704,7 +712,7 @@ index e4c1d126..8f4e270f 100644
  		}
  	}
  
-@@ -1263,9 +1309,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1263,9 +1317,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  	{
  		CCircuitUnit* vip = circuit->GetFactoryManager()->GetClosestFactory(pos);
  		if (vip != nullptr) {
@@ -716,7 +724,7 @@ index e4c1d126..8f4e270f 100644
  		}
  	}
  
-@@ -1294,7 +1340,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1294,7 +1348,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  //	}
  
  	const bool isStalling = economyMgr->IsMetalEmpty() &&
@@ -725,7 +733,7 @@ index e4c1d126..8f4e270f 100644
  							(metalPull > economyMgr->GetPullMtoS() * circuit->GetFactoryManager()->GetMetalPull());
  	const bool isNotReady = !economyMgr->IsExcessed() || isStalling/* || economyMgr->IsEnergyStalling()*/;
  
-@@ -1317,7 +1363,8 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1317,7 +1371,8 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  	const float maxSpeed = cdef->GetSpeed() / pathfinder->GetSquareSize() * COST_BASE;
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
@@ -735,7 +743,7 @@ index e4c1d126..8f4e270f 100644
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
  			if (!candidate->CanAssignTo(unit)
-@@ -1352,7 +1399,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1352,7 +1407,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			float distCost;
  			const float rawSqDist = pos.SqDistance2D(buildPos);  // TODO: add target's radius to rawSqDist
@@ -743,7 +751,7 @@ index e4c1d126..8f4e270f 100644
  			if (rawSqDist < buildSqDistance) {
  				distCost = sqrtf(rawSqDist) / pathfinder->GetSquareSize() * COST_BASE * 0.5f;
  			} else {
-@@ -1364,28 +1410,20 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1364,28 +1418,20 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -784,7 +792,7 @@ index e4c1d126..8f4e270f 100644
  		}
  	}
  
-@@ -1396,6 +1434,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1396,6 +1442,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  		task = CreateBuilderTask(pos, unit);
  	}
  
@@ -792,7 +800,7 @@ index e4c1d126..8f4e270f 100644
  	return const_cast<IBuilderTask*>(task);
  }
  
-@@ -1403,7 +1442,7 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1403,7 +1450,7 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  {
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  	if (terrainMgr->IsZoneAlly(position)) {
@@ -801,7 +809,7 @@ index e4c1d126..8f4e270f 100644
  	}
  
  	CEconomyManager* ecoMgr = circuit->GetEconomyManager();
-@@ -1420,10 +1459,13 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1420,10 +1467,13 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  	CMilitaryManager* militaryMgr = circuit->GetMilitaryManager();
  	const float energyIncome = ecoMgr->GetAvgEnergyIncome() * ecoMgr->GetEcoFactor();
  	const float metalIncome = std::min(ecoMgr->GetAvgMetalIncome() * ecoMgr->GetEcoFactor(), energyIncome);
@@ -818,7 +826,7 @@ index e4c1d126..8f4e270f 100644
  		{
  			const std::set<IBuilderTask*>& tasks = GetTasks(IBuilderTask::BuildType::BIG_GUN);
  			if (tasks.empty()) {
-@@ -1445,14 +1487,14 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1445,14 +1495,14 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  			? circuit->GetFactoryManager()->GetClosestFactory(position)
  			: militaryMgr->GetClosestLeader({IFighterTask::FightType::ATTACK, IFighterTask::FightType::DEFEND}, position);
  	if (vip != nullptr) {
@@ -2269,7 +2277,7 @@ index 54fef916..e0495f1c 100644
  	}
  	candidates.clear();
 diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
-index 719442f0..98ff004e 100644
+index 719442f0..b8f801e8 100644
 --- a/src/circuit/module/MilitaryManager.cpp
 +++ b/src/circuit/module/MilitaryManager.cpp
 @@ -6,6 +6,8 @@
@@ -2735,7 +2743,7 @@ index 719442f0..98ff004e 100644
  }
  
  void CMilitaryManager::MarkPorc(CCircuitUnit* unit, int defPointId)
-@@ -984,8 +717,35 @@ void CMilitaryManager::ProcessHubDefence(CBDefenceTask* task)
+@@ -984,8 +717,67 @@ void CMilitaryManager::ProcessHubDefence(CBDefenceTask* task)
  	task->SetDefPointId(closestPoint->id);
  }
  
@@ -2743,6 +2751,38 @@ index 719442f0..98ff004e 100644
 +{
 +	scriptScoutPos = pos;
 +	scriptScoutVal = value;
++}
++
++void CMilitaryManager::SetRaidTargets(const std::vector<AIFloat3>& pos, const std::vector<float>& value)
++{
++	scriptRaidPos = pos;
++	scriptRaidVal = value;
++}
++
++// Anarva (#89): where a raid with nothing in sight should go: the enemy economy the script expects (value), per
++// second of travel, among spots whose threat is below the raid's power (turrets and armies on the threat map).
++AIFloat3 CMilitaryManager::GetRaidPosition(CCircuitUnit* leader, float power)
++{
++	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
++	CThreatMap* threatMap = circuit->GetThreatMap();
++	threatMap->SetThreatType(leader);
++	const AIFloat3& from = leader->GetPos(circuit->GetLastFrame());
++	const float speed = std::max(1.f, leader->GetCircuitDef()->GetSpeed());
++	SArea* area = leader->GetArea();
++	float bestScore = 0.f;
++	AIFloat3 best = -RgtVector;
++	for (size_t i = 0; i < scriptRaidPos.size(); ++i) {
++		const AIFloat3& p = scriptRaidPos[i];
++		if ((scriptRaidVal[i] <= 0.f) || !terrainMgr->CanMoveToPos(area, p) || (threatMap->GetThreatAt(p) >= power)) {
++			continue;
++		}
++		const float score = scriptRaidVal[i] / std::max(1.f, from.distance2D(p) / speed);
++		if (score > bestScore) {
++			bestScore = score;
++			best = p;
++		}
++	}
++	return best;
 +}
 +
  AIFloat3 CMilitaryManager::GetScoutPosition(CCircuitUnit* unit)
@@ -2771,7 +2811,7 @@ index 719442f0..98ff004e 100644
  	ClearScoutPosition(unit->GetTask());
  	CMetalManager* metalMgr = circuit->GetMetalManager();
  	const CMetalData::Clusters& clusters = metalMgr->GetClusters();
-@@ -1305,30 +1065,36 @@ void CMilitaryManager::DiceBigGun()
+@@ -1305,30 +1097,36 @@ void CMilitaryManager::DiceBigGun()
  
  	SuperInfos candidates;
  	candidates.reserve(superInfos.size());
@@ -2817,7 +2857,16 @@ index 719442f0..98ff004e 100644
  float CMilitaryManager::ClampMobileCostRatio() const
  {
  	const float enemyMobileCost = circuit->GetEnemyManager()->GetEnemyMobileCost();
-@@ -1523,11 +1289,12 @@ CEnemyInfo* CMilitaryManager::FindBCombatTarget(CCircuitUnit* unit, const AIFloa
+@@ -1394,7 +1192,7 @@ void CMilitaryManager::UpdateDefenceTasks()
+ //		if (groupIdx >= 0) {
+ //			dt->SetMaxPower(std::max(minAttackers, enemyGroups[groupIdx].threat));
+ //		}
+-		dt->SetMaxPower(std::max(minAttackers, circuit->GetEnemyManager()->GetPreMaxGroupThreat()));
++		dt->SetMaxPower(minAttackers);  // Anarva (#91): the script's cheapest local fight
+ 	}
+ 
+ 	/*
+@@ -1523,11 +1321,12 @@ CEnemyInfo* CMilitaryManager::FindBCombatTarget(CCircuitUnit* unit, const AIFloa
  	CCircuitDef* cdef = unit->GetCircuitDef();
  	const float maxSpeed = SQUARE(cdef->GetSpeed() / FRAMES_PER_SEC);
  	const float maxPower = threatMap->GetUnitPower(unit) * powerMod;
@@ -2833,7 +2882,7 @@ index 719442f0..98ff004e 100644
  
  	CEnemyInfo* bestTarget = nullptr;
  	CEnemyInfo* worstTarget = nullptr;
-@@ -1619,18 +1386,7 @@ CEnemyInfo* CMilitaryManager::FindBCombatTarget(CCircuitUnit* unit, const AIFloa
+@@ -1619,18 +1418,7 @@ CEnemyInfo* CMilitaryManager::FindBCombatTarget(CCircuitUnit* unit, const AIFloa
  
  float CMilitaryManager::GetRangeUnitCountCompensatorScale()
  {
@@ -2853,11 +2902,29 @@ index 719442f0..98ff004e 100644
  }
  
  IUnitTask* CMilitaryManager::DefaultMakeTask(CCircuitUnit* unit)
+@@ -1694,7 +1482,7 @@ IUnitTask* CMilitaryManager::DefaultMakeTask(CCircuitUnit* unit)
+ 						}
+ 					}
+ 					if (task == nullptr) {
+-						const float power = std::max(minAttackers, enemyMgr->GetPreMaxGroupThreat());
++						const float power = minAttackers;  // Anarva (#91): the script's cheapest local fight, not BARb's "enemy 2nd-biggest group"
+ 						task = Enqueue(TaskF::Defend(IFighterTask::FightType::ATTACK, power));
+ 					}
+ 				} break;
+@@ -1708,7 +1496,7 @@ IUnitTask* CMilitaryManager::DefaultMakeTask(CCircuitUnit* unit)
+ 			}
+ 		} else {
+ //			const bool isDefend = GetTasks(IFighterTask::FightType::ATTACK).empty() || enemyMgr->IsEnemyNear(unit->GetPos(circuit->GetLastFrame()));
+-			const float power = std::max(minAttackers, enemyMgr->GetPreMaxGroupThreat());
++			const float power = minAttackers;  // Anarva (#91): the script's cheapest local fight, not BARb's "enemy 2nd-biggest group"
+ 			task = /*isDefend ? */Enqueue(TaskF::Defend(IFighterTask::FightType::ATTACK, power))
+ 							/*: EnqueueTask(IFighterTask::FightType::ATTACK)*/;
+ 		}
 diff --git a/src/circuit/module/MilitaryManager.h b/src/circuit/module/MilitaryManager.h
-index f752cb27..fb1e85b2 100644
+index f752cb27..17442cdc 100644
 --- a/src/circuit/module/MilitaryManager.h
 +++ b/src/circuit/module/MilitaryManager.h
-@@ -109,6 +109,12 @@ public:
+@@ -109,6 +109,21 @@ public:
  	}
  
  	IFighterTask* Enqueue(const TaskF::SFightTask& ti);
@@ -2865,12 +2932,21 @@ index f752cb27..fb1e85b2 100644
 +	void SetScoutTargets(const std::vector<springai::AIFloat3>& pos, const std::vector<float>& value);  // Anarva
 +private:
 +	std::vector<springai::AIFloat3> scriptScoutPos;  // Anarva: script-ranked scout targets (switch scoutMap)
++public:
++	void SetRaidTargets(const std::vector<springai::AIFloat3>& pos, const std::vector<float>& value);  // Anarva
++	void SetValueHorizon(float h) { valueHorizon = h; }  // Anarva: the script's planning horizon (s)
++	float GetValueHorizon() const { return valueHorizon; }
++	float valueHorizon = 0.f;
++	springai::AIFloat3 GetRaidPosition(CCircuitUnit* leader, float power);  // Anarva: -RgtVector if none
++private:
++	std::vector<springai::AIFloat3> scriptRaidPos;  // Anarva: enemy economy the script expects there (#89)
++	std::vector<float> scriptRaidVal;
 +	std::vector<float> scriptScoutVal;
 +public:
  	virtual CRetreatTask* EnqueueRetreat() override;
  private:
  	virtual void DequeueTask(IUnitTask* task, bool done = false) override;
-@@ -164,7 +170,7 @@ public:
+@@ -164,7 +179,7 @@ public:
  	CCircuitDef* GetLowSonar(const CCircuitUnit* builder = nullptr) const;
  
  	void SetBaseDefRange(float range) { defence->SetBaseRange(range); }
@@ -3283,7 +3359,7 @@ index bc7d286a..5fc79dcd 100644
  	void SendMessage(const std::string& msg, int toTeamId = -1);
  	void ReceiveMessage(const std::string& msg, int fromTeamId);
 diff --git a/src/circuit/script/MilitaryScript.cpp b/src/circuit/script/MilitaryScript.cpp
-index 89633988..092100a6 100644
+index 89633988..199a4e6e 100644
 --- a/src/circuit/script/MilitaryScript.cpp
 +++ b/src/circuit/script/MilitaryScript.cpp
 @@ -8,6 +8,7 @@
@@ -3294,7 +3370,7 @@ index 89633988..092100a6 100644
  #include "util/ExtAS.h"
  #include "angelscript/include/angelscript.h"
  
-@@ -15,6 +16,18 @@ namespace circuit {
+@@ -15,6 +16,30 @@ namespace circuit {
  
  using namespace springai;
  
@@ -3310,15 +3386,29 @@ index 89633988..092100a6 100644
 +	mgr->SetScoutTargets(p, v);
 +}
 +
++static void Military_SetRaidTargets(CMilitaryManager* mgr, CScriptArray* pos, CScriptArray* value)
++{
++	std::vector<springai::AIFloat3> p;
++	std::vector<float> v;
++	const asUINT n = std::min(pos->GetSize(), value->GetSize());
++	for (asUINT i = 0; i < n; ++i) {
++		p.push_back(*static_cast<springai::AIFloat3*>(pos->At(i)));
++		v.push_back(*static_cast<float*>(value->At(i)));
++	}
++	mgr->SetRaidTargets(p, v);
++}
++
  CMilitaryScript::CMilitaryScript(CScriptManager* scr, CMilitaryManager* mgr)
  		: ITaskModuleScript(scr, mgr)
  {
-@@ -35,6 +48,11 @@ CMilitaryScript::CMilitaryScript(CScriptManager* scr, CMilitaryManager* mgr)
+@@ -35,6 +60,13 @@ CMilitaryScript::CMilitaryScript(CScriptManager* scr, CMilitaryManager* mgr)
  	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ DefaultMakeTask(CCircuitUnit@)", asMETHOD(CMilitaryManager, DefaultMakeTask), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ Enqueue(const SFightTask& in)", asMETHODPR(CMilitaryManager, Enqueue, (const TaskF::SFightTask&), IFighterTask*), asCALL_THISCALL); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ EnqueueRetreat()", asMETHOD(CMilitaryManager, EnqueueRetreat), asCALL_THISCALL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CMilitaryManager", "IUnitTask@+ EnqueueDefendAt(const AIFloat3& in, float)", asMETHOD(CMilitaryManager, EnqueueDefendAt), asCALL_THISCALL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CMilitaryManager", "void SetScoutTargets(array<AIFloat3>@+, array<float>@+)", asFUNCTION(Military_SetScoutTargets), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CMilitaryManager", "void SetRaidTargets(array<AIFloat3>@+, array<float>@+)", asFUNCTION(Military_SetRaidTargets), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);  // Anarva #89
++	r = engine->RegisterObjectMethod("CMilitaryManager", "void SetValueHorizon(float)", asMETHOD(CMilitaryManager, SetValueHorizon), asCALL_THISCALL); ASSERT(r >= 0);  // Anarva #90
 +	r = engine->RegisterObjectMethod("CMilitaryManager", "void AbortTask(IUnitTask@)", asMETHOD(CMilitaryManager, AbortTask), asCALL_THISCALL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CMilitaryManager", "void AssignTask(CCircuitUnit@, IUnitTask@)", asMETHODPR(CMilitaryManager, AssignTask, (CCircuitUnit*, IUnitTask*), void), asCALL_THISCALL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CMilitaryManager", "void ReleaseUnit(CCircuitUnit@)", asMETHODPR(CMilitaryManager, AssignTask, (CCircuitUnit*), void), asCALL_THISCALL); ASSERT(r >= 0);
@@ -4557,19 +4647,22 @@ index a36c4e1b..cc6b7ef6 100644
  	void ApplySafePos(const CQueryPathMulti* query);
  	void Fallback(CCircuitUnit* unit, bool proceed);
 diff --git a/src/circuit/task/fighter/AttackTask.cpp b/src/circuit/task/fighter/AttackTask.cpp
-index 2f556d6d..12f2340d 100644
+index 2f556d6d..3224be61 100644
 --- a/src/circuit/task/fighter/AttackTask.cpp
 +++ b/src/circuit/task/fighter/AttackTask.cpp
-@@ -6,6 +6,8 @@
+@@ -6,6 +6,11 @@
   */
  
  #include "task/fighter/AttackTask.h"
++#include "resource/MetalManager.h"
++#include "module/EconomyManager.h"
++#include "util/AnarvaDecide.h"
 +#include "unit/enemy/EnemyManager.h"
 +#include "util/AnarvaSwitches.h"
  #include "map/InfluenceMap.h"
  #include "map/ThreatMap.h"
  #include "module/MilitaryManager.h"
-@@ -36,8 +38,9 @@ CAttackTask::CAttackTask(ITaskModule* mgr, float minPower, float powerMod)
+@@ -36,8 +41,9 @@ CAttackTask::CAttackTask(ITaskModule* mgr, float minPower, float powerMod)
  		, minPower(minPower)
  {
  	CCircuitAI* circuit = manager->GetCircuit();
@@ -4581,7 +4674,7 @@ index 2f556d6d..12f2340d 100644
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
-@@ -49,17 +52,14 @@ bool CAttackTask::CanAssignTo(CCircuitUnit* unit) const
+@@ -49,17 +55,14 @@ bool CAttackTask::CanAssignTo(CCircuitUnit* unit) const
  {
  	assert(leader != nullptr);
  
@@ -4606,7 +4699,7 @@ index 2f556d6d..12f2340d 100644
  		return false;
  	}
  	if ((leader->GetCircuitDef()->IsAbleToFly() && unit->GetCircuitDef()->IsAbleToFly())
-@@ -140,7 +140,7 @@ void CAttackTask::Update()
+@@ -140,7 +143,7 @@ void CAttackTask::Update()
  	if (State::REGROUP == state) {
  		if (mustRegroup) {
  			CCircuitAI* circuit = manager->GetCircuit();
@@ -4615,7 +4708,7 @@ index 2f556d6d..12f2340d 100644
  			for (CCircuitUnit* unit : units) {
  				unit->GetTravelAct()->StateWait();
  				unit->Gather(groupPos, frame);
-@@ -178,7 +178,7 @@ void CAttackTask::Update()
+@@ -178,7 +181,7 @@ void CAttackTask::Update()
  
  	state = State::ROAM;
  	if (GetTarget() != nullptr) {
@@ -4624,7 +4717,7 @@ index 2f556d6d..12f2340d 100644
  		if (position.SqDistance2D(startPos) < SQUARE(highestRange + slack)) {
  			int xs, ys, xe, ye;
  			circuit->GetPathfinder()->Pos2PathXY(startPos, &xs, &ys);
-@@ -241,36 +241,49 @@ void CAttackTask::FindTarget()
+@@ -241,38 +244,82 @@ void CAttackTask::FindTarget()
  	CMap* map = circuit->GetMap();
  	CInfluenceMap* inflMap = circuit->GetInflMap();
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
@@ -4643,8 +4736,21 @@ index 2f556d6d..12f2340d 100644
  
  	CEnemyInfo* bestTarget = nullptr;
 -	const float sqOBDist = pos.SqDistance2D(basePos);  // Own to Base distance
- 	float minSqDist = std::numeric_limits<float>::max();
+-	float minSqDist = std::numeric_limits<float>::max();
  	bool hasGoodTarget = false;
++	float bestGroupScore = 0.f;  // only fights worth more than they cost
++	float ourMetal = 0.f, groupDps = 0.f, groupSpeed = std::numeric_limits<float>::max();
++	for (CCircuitUnit* u : units) {
++		ourMetal += u->GetCircuitDef()->GetCostM();
++		groupDps += u->GetCircuitDef()->GetSustainedDps();
++		groupSpeed = std::min(groupSpeed, u->GetCircuitDef()->GetSpeed());
++	}
++	CEconomyManager* eco = circuit->GetEconomyManager();
++	const float em = std::max(1e-9f, eco->GetEcoEM());
++	const float horizon = circuit->GetMilitaryManager()->GetValueHorizon();
++	const float spotIncome = circuit->GetMetalManager()->GetSpotAvgIncome();
++	springai::Resource* metalRes = eco->GetMetalRes();
++	springai::Resource* energyRes = eco->GetEnergyRes();
  
  	SetTarget(nullptr);  // make adequate enemy->GetTasks().size()
  	const std::vector<CEnemyManager::SEnemyGroup>& groups = circuit->GetEnemyManager()->GetEnemyGroups();
@@ -4685,18 +4791,52 @@ index 2f556d6d..12f2340d 100644
 +			}
  		}
  
++		// Anarva (#90): the group's worth to us = every unit's value (cost + lost output over our horizon) plus the
++		// commander's share; against the fight it costs at our power (square law) and the time to get there and kill it
++		float gValue = 0.f, gHealth = 0.f;
++		for (const ICoreUnit::Id eId : group.units) {
++			CEnemyInfo* e = circuit->GetEnemyInfo(eId);
++			if ((e == nullptr) || (e->GetCircuitDef() == nullptr)) {
++				continue;
++			}
++			gValue += anarva::TargetValue(circuit, e->GetCircuitDef(), em, horizon, spotIncome, metalRes, energyRes);
++			gHealth += e->GetHealth();
++		}
++		gValue += groupWorth - group.cost;  // the commander share added above
++		const float gThreat = std::max(0.f, group.influence - std::max(0.f, inflMap->GetAllyInflAt(group.pos)));
++		const float gScore = anarva::TargetScore(gValue, gThreat, maxPower, ourMetal, pos.distance2D(group.pos), groupSpeed, gHealth, groupDps);
++		if (gScore <= bestGroupScore) {
++			continue;
++		}
++		CEnemyInfo* groupBest = nullptr;
++		float groupBestV = 0.f;
  		for (const ICoreUnit::Id eId : group.units) {
-@@ -316,7 +329,9 @@ void CAttackTask::FindTarget()
+ 			CEnemyInfo* enemy = circuit->GetEnemyInfo(eId);
+ 			if ((enemy == nullptr) || enemy->IsHidden()/* || (enemy->GetTasks().size() > 2)*/) {
+@@ -316,13 +363,18 @@ void CAttackTask::FindTarget()
  				}
  			}
  
 -			const float sqOEDist = group.vagueMetric * pos.SqDistance2D(ePos) * scale;  // Own to Enemy distance
-+			// Anarva (decide, #61 press the advantage): among the groups we can beat, go where the most enemy metal is per
-+			// distance travelled (time to get there per metal destroyed), not to the nearest one
-+			const float sqOEDist = pos.distance2D(ePos) / std::max(1.f, groupWorth);
- 			if (minSqDist > sqOEDist) {
- 				minSqDist = sqOEDist;
- 				bestTarget = enemy;
+-			if (minSqDist > sqOEDist) {
+-				minSqDist = sqOEDist;
+-				bestTarget = enemy;
+-				hasGoodTarget |= !isOverpowered;
++			// within the group: the most value per point of health first (fragile and valuable)
++			const float v = anarva::TargetValue(circuit, edef, em, horizon, spotIncome, metalRes, energyRes) / std::max(1.f, enemy->GetHealth());
++			if ((groupBest == nullptr) || (v > groupBestV)) {
++				groupBest = enemy;
++				groupBestV = v;
+ 			}
+ 		}
++		if (groupBest != nullptr) {
++			bestGroupScore = gScore;
++			bestTarget = groupBest;
++			hasGoodTarget |= !isOverpowered;
++		}
+ 	}
+ 
+ 	if (bestTarget != nullptr) {
 diff --git a/src/circuit/task/fighter/BombTask.cpp b/src/circuit/task/fighter/BombTask.cpp
 index 30011983..64890824 100644
 --- a/src/circuit/task/fighter/BombTask.cpp
@@ -4745,7 +4885,7 @@ index 30011983..64890824 100644
  		)
  	}
 diff --git a/src/circuit/task/fighter/DefendTask.cpp b/src/circuit/task/fighter/DefendTask.cpp
-index af382ba3..fd44ce57 100644
+index af382ba3..ece4d95b 100644
 --- a/src/circuit/task/fighter/DefendTask.cpp
 +++ b/src/circuit/task/fighter/DefendTask.cpp
 @@ -21,6 +21,7 @@
@@ -4770,7 +4910,7 @@ index af382ba3..fd44ce57 100644
  	 * Promote task if possible
  	 */
 -	if (updCount % 32 == 1) {
-+	if (!isHold && (updCount % 32 == 1)) {
++	if (!isHold) {  // Anarva: every update (no every-32nd-update clock)
  		CMilitaryManager* militaryMgr = static_cast<CMilitaryManager*>(manager);
  		if ((attackPower >= maxPower) || !militaryMgr->GetTasks(check).empty()) {
  			IFighterTask* task = militaryMgr->Enqueue(TaskF::Common(promote));
@@ -5031,19 +5171,22 @@ index b0fd8f04..07d697c3 100644
  	} else if (State::ENGAGE == state) {
  		state = State::ROAM;
 diff --git a/src/circuit/task/fighter/RaidTask.cpp b/src/circuit/task/fighter/RaidTask.cpp
-index b62de532..ece1e4e5 100644
+index b62de532..52bc76ea 100644
 --- a/src/circuit/task/fighter/RaidTask.cpp
 +++ b/src/circuit/task/fighter/RaidTask.cpp
-@@ -6,6 +6,8 @@
+@@ -6,6 +6,11 @@
   */
  
  #include "task/fighter/RaidTask.h"
++#include "util/AnarvaDecide.h"
++#include "module/EconomyManager.h"
++#include "resource/MetalManager.h"
 +#include "unit/enemy/EnemyManager.h"
 +#include "util/AnarvaSwitches.h"
  #include "map/InfluenceMap.h"
  #include "map/ThreatMap.h"
  #include "module/MilitaryManager.h"
-@@ -35,8 +37,9 @@ CRaidTask::CRaidTask(ITaskModule* mgr, float maxPower, float powerMod)
+@@ -35,8 +40,9 @@ CRaidTask::CRaidTask(ITaskModule* mgr, float maxPower, float powerMod)
  		, maxPower(maxPower)
  {
  	CCircuitAI* circuit = manager->GetCircuit();
@@ -5055,7 +5198,31 @@ index b62de532..ece1e4e5 100644
  	position = AIFloat3(x, circuit->GetMap()->GetElevationAt(x, z), z);
  }
  
-@@ -124,7 +127,7 @@ void CRaidTask::Update()
+@@ -46,19 +52,12 @@ CRaidTask::~CRaidTask()
+ 
+ bool CRaidTask::CanAssignTo(CCircuitUnit* unit) const
+ {
+-	if (!unit->GetCircuitDef()->IsRoleRaider() ||
+-		(unit->GetCircuitDef() != leader->GetCircuitDef()))
+-	{
++	// Anarva (#91): any raider joins while the raid is below the size its fight needs; no same-unit-type rule and no
++	// 1000-elmo radius (composition and gathering are our decisions, travel is part of the raid's path)
++	if (!unit->GetCircuitDef()->IsRoleRaider()) {
+ 		return false;
+ 	}
+-	if (attackPower > maxPower) {
+-		return false;
+-	}
+-	const int frame = manager->GetCircuit()->GetLastFrame();
+-	if (leader->GetPos(frame).SqDistance2D(unit->GetPos(frame)) > SQUARE(1000.f)) {
+-		return false;
+-	}
+-	return true;
++	return attackPower <= maxPower;
+ }
+ 
+ void CRaidTask::AssignTo(CCircuitUnit* unit)
+@@ -124,7 +123,7 @@ void CRaidTask::Update()
  	if (State::REGROUP == state) {
  		if (mustRegroup) {
  			CCircuitAI* circuit = manager->GetCircuit();
@@ -5064,7 +5231,7 @@ index b62de532..ece1e4e5 100644
  			for (CCircuitUnit* unit : units) {
  				unit->GetTravelAct()->StateWait();
  				unit->Gather(groupPos, frame);
-@@ -169,7 +172,7 @@ void CRaidTask::Update()
+@@ -169,7 +168,7 @@ void CRaidTask::Update()
  
  					const AIFloat3& pos = GetTarget()->GetPos();
  					TRY_UNIT(circuit, unit,
@@ -5073,7 +5240,7 @@ index b62de532..ece1e4e5 100644
  					)
  				}
  			} else {
-@@ -180,7 +183,7 @@ void CRaidTask::Update()
+@@ -180,7 +179,7 @@ void CRaidTask::Update()
  					unit->GetTravelAct()->StateWait();
  
  					TRY_UNIT(circuit, unit,
@@ -5082,7 +5249,19 @@ index b62de532..ece1e4e5 100644
  						unit->CmdSetTarget(GetTarget());
  					)
  				}
-@@ -254,10 +257,9 @@ bool CRaidTask::FindTarget()
+@@ -234,8 +233,9 @@ void CRaidTask::OnUnitIdle(CCircuitUnit* unit)
+ 	CCircuitAI* circuit = manager->GetCircuit();
+ 	const float maxDist = std::max<float>(lowestRange, circuit->GetPathfinder()->GetSquareSize());
+ 	if (position.SqDistance2D(leader->GetPos(circuit->GetLastFrame())) < SQUARE(maxDist)) {
+-		CTerrainManager* terrainMgr = circuit->GetTerrainManager();
+-		position = terrainMgr->GetRandomMovePosition(leader);
++		// Anarva: no random move: the next expected enemy economy, else their base
++		const AIFloat3 raidPos = circuit->GetMilitaryManager()->GetRaidPosition(leader, attackPower * powerMod);
++		position = geom::is_valid(raidPos) ? raidPos : circuit->GetEnemyManager()->GetEnemyPos();
+ 	}
+ 
+ 	if (units.find(unit) != units.end()) {
+@@ -254,22 +254,34 @@ bool CRaidTask::FindTarget()
  	SArea* area = leader->GetArea();
  	CCircuitDef* cdef = leader->GetCircuitDef();
  	const bool isAntiStatic = cdef->IsAttrAntiStat();
@@ -5096,7 +5275,35 @@ index b62de532..ece1e4e5 100644
  	const int canTargetCat = cdef->GetTargetCategory();
  	const int noChaseCat = cdef->GetNoChaseCategory();
  	const float range = std::max(leader->GetUnit()->GetMaxRange(), cdef->GetLosRadius()) + 200.f;
-@@ -291,13 +293,9 @@ bool CRaidTask::FindTarget()
+-	float minSqDist = SQUARE(range);
+-	float maxThreat = 0.f;
+-	float minPower = maxPower;
++	(void)range;  // Anarva (#90): no search radius
+ 
+ 	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
+ 	const float baseRange = circuit->GetMilitaryManager()->GetBaseDefRange();
+ 	const float sqBaseRange = SQUARE(baseRange);
+ 	const bool isDefender = basePos.SqDistance2D(pos) < sqBaseRange;
+ 
++	// Anarva (#90): our group in the same terms the target score uses
++	float ourMetal = 0.f, groupDps = 0.f, groupSpeed = std::numeric_limits<float>::max();
++	for (CCircuitUnit* u : units) {
++		ourMetal += u->GetCircuitDef()->GetCostM();
++		groupDps += u->GetCircuitDef()->GetSustainedDps();
++		groupSpeed = std::min(groupSpeed, u->GetCircuitDef()->GetSpeed());
++	}
++	CEconomyManager* eco = circuit->GetEconomyManager();
++	const float em = std::max(1e-9f, eco->GetEcoEM());
++	const float horizon = circuit->GetMilitaryManager()->GetValueHorizon();
++	const float spotIncome = circuit->GetMetalManager()->GetSpotAvgIncome();
++	springai::Resource* metalRes = eco->GetMetalRes();
++	springai::Resource* energyRes = eco->GetEnergyRes();
++	float bestScore = 0.f;  // only fights worth more than they cost
++
+ 	SetTarget(nullptr);  // make adequate enemy->GetTasks().size()
+ 	CEnemyInfo* bestTarget = nullptr;
+ 	CEnemyInfo* worstTarget = nullptr;
+@@ -291,13 +303,9 @@ bool CRaidTask::FindTarget()
  			continue;
  		}
  
@@ -5111,26 +5318,78 @@ index b62de532..ece1e4e5 100644
  		const float power = threatMap->GetThreatAt(ePos);
  		if (checkPower <= power) {
  			continue;
-@@ -346,6 +344,19 @@ bool CRaidTask::FindTarget()
+@@ -345,27 +353,18 @@ bool CRaidTask::FindTarget()
+ 			isBuilder = false;
  		}
  
- 		float sqDist = pos.SqDistance2D(ePos);
-+		if ((minPower > power) && (minSqDist > sqDist) && enemy->IsInRadarOrLOS()
-+			&& ((targetCat & noChaseCat) == 0) && !enemy->IsBeingBuilt() && (edef != nullptr))
-+		{
-+			// Anarva (Vritrasura108 #43): raid by value per damage spent - metal of the target per point of its health -
-+			// so unprotected extractors and constructors (valuable, fragile) come first; the threat filter above keeps
-+			// it to targets we out-power
-+			const float v = edef->GetCostM() / std::max(1.f, enemy->GetHealth());
-+			if (v > maxThreat) {
+-		float sqDist = pos.SqDistance2D(ePos);
+-		if ((minPower > power) && (minSqDist > sqDist)) {
+-			if (enemy->IsInRadarOrLOS()) {
+-				if (((targetCat & noChaseCat) == 0) && !enemy->IsBeingBuilt()) {
+-					if (isBuilder) {
+-						bestTarget = enemy;
+-						minSqDist = sqDist;
+-						maxThreat = std::numeric_limits<float>::max();
+-					} else if (maxThreat <= defThreat) {
+-						bestTarget = enemy;
+-//						minSqDist = sqDist;
+-						maxThreat = defThreat;
+-					}
+-//					minPower = power;
+-				} else if (bestTarget == nullptr) {
+-					worstTarget = enemy;
+-				}
++		// Anarva (#90): every enemy we can see is a candidate, wherever it is (no weapon/sight + 200 radius), scored by
++		// what killing it is worth against the fight and the time it costs (anarva::TargetScore).
++		if (enemy->IsInRadarOrLOS() && ((targetCat & noChaseCat) == 0) && !enemy->IsBeingBuilt() && (edef != nullptr)) {
++			const float value = anarva::TargetValue(circuit, edef, em, horizon, spotIncome, metalRes, energyRes);
++			const float score = anarva::TargetScore(value, power, maxPower, ourMetal, pos.distance2D(ePos), groupSpeed,
++				enemy->GetHealth(), groupDps);
++			if (score > bestScore) {
++				bestScore = score;
 +				bestTarget = enemy;
-+				maxThreat = v;
+ 			}
+ 			continue;
+ 		}
+-
+ 		if (isEnemyUrgent) {
+ 			urgentPositions.push_back(ePos);
+ 		} else {
+@@ -403,18 +402,24 @@ void CRaidTask::FallbackRaid()
+ 	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
+ 	CThreatMap* threatMap = circuit->GetThreatMap();
+ 	const AIFloat3& pos = leader->GetPos(circuit->GetLastFrame());
+-	const AIFloat3& threatPos = leader->GetTravelAct()->IsActive() ? position : pos;
+-	if (attackPower * powerMod <= threatMap->GetThreatAt(leader, threatPos)) {
+-		AIFloat3 nextPos = circuit->GetMilitaryManager()->GetScoutPosition(leader);
+-		if (geom::is_equal_pos(nextPos, pos)) {
+-			return;
+-		} else {
++	(void)terrainMgr;
++	// Anarva (#89): nothing in sight: go for the enemy economy the script expects, the most per second of travel
++	// that our power beats; then the most valuable place to look; then their base. No random move.
++	const AIFloat3 raidPos = circuit->GetMilitaryManager()->GetRaidPosition(leader, attackPower * powerMod);
++	if (geom::is_valid(raidPos)) {
++		position = raidPos;
++	} else {
++		const AIFloat3& threatPos = (leader->GetTravelAct() != nullptr && leader->GetTravelAct()->IsActive()) ? position : pos;
++		if (!geom::is_valid(position) || (attackPower * powerMod <= threatMap->GetThreatAt(leader, threatPos))) {
++			AIFloat3 nextPos = circuit->GetMilitaryManager()->GetScoutPosition(leader);
++			if (geom::is_equal_pos(nextPos, pos)) {
++				return;
 +			}
-+			continue;
+ 			position = nextPos;
+ 		}
+-	}
+-
+-	if (!geom::is_valid(position)) {
+-		position = terrainMgr->GetRandomMovePosition(leader);
++		if (!geom::is_valid(position)) {
++			position = circuit->GetEnemyManager()->GetEnemyPos();
 +		}
- 		if ((minPower > power) && (minSqDist > sqDist)) {
- 			if (enemy->IsInRadarOrLOS()) {
- 				if (((targetCat & noChaseCat) == 0) && !enemy->IsBeingBuilt()) {
+ 	}
+ 
+ 	CPathFinder* pathfinder = circuit->GetPathfinder();
 diff --git a/src/circuit/task/fighter/RallyTask.cpp b/src/circuit/task/fighter/RallyTask.cpp
 index 6ba730c9..71f82f6d 100644
 --- a/src/circuit/task/fighter/RallyTask.cpp
@@ -5779,7 +6038,7 @@ index 5f061310..bae1c185 100644
  }
  
 diff --git a/src/circuit/unit/CircuitDef.cpp b/src/circuit/unit/CircuitDef.cpp
-index a0f5a922..b1e6f81e 100644
+index a0f5a922..9a164e6d 100644
 --- a/src/circuit/unit/CircuitDef.cpp
 +++ b/src/circuit/unit/CircuitDef.cpp
 @@ -11,6 +11,7 @@
@@ -5979,7 +6238,7 @@ index a0f5a922..b1e6f81e 100644
  	if (IsMobile() && !IsAttacker()) {  // mobile bomb?
  		WeaponDef* wd = def->GetDeathExplosion();
  		aoe = wd->GetAreaOfEffect();
-@@ -619,11 +676,15 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
+@@ -619,11 +676,16 @@ CCircuitDef::CCircuitDef(CCircuitAI* circuit, UnitDef* def, std::unordered_set<I
  	//       health /= def->GetArmoredMultiple();
  	const float dmg = std::max(std::max(waterDmg, surfDmg), airDmg);
  	const float dps = std::max(std::max(waterDps, surfDps), airDps);
@@ -5988,6 +6247,7 @@ index a0f5a922..b1e6f81e 100644
 -	airThrDmg = sqrtf(airDps) * std::pow(airDmg, 0.25f) * THREAT_MOD;
 -	surfThrDmg = sqrtf(surfDps) * std::pow(surfDmg, 0.25f) * THREAT_MOD;
 -	waterThrDmg = sqrtf(waterDps) * std::pow(waterDmg, 0.25f) * THREAT_MOD;
++	sustainedDps = dps;  // Anarva: kept for kill-time estimates (D-gun excluded above)
 +	// Anarva: Lanchester square law. A unit adds sqrt(dps x durability) to its group's strength (group strength is the
 +	// square of the sum); durability = health + shield, a shield point absorbing one point of damage. No hand-picked
 +	// per-shot bonus (was dmg^0.25) or shield weight (was 1.5). THREAT_MOD is only the shared unit scale.
@@ -6000,7 +6260,7 @@ index a0f5a922..b1e6f81e 100644
  #if 0
  	circuit->LOG("THREAT %s | def=%f air=%f surf=%f water=%f", def->GetName(), defThreat,
  			airThrDmg * sqrtf(health + maxShield * SHIELD_MOD),
-@@ -843,3 +904,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
+@@ -843,3 +905,38 @@ AIFloat3 CCircuitDef::GetMidPosOffset(int facing) const
  }
  
  } // namespace circuit
@@ -6040,10 +6300,19 @@ index a0f5a922..b1e6f81e 100644
 +
 +} // namespace circuit
 diff --git a/src/circuit/unit/CircuitDef.h b/src/circuit/unit/CircuitDef.h
-index 0247bcb8..1fd38062 100644
+index 0247bcb8..59f74d2a 100644
 --- a/src/circuit/unit/CircuitDef.h
 +++ b/src/circuit/unit/CircuitDef.h
-@@ -249,6 +249,12 @@ public:
+@@ -237,6 +237,8 @@ public:
+ 	springai::WeaponMount* GetShieldMount() const { return shieldMount; }
+ 	springai::WeaponMount* GetWeaponMount() const { return weaponMount; }
+ 	float GetPwrDamage() const { return pwrDmg; }  // ally
++	float GetSustainedDps() const { return sustainedDps; }  // Anarva: best sustained dps over air/surface/water
++	float sustainedDps = 0.f;
+ 	float GetDefDamage() const { return defThrDmg; }  // enemy, for influence
+ 	float GetAirDmg(RoleT type) const { return airThrDmg * thrDmgMod[type]; }  // enemy
+ 	float GetSurfDmg(RoleT type) const { return surfThrDmg * thrDmgMod[type]; }  // enemy
+@@ -249,6 +251,12 @@ public:
  	float GetMinRange() const { return minRange; }
  	float GetMaxRange(RangeType type) const { return maxRange[static_cast<RangeT>(type)]; }
  	float GetMaxRange() const { return maxRange[static_cast<RangeT>(maxRangeType)]; }
@@ -6056,7 +6325,7 @@ index 0247bcb8..1fd38062 100644
  	int GetThreatRange(ThreatType type) const { return threatRange[static_cast<ThreatT>(type)]; }
  	float GetShieldRadius() const { return shieldRadius; }
  	float GetMaxShield() const { return maxShield; }
-@@ -371,9 +377,9 @@ public:
+@@ -371,9 +379,9 @@ public:
  	springai::AIFloat3 GetMidPosOffset(int facing) const;
  
  	// script API
@@ -6069,7 +6338,7 @@ index 0247bcb8..1fd38062 100644
  
  private:
  	static RoleName* roleNames;
-@@ -414,11 +420,28 @@ private:
+@@ -414,11 +422,28 @@ private:
  	float waterThrDmg, waterThrMod;  // underwater enemy damage
  	ThrDmgArray thrDmgMod;  // mod by role
  	float aoe;  // radius
@@ -6599,10 +6868,10 @@ index 037c7d1a..7113094b 100644
  		return .0f;
 diff --git a/src/circuit/util/AnarvaDecide.h b/src/circuit/util/AnarvaDecide.h
 new file mode 100644
-index 00000000..f15cb817
+index 00000000..96dd9115
 --- /dev/null
 +++ b/src/circuit/util/AnarvaDecide.h
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,210 @@
 +/*
 + * AnarvaDecide.h
 + *
@@ -6772,6 +7041,41 @@ index 00000000..f15cb817
 +	}
 +	const float cost = std::max(1.f, d->GetCostM());
 +	return (!d->GetBuildOptions().empty() && (d->GetBuildSpeed() > 0.f)) ? d->GetBuildSpeed() / cost : d->GetPower() / cost;
++}
++
++// Anarva (#90): what killing an enemy is worth to us, in metal: what it cost them (energy at the converter rate)
++// plus, for a producer, what it would have yielded them over our planning horizon (extraction at the map's mean spot,
++// energy and metal make). Every known unit and building is valued this way, nothing from a list.
++inline float TargetValue(CCircuitAI* circuit, const CCircuitDef* edef, float metalPerEnergy, float horizon,
++						 float spotIncome, springai::Resource* metalRes, springai::Resource* energyRes)
++{
++	if (edef == nullptr) {
++		return 0.f;
++	}
++	float v = edef->GetCostM() + edef->GetCostE() * metalPerEnergy;
++	springai::UnitDef* ud = edef->GetDef();
++	const float yield = edef->GetExtractsM() * spotIncome
++		+ ud->GetResourceMake(metalRes)
++		+ (ud->GetResourceMake(energyRes) + ud->GetWindResourceGenerator(energyRes) + ud->GetTidalResourceGenerator(energyRes)) * metalPerEnergy;
++	if (yield > 0.f) {
++		v += yield * horizon;
++	}
++	(void)circuit;
++	return v;
++}
++
++// Anarva (#90): (value - expected loss) per second it takes us. Expected loss by the square law: fighting threat T
++// with power P costs about our metal x (T/P)^2. Time = travel + the time our dps needs to kill it.
++inline float TargetScore(float value, float threat, float power, float ourMetal, float dist, float speed,
++						 float targetHealth, float ourDps)
++{
++	if (power <= threat) {
++		return -std::numeric_limits<float>::max();
++	}
++	const float ratio = threat / std::max(1e-6f, power);
++	const float loss = ourMetal * ratio * ratio;
++	const float t = dist / std::max(1.f, speed) + targetHealth / std::max(1e-3f, ourDps);
++	return (value - loss) / std::max(1.f, t);
 +}
 +
 +} // namespace anarva
