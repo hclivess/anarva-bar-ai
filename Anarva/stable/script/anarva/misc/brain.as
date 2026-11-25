@@ -2695,7 +2695,78 @@ void Update()
 		+ " moving=" + moved + "/" + armyN + " attack=" + onAttack + " raid=" + onRaid + " defend=" + onDefend + " none=" + noFight
 		+ " killed=" + int(killed) + " lost=" + int(lost)
 		+ " idleBuilders=" + idleBuilders + "/" + builders + " idleFactories=" + idleFacs + "/" + facs
-		+ " mInc=" + F1(aiEconomyMgr.metal.income) + " eInc=" + F1(aiEconomyMgr.energy.income));
+		+ " mInc=" + F1(aiEconomyMgr.metal.income) + " eInc=" + F1(aiEconomyMgr.energy.income)
+		+ " microContact=" + minContact + " microFired=" + minFired + " microNoReply=" + minNoReply
+		+ " microOutranged=" + minOutranged + " microIdleInRange=" + minIdleInRange + " microStillHit=" + minStillHit);
+	minContact = minFired = minNoReply = minOutranged = minIdleInRange = minStillHit = 0;
+}
+/*
+ * Micro, every second (owner: "for the army micro you will need to do it like every second"). For each army unit
+ * in contact (an enemy within its weapon reach, or it lost health since the last second):
+ *  fired      its weapons fired this second (LastShotFrame)
+ *  noReply    it lost health and did not fire
+ *  outranged  it lost health and no enemy is within its own reach
+ *  idleInRange an enemy is within its reach and it did not fire
+ *  stillHit   it lost health while standing still
+ * plus each squad's spread (mean distance of its units from their centre, in its units' own reach).
+ * One [ANV-MICRO] line per second with contact; the minute line carries the totals.
+ */
+dictionary microHp;  // unit id -> health last second
+int microFrame = NEVER;
+uint minContact = 0, minNoReply = 0, minOutranged = 0, minIdleInRange = 0, minStillHit = 0, minFired = 0;
+void Micro()
+{
+	const int since = (microFrame == NEVER) ? ai.frame : microFrame;
+	microFrame = ai.frame;
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	uint contact = 0, fired = 0, noReply = 0, outranged = 0, idleInRange = 0, stillHit = 0;
+	dictionary hpNow;
+	for (uint i = 0; i < all.length(); ++i) {
+		CCircuitUnit@ u = all[i];
+		const CCircuitDef@ d = u.circuitDef;
+		if (!IsArmy(d)) continue;
+		const float hp = u.GetHealth();
+		hpNow.set("" + u.id, double(hp));
+		double prev = hp;
+		const bool known = microHp.get("" + u.id, prev);
+		const bool hit = known && hp < float(prev);
+		const AIFloat3 p = u.GetPos(ai.frame);
+		const float reach = d.GetMaxRange();
+		bool inReach = false;
+		for (uint k = 0; k < n && !inReach; ++k)
+			if (ed[k] !is null && ep[k].distance2D(p) <= reach) inReach = true;
+		if (!hit && !inReach) continue;
+		++contact;
+		const bool didFire = u.LastShotFrame() > since;
+		const AIFloat3 v = u.GetVel();
+		const bool still = v.x * v.x + v.z * v.z <= 0.f;
+		if (didFire) ++fired;
+		if (hit && !didFire) ++noReply;
+		if (hit && !inReach) ++outranged;
+		if (inReach && !didFire) ++idleInRange;
+		if (hit && still) ++stillHit;
+	}
+	microHp = hpNow;
+	if (contact == 0) return;
+	minContact += contact; minFired += fired; minNoReply += noReply; minOutranged += outranged;
+	minIdleInRange += idleInRange; minStillHit += stillHit;
+	// squad spread: mean distance from the squad centre, over the squad's shortest reach
+	string spread = "";
+	for (uint q = 0; q < Army::squads.length(); ++q) {
+		const array<CCircuitUnit@>@ su = Army::squads[q].GetUnits();
+		if (su.length() < 2) continue;
+		AIFloat3 c(0.f, 0.f, 0.f); float minReach = 1e9f;
+		for (uint k = 0; k < su.length(); ++k) { c = c + su[k].GetPos(ai.frame); minReach = AiMin(minReach, su[k].circuitDef.GetMaxRange()); }
+		c = c / float(su.length());
+		float md = 0.f;
+		for (uint k = 0; k < su.length(); ++k) md += su[k].GetPos(ai.frame).distance2D(c);
+		md /= float(su.length());
+		spread += " " + su.length() + "u:" + F1(md / AiMax(1.f, minReach)) + "r";
+	}
+	AiLog("[ANV-MICRO] f=" + ai.frame + " contact=" + contact + " fired=" + fired + " noReply=" + noReply
+		+ " outranged=" + outranged + " idleInRange=" + idleInRange + " stillHit=" + stillHit + " squadSpread=" + spread);
 }
 }  // namespace Check
 
@@ -3096,6 +3167,7 @@ void Update()  // every 30 frames
 {
 	CheckSide();
 	Check::Update();
+	Check::Micro();
 	aiSwitchHighGroundArty = true;
 	aiSwitchHeightSquads = true;
 	aiSwitchScoutMap = true;

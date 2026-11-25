@@ -3030,7 +3030,7 @@ index 0be6a835..50601754 100644
  }
  
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..1e7fc8e8 100644
+index c3aaefe5..989b1751 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -3046,15 +3046,16 @@ index c3aaefe5..1e7fc8e8 100644
  #include "scheduler/Scheduler.h"
  #include "setup/SetupManager.h"
  #include "terrain/TerrainManager.h"
-@@ -21,6 +27,7 @@
+@@ -21,6 +27,8 @@
  #include "util/MaskHandler.h"
  #include "util/ExtAS.h"
  #include "util/Utils.h"
++#include "Weapon.h"
 +#include "util/AnarvaSwitches.h"
  
  #include "angelscript/include/angelscript.h"
  #include "angelscript/add_on/scriptarray/scriptarray.h"
-@@ -30,7 +37,12 @@
+@@ -30,7 +38,12 @@
  //#include "asbind20/operators.hpp"  // _this, const_this, param<T>, ->return<T>()
  
  #include "spring/SpringMap.h"
@@ -3067,7 +3068,29 @@ index c3aaefe5..1e7fc8e8 100644
  #include "Log.h"
  #include "Drawer.h"
  #include "Game.h"
-@@ -574,13 +586,11 @@ void CInitScript::RegisterCore()
+@@ -255,6 +268,21 @@ static const std::string CCircuitDef_GetName(CCircuitDef* cdef)
+ 	return cdef->GetDef()->GetName();
+ }
+ 
++// Anarva: per-second army assessment needs health, velocity and whether the unit's weapons fired (#92)
++static float CCircuitUnit_GetHealth(CCircuitUnit* u) { return u->GetUnit()->GetHealth(); }
++static AIFloat3 CCircuitUnit_GetVel(CCircuitUnit* u) { return u->GetUnit()->GetVel(); }
++// the latest frame any weapon fired (reload frame - reload time); -1 when it has none
++static int CCircuitUnit_LastShotFrame(CCircuitUnit* u)
++{
++	int last = -1;
++	std::vector<springai::Weapon*> ws = u->GetUnit()->GetWeapons();
++	for (springai::Weapon* w : ws) {
++		last = std::max(last, w->GetReloadFrame() - w->GetReloadTime());
++	}
++	utils::free(ws);
++	return last;
++}
++
+ static float CCircuitUnit_GetRulesParamFloat(CCircuitUnit* unit, const std::string& key, float defVal)
+ {
+ 	return unit->GetUnit()->GetRulesParamFloat(key.c_str(), defVal);
+@@ -574,13 +602,11 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterGlobalFunction("void AiDelPoint(const AIFloat3& in)", asMETHOD(CInitScript, DelPoint), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
  	r = engine->RegisterGlobalFunction("void AiAddLine(const AIFloat3& in, const AIFloat3& in)", asMETHOD(CInitScript, AddLine), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
  	r = engine->RegisterGlobalFunction("void AiPause(bool, const string& in)", asMETHOD(CInitScript, Pause), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
@@ -3081,7 +3104,7 @@ index c3aaefe5..1e7fc8e8 100644
  	r = engine->RegisterGlobalFunction("void AiSendMessage(const string& in, int = -1)", asMETHOD(CInitScript, SendMessage), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
  	r = engine->RegisterFuncdef("void AiOnFinish(dictionary@+)"); ASSERT(r >= 0);
  	r = engine->RegisterFuncdef("AiOnFinish@+ AiExec(dictionary@+)"); ASSERT(r >= 0);
-@@ -702,17 +712,32 @@ void CInitScript::RegisterCore()
+@@ -702,17 +728,32 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float pwrDmg", asOFFSET(CCircuitDef, pwrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float airThrDmg", asOFFSET(CCircuitDef, airThrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float surfThrDmg", asOFFSET(CCircuitDef, surfThrDmg)); ASSERT(r >= 0);
@@ -3115,7 +3138,13 @@ index c3aaefe5..1e7fc8e8 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -738,6 +763,172 @@ void CInitScript::RegisterCore()
+@@ -735,9 +776,178 @@ void CInitScript::RegisterCore()
+ 	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
+ 	// RulesParams accessor on Unit
+ 	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetHealth()", asFUNCTION(CCircuitUnit_GetHealth), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);  // Anarva #92
++	r = engine->RegisterObjectMethod("CCircuitUnit", "AIFloat3 GetVel()", asFUNCTION(CCircuitUnit_GetVel), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CCircuitUnit", "int LastShotFrame()", asFUNCTION(CCircuitUnit_LastShotFrame), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitUnit", "string GetRulesParam(const string& in, const string& in) const", asFUNCTION(CCircuitUnit_GetRulesParamString), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
  }
  
@@ -3288,7 +3317,7 @@ index c3aaefe5..1e7fc8e8 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +958,30 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +977,30 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -3319,7 +3348,7 @@ index c3aaefe5..1e7fc8e8 100644
  }
  
  bool CInitScript::Init()
-@@ -920,22 +1135,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1154,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  

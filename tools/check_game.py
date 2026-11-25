@@ -71,7 +71,10 @@ def report(game_dir, curve):
         return
     print("  min  metal        energy       army  enemy  top1v1  ratio  moving  atk/raid/def/none  killed lost  idleB  idleF")
     flags = {"metal waste": [], "metal stall": [], "energy waste": [], "energy stall": [], "army idle while stronger": [],
-             "army did not move": [], "below top players' army": [], "builders idle while wasting": [], "factory idle": []}
+             "army did not move": [], "below top players' army": [], "builders idle while wasting": [], "factory idle": [],
+             "micro: more units idle with a target in reach than firing": [],
+             "micro: more units hit without replying than firing": [],
+             "micro: more outranged hits than shots fired": [], "micro: units standing still under fire": []}
     for minute in sorted(checks):
         c = checks[minute]
         t = truth.get(minute, {})
@@ -105,6 +108,14 @@ def report(game_dir, curve):
             flags["builders idle while wasting"].append(minute)
         if int(ifac[0] or 0) > 0:
             flags["factory idle"].append(minute)
+        mc = {k: int(c.get(k, 0) or 0) for k in ("microContact", "microFired", "microNoReply", "microOutranged", "microIdleInRange", "microStillHit")}
+        if mc["microContact"] > 0:
+            print(f"        micro (unit-seconds): contact {mc['microContact']} fired {mc['microFired']} noReply {mc['microNoReply']} "
+                  f"outranged {mc['microOutranged']} idleInRange {mc['microIdleInRange']} stillHit {mc['microStillHit']}")
+            if mc["microIdleInRange"] > mc["microFired"]: flags["micro: more units idle with a target in reach than firing"].append(minute)
+            if mc["microNoReply"] > mc["microFired"]: flags["micro: more units hit without replying than firing"].append(minute)
+            if mc["microOutranged"] > mc["microFired"]: flags["micro: more outranged hits than shots fired"].append(minute)
+            if mc["microStillHit"] > 0: flags["micro: units standing still under fire"].append(minute)
     print("  checklist:")
     for k, v in flags.items():
         print(f"    [{'FAIL' if v else ' ok '}] {k}" + (f": minutes {','.join(map(str, v))}" if v else ""))

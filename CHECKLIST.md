@@ -33,10 +33,26 @@ Every verdict is a measured condition, not a cutoff.
 | Is it fighting? | units on attack / raid / defend / no task; metal killed and lost per minute | killed 0 for minutes while stronger | it moves but doesn't engage, or engages badly |
 | Does it trade well? | metal killed vs lost per minute | lost > killed for minutes | bad fights: wrong targets, wrong composition, fighting into turrets |
 
+## Micro (every second)
+
+Micro is judged per second, not per minute (owner, 2026-11-25). Every second, each army unit in contact (an enemy
+within its weapon reach, or it lost health) records whether it fired, was hit without replying, was outranged
+(hit with no enemy in its own reach), had a target in reach but did not fire, or stood still while hit. Each squad's
+spread is measured too: the mean distance from its centre, in its units' reach. `[ANV-MICRO]` lines are written for
+seconds with contact, and the minute line carries the totals.
+
+| Question | Measured as | Fails when | What it means |
+|---|---|---|---|
+| Do units shoot when they can? | unit-seconds with an enemy in reach and no shot, vs unit-seconds firing | idle-in-reach > firing | targeting, fire state or facing is wrong |
+| Are we losing the exchange? | hit without firing back, vs firing | no-reply > firing | caught out of position, outranged, or fighting into turrets |
+| Are we outranged? | hit with no enemy in our reach, vs firing | outranged > firing | the enemy out-reaches us: close in fast, pull back, or bring range |
+| Do units stand still under fire? | hit while not moving | any | no kiting, dodging or retreat when it pays |
+| Is the squad together? | squad spread in reach units | (read with the fight) | strung-out squads fight piecemeal: the square law punishes that |
+
 ## Reading order
 
 1. Check whether the economy wastes or stalls. Fix that first, because every other number follows from it.
-2. Check whether the army exists, moves and fights.
+2. Check whether the army exists, moves and fights, then the per-second micro.
 3. Check whether it trades well.
 4. Only then look at the score against BARb.
 
