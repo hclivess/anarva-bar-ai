@@ -1,5 +1,5 @@
 diff --git a/src/circuit/CircuitAI.cpp b/src/circuit/CircuitAI.cpp
-index 40517444..8ac37ad9 100644
+index 40517444..2dd4e469 100644
 --- a/src/circuit/CircuitAI.cpp
 +++ b/src/circuit/CircuitAI.cpp
 @@ -306,6 +306,11 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
@@ -14,7 +14,17 @@ index 40517444..8ac37ad9 100644
  				ret = this->UnitDestroyed(unit, attacker);
  				UnregisterTeamUnit(unit);
  			} else {
-@@ -705,7 +710,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+@@ -381,6 +386,9 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
+ 			struct SEnemyDestroyedEvent* evt = (struct SEnemyDestroyedEvent*)data;
+ 			CEnemyInfo* enemy = GetEnemyInfo(evt->enemy);
+ 			if (enemy != nullptr) {
++				if (enemy->GetCircuitDef() != nullptr) {  // Anarva: a real kill (not an enemy pruned from the books)
++					anarvaKills.push_back(std::make_pair(enemy->GetPos(), enemy->GetCircuitDef()->GetCostM()));
++				}
+ 				allyTeam->DyingEnemy(enemy->GetData(), lastFrame);
+ 				ret = 0;
+ 			} else {
+@@ -705,7 +713,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
  				}
  #endif
  			});
@@ -23,7 +33,7 @@ index 40517444..8ac37ad9 100644
  #if 0
  		} else if (allyTeam->GetAliveSize() > 2) {
  			// FIXME: Follower AI shares all its mobile non-builder-role units to Leader AI.
-@@ -719,7 +724,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+@@ -719,7 +727,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
  					scheduler->RemoveJob(mergeTask);
  				}
  			});
@@ -32,7 +42,7 @@ index 40517444..8ac37ad9 100644
  #endif
  		}
  	}
-@@ -1530,9 +1535,8 @@ void CCircuitAI::Garbage(CCircuitUnit* unit, const char* reason)
+@@ -1530,9 +1538,8 @@ void CCircuitAI::Garbage(CCircuitUnit* unit, const char* reason)
  	// NOTE: Happens because engine can send EVENT_UNIT_FINISHED after EVENT_UNIT_DESTROYED.
  	//       Engine should not send events with isDead units.
  	garbage.insert(unit);
@@ -44,7 +54,7 @@ index 40517444..8ac37ad9 100644
  }
  
  CCircuitUnit* CCircuitAI::GetTeamUnit(ICoreUnit::Id unitId) const
-@@ -1614,16 +1618,20 @@ void CCircuitAI::CreateFakeEnemy(int weaponId, const AIFloat3& startPos, const A
+@@ -1614,16 +1621,20 @@ void CCircuitAI::CreateFakeEnemy(int weaponId, const AIFloat3& startPos, const A
  	}
  	float range = weaponDefs[weaponId].GetRange();
  	const AIFloat3 enemyPos = CTerrainManager::CorrectPosition(startPos, dir, range);  // range adjusted
@@ -68,6 +78,18 @@ index 40517444..8ac37ad9 100644
  		}
  		allyTeam->RegisterEnemyFake(defId, enemyPos, timeout);
  	} else if (enemy->IsBeingBuilt()) {
+diff --git a/src/circuit/CircuitAI.h b/src/circuit/CircuitAI.h
+index 18003828..a230e4a2 100644
+--- a/src/circuit/CircuitAI.h
++++ b/src/circuit/CircuitAI.h
+@@ -151,6 +151,7 @@ private:
+ public:
+ 	void GiveUnits(std::vector<CCircuitUnit*>&& units, int newTeamId);
+ 	void Garbage(CCircuitUnit* unit, const char* reason);
++	std::vector<std::pair<springai::AIFloat3, float>> anarvaKills;  // Anarva: enemies destroyed (place, metal), drained by the script
+ 	CCircuitUnit* GetTeamUnit(ICoreUnit::Id unitId) const;
+ 	const Units& GetTeamUnits() const { return teamUnits; }
+ 
 diff --git a/src/circuit/map/GridAnalyzer.cpp b/src/circuit/map/GridAnalyzer.cpp
 index 3ab32b02..2660e7d5 100644
 --- a/src/circuit/map/GridAnalyzer.cpp
@@ -3265,7 +3287,7 @@ index 0be6a835..50601754 100644
  }
  
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..0e733c0a 100644
+index c3aaefe5..c725caa0 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -3373,7 +3395,7 @@ index c3aaefe5..0e733c0a 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +776,212 @@ void CInitScript::RegisterCore()
+@@ -735,9 +776,225 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -3504,6 +3526,19 @@ index c3aaefe5..0e733c0a 100644
 +	return pos->GetSize();
 +}
 +
++// Enemies destroyed since the last call (the engine's enemy-destroyed events): place and metal. Counting ids that
++// vanished from the known list booked every pruned ghost as a kill (17646 "killed" at minute 8 while BARb grew).
++static asUINT Bridge_DrainKills(CScriptArray* pos, CScriptArray* metal)
++{
++	pos->Resize(0); metal->Resize(0);
++	for (auto& k : bridgeAI->anarvaKills) {
++		AIFloat3 p = k.first; float m = k.second;
++		pos->InsertLast(&p); metal->InsertLast((void*)&m);
++	}
++	bridgeAI->anarvaKills.clear();
++	return pos->GetSize();
++}
++
 +// Unit ids of the enemies AiGetEnemies returns, in the same order (call in the same frame).
 +// An id that disappears from the list died (the core drops an enemy only when it is destroyed).
 +static asUINT Bridge_GetEnemyIds(CScriptArray* ids)
@@ -3586,7 +3621,7 @@ index c3aaefe5..0e733c0a 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +1011,41 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +1024,42 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -3607,6 +3642,7 @@ index c3aaefe5..0e733c0a 100644
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "bool CmdAttackEnemy(int)", asFUNCTION(CCircuitUnit_CmdAttackEnemy), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyGroups(array<AIFloat3>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemyGroups), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetWrecks(array<AIFloat3>@+, array<float>@+, array<bool>@+)", asFUNCTION(Bridge_GetWrecks), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterGlobalFunction("uint AiDrainKills(array<AIFloat3>@+, array<float>@+)", asFUNCTION(Bridge_DrainKills), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHighGroundArty", &anarva::switches.highGroundArty); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchHeightSquads", &anarva::switches.heightSquads); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalProperty("bool aiSwitchScoutMap", &anarva::switches.scoutMap); ASSERT(r >= 0);
@@ -3628,7 +3664,7 @@ index c3aaefe5..0e733c0a 100644
  }
  
  bool CInitScript::Init()
-@@ -920,22 +1199,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1213,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  

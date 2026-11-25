@@ -2261,19 +2261,13 @@ void TrackKills()
 	enemyStatics.resize(0);
 	for (uint i = 0; i < n; ++i)
 		if (ed[i] !is null && !ed[i].IsMobile()) enemyStatics.insertLast(ep[i]);
-	dictionary now;
-	for (uint i = 0; i < n && i < ids.length(); ++i) {
-		SSeen e; e.pos = ep[i]; e.cost = ec[i];
-		now.set(formatInt(ids[i]), @e);
+	// real kills only: the engine's enemy-destroyed events (an id vanishing from the known list also meant a ghost
+	// pruned or an enemy out of sight: 17646 "killed" at minute 8 while BARb's buildings grew, Eye of Horus 1v1)
+	array<AIFloat3> kp; array<float> km;
+	const uint nk = AiDrainKills(kp, km);
+	for (uint k = 0; k < nk; ++k) {
+		if (OnOurSide(kp[k])) killedHome += km[k]; else killedAway += km[k];
 	}
-	array<string>@ keys = seen.getKeys();
-	for (uint k = 0; k < keys.length(); ++k) {
-		if (now.exists(keys[k])) continue;
-		SSeen@ e = cast<SSeen>(seen[keys[k]]);
-		if (e is null) continue;
-		if (OnOurSide(e.pos)) killedHome += e.cost; else killedAway += e.cost;
-	}
-	seen = now;
 }
 
 float EnemyValue()
@@ -2588,7 +2582,13 @@ float Value(const Sim@ s, float H)
 	//  - for as long as it takes our lab to field an equal force (no lab: the whole horizon)
 	// A couple of early raiders cost a few buildings; a late lab against a growing raid costs a lot.
 	const float epm = AiMax(1e-3f, Economist::energyPerMetal);
-	const float income = s.mInc * H + s.eInc / epm * H;
+	// Production needs metal and energy together, at the energy per metal of what the lab builds: metal income beyond
+	// what our energy can match produces nothing (Comet Catcher, 1-4 wind: extractors and lab, no energy, the lab's
+	// first unit at 121 s and the lab lost to a Flea at 3.5 min, 2026-11-25). Surplus energy counts at the converter rate.
+	float eRatioLab = 0.f;
+	if (raiderDef !is null) eRatioLab = raiderDef.costE / AiMax(1.f, raiderDef.costM);
+	const float usable = (eRatioLab > 0.f) ? AiMin(s.mInc, s.eInc / eRatioLab) : s.mInc;
+	const float income = usable * H + AiMax(0.f, s.eInc - usable * eRatioLab) / epm * H;
 	float army = 0.f, loss = 0.f;
 	if (raiderDef !is null && labDef !is null && commander !is null && Economist::mexT1 !is null) {
 		const float bt = raiderDef.buildTime / AiMax(1.f, labDef.buildSpeed);
@@ -2927,7 +2927,9 @@ float Cover(const AIFloat3& in p, float t)
 	return d;
 }
 // value of our buildings an enemy threatens (killing it saves them)
-float OursThreatened(uint i, const array<CCircuitUnit@>@ mine)
+// (tAnswer: how long our army needs to reach it - what it can get to before we can answer is what it threatens. It
+// was one second: an army two minutes out threatened nothing until it stood in our base.)
+float OursThreatened(uint i, const array<CCircuitUnit@>@ mine, float tAnswer)
 {
 	const CCircuitDef@ ed = eDef[i];
 	if (ed is null || ed.surfThrDmg <= 0.f) return 0.f;
@@ -2935,7 +2937,7 @@ float OursThreatened(uint i, const array<CCircuitUnit@>@ mine)
 	for (uint k = 0; k < mine.length(); ++k) {
 		const CCircuitDef@ d = mine[k].circuitDef;
 		if (d.IsMobile()) continue;
-		if (mine[k].GetPos(ai.frame).distance2D(ePos[i]) <= ed.GetMaxRange() + ed.speed) {
+		if (mine[k].GetPos(ai.frame).distance2D(ePos[i]) <= ed.GetMaxRange() + ed.speed * AiMax(1.f, tAnswer)) {
 			// what we lose with it: its cost and what it would yield us over the horizon (same terms as an enemy's value)
 			const string nm = d.GetName();
 			const float upkeep = Facts::EnergyUpkeep(nm);
@@ -3035,23 +3037,32 @@ void Update()
 		for (uint i = 0; i < freeUnits.length(); ++i) { fc = fc + freeUnits[i].GetPos(ai.frame); fSpeed = AiMin(fSpeed, freeUnits[i].circuitDef.speed); }
 		fc = fc / float(freeUnits.length());
 		fSpeed = AiMax(1.f, fSpeed);
-		array<AIFloat3> cp; array<float> cv; array<int> cid;
+		float freeDps = 0.f;
+		for (uint i = 0; i < freeUnits.length(); ++i) freeDps += freeUnits[i].circuitDef.GetSustainedDps();
+		array<AIFloat3> cp; array<float> cv; array<int> cid; array<float> chp;
 		for (uint i = 0; i < n; ++i) {
 			if (eDef[i] is null || eDef[i].IsAbleToFly() || (eFlags[i] & 2) == 0) continue;
 			bool taken = false;
 			for (uint o = 0; o < ops.length() && !taken; ++o) if (ops[o].enemyId == eIds[i]) taken = true;
 			if (taken) continue;
-			cp.insertLast(ePos[i]); cv.insertLast(EnemyValue(i, H) + OursThreatened(i, all)); cid.insertLast(eIds[i]);
+			cp.insertLast(ePos[i]); cv.insertLast(EnemyValue(i, H) + OursThreatened(i, all, fc.distance2D(ePos[i]) / fSpeed)); cid.insertLast(eIds[i]);
+			chp.insertLast(eHp[i] * eDef[i].health);
 		}
 		for (uint i = 0; i < EcoPos::raidPos.length(); ++i) {
 			if (AiIsInLOS(EcoPos::raidPos[i])) continue;  // in sight: the known enemies above cover it
 			cp.insertLast(EcoPos::raidPos[i]); cv.insertLast(EcoPos::raidVal[i]); cid.insertLast(-1);
+			chp.insertLast(Economist::mexT1 !is null ? Economist::mexT1.health : 0.f);  // what a raid spot holds
 		}
 		array<float> score(cp.length());
 		array<float> dfc(cp.length());
 		for (uint i = 0; i < cp.length(); ++i) {
 			const float t = fc.distance2D(cp[i]) / fSpeed;
-			dfc[i] = Cover(cp[i], t);
+			// The defence is what fights there while we kill the target: enemies within reach of it for as long as the
+			// fight lasts (its health over our dps; they answer once it starts). Counting everything that could reach the
+			// spot during our whole march (60 s+) put BARb's whole army, commander included, on every lone raider: no op
+			// was ever made, defend=0 while Favs and Flashes killed 13 producers (Eye of Horus 1v1, 2026-11-25).
+			const float tFight = chp[i] / AiMax(1e-3f, freeDps);
+			dfc[i] = Cover(cp[i], tFight);
 			score[i] = cv[i] / AiMax(1.f, t);
 		}
 		while (freeUnits.length() > 0) {
@@ -3081,6 +3092,12 @@ void Update()
 				pick.insertLast(freeUnits[nk]);
 				S += freeUnits[nk].circuitDef.threat;
 				metal += freeUnits[nk].circuitDef.costM;
+			}
+			// our own armed buildings within reach fight there too (as the enemy's count in its defence)
+			for (uint k = 0; k < all.length(); ++k) {
+				const CCircuitDef@ sd = all[k].circuitDef;
+				if (sd.IsMobile() || sd.threat <= 0.f || sd.surfThrDmg <= 0.f) continue;
+				if (all[k].GetPos(ai.frame).distance2D(cp[best]) <= sd.GetMaxRange()) S += sd.threat;
 			}
 			if (S <= need) continue;  // what is free can't win it
 			const float r = dfc[best] / AiMax(1e-6f, S);
@@ -3233,10 +3250,16 @@ void Update()
 				const float dx = p.x - parseFloat(xz[0]), dz = p.z - parseFloat(xz[1]);
 				if (sqrt(dx * dx + dz * dz) >= d.speed) ++moved;  // at least one second of its top speed
 			}
-			IFighterTask@ ft = cast<IFighterTask>(u.task);
-			if (ft is null) ++noFight;
-			else if (ft.GetFightType() == Task::FightType::ATTACK) ++onAttack;
-			else if (ft.GetFightType() == Task::FightType::RAID) ++onRaid;
+			// Command's ops (BARb's fight types are gone): attack = an op on a known enemy, raid = an op on a raid spot,
+			// defend = an op on an enemy within reach of our buildings, none = free
+			int kind = -1;
+			for (uint o = 0; o < Command::ops.length() && kind < 0; ++o) {
+				if (Command::ops[o].units.findByRef(u) < 0) continue;
+				kind = (Command::ops[o].enemyId < 0) ? 1 : ((HasBase() && Command::ops[o].pos.distance2D(basePos) < Command::ops[o].pos.distance2D(aiEnemyMgr.GetEnemyPos())) ? 2 : 0);
+			}
+			if (kind < 0) ++noFight;
+			else if (kind == 0) ++onAttack;
+			else if (kind == 1) ++onRaid;
 			else ++onDefend;
 		} else if (d.IsMobile() && d.IsRoleAny(Unit::Role::BUILDER.mask) && d.buildSpeed > 0.f) {
 			++builders; if (idle) ++idleBuilders;
