@@ -405,7 +405,12 @@ void Update()
 		const float conSpeed = AiMax(1.f, conDef.speed);
 		const float conBuild = Economist::mexT1.buildTime / AiMax(1.f, conDef.buildSpeed);
 		for (int i = 0; i < ns2; ++i)
-			if (mso2[i] && !OwnSpot(msp2[i])) claimWork += basePos.distance2D(msp2[i]) / conSpeed + conBuild;
+			if (mso2[i] && !OwnSpot(msp2[i])) {
+				// weighted by the share we keep: how much sooner we reach the spot than they do
+				const float dUs = basePos.distance2D(msp2[i]), dThem = aiEnemyMgr.GetEnemyPos().distance2D(msp2[i]);
+				const float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;
+				claimWork += keep * (dUs / conSpeed + conBuild);
+			}
 	}
 	const float H = AiMax(1.f, Economist::Horizon());
 	const int consNeeded = int(claimWork / H) + ((claimWork > 0.f) ? 1 : 0);
@@ -2484,7 +2489,7 @@ void Init()
 	const array<string> opts = Facts::BuildOptions(labDef.GetName());
 	for (uint k = 0; k < opts.length(); ++k) {
 		CCircuitDef@ d = ai.GetCircuitDef(opts[k]);
-		if (d is null || !d.IsMobile() || d.defDmg <= 0.f) continue;
+		if (d is null || !d.IsMobile() || d.defDmg <= 0.f || !Army::IsRaider(d)) continue;  // a raider, not a scout
 		if (raiderDef is null || d.speed > raiderDef.speed) @raiderDef = d;
 	}
 	plants.resize(0);
