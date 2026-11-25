@@ -1,5 +1,5 @@
 diff --git a/src/circuit/CircuitAI.cpp b/src/circuit/CircuitAI.cpp
-index 40517444..2dd4e469 100644
+index 40517444..4b77a6e2 100644
 --- a/src/circuit/CircuitAI.cpp
 +++ b/src/circuit/CircuitAI.cpp
 @@ -306,6 +306,11 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
@@ -24,7 +24,28 @@ index 40517444..2dd4e469 100644
  				allyTeam->DyingEnemy(enemy->GetData(), lastFrame);
  				ret = 0;
  			} else {
-@@ -705,7 +713,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+@@ -673,6 +681,20 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+ 		}
+ 	}
+ 
++	// Anarva: when the game lets us choose, the start is decided (the script values each candidate in our box)
++	if (setupManager->HasStartBoxes() && setupManager->CanChooseStartPos()) {
++		const auto& b = allyTeam->GetStartBox().GetBox();
++		AIFloat3 p;
++		if (script->PickStartPos(AIFloat3(b.left, 0.f, b.top), AIFloat3(b.right, 0.f, b.bottom), setupManager->GetEnemyStartCenter(), p)
++			&& (p.x > 0.f || p.z > 0.f))
++		{
++			p.y = map->GetElevationAt(p.x, p.z);
++			setupManager->SetBasePos(p);
++			game->SendStartPosition(false, p);
++			LOG("[ANV-START] chose (%.0f, %.0f) in box (%.0f-%.0f, %.0f-%.0f)", p.x, p.z, b.left, b.right, b.top, b.bottom);
++		}
++	}
++
+ 	if (isCheating) {
+ 		cheats->SetEnabled(true);
+ 		cheats->SetEventsEnabled(true);
+@@ -705,7 +727,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
  				}
  #endif
  			});
@@ -33,7 +54,7 @@ index 40517444..2dd4e469 100644
  #if 0
  		} else if (allyTeam->GetAliveSize() > 2) {
  			// FIXME: Follower AI shares all its mobile non-builder-role units to Leader AI.
-@@ -719,7 +727,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+@@ -719,7 +741,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
  					scheduler->RemoveJob(mergeTask);
  				}
  			});
@@ -42,7 +63,7 @@ index 40517444..2dd4e469 100644
  #endif
  		}
  	}
-@@ -1530,9 +1538,8 @@ void CCircuitAI::Garbage(CCircuitUnit* unit, const char* reason)
+@@ -1530,9 +1552,8 @@ void CCircuitAI::Garbage(CCircuitUnit* unit, const char* reason)
  	// NOTE: Happens because engine can send EVENT_UNIT_FINISHED after EVENT_UNIT_DESTROYED.
  	//       Engine should not send events with isDead units.
  	garbage.insert(unit);
@@ -54,7 +75,7 @@ index 40517444..2dd4e469 100644
  }
  
  CCircuitUnit* CCircuitAI::GetTeamUnit(ICoreUnit::Id unitId) const
-@@ -1614,16 +1621,20 @@ void CCircuitAI::CreateFakeEnemy(int weaponId, const AIFloat3& startPos, const A
+@@ -1614,16 +1635,20 @@ void CCircuitAI::CreateFakeEnemy(int weaponId, const AIFloat3& startPos, const A
  	}
  	float range = weaponDefs[weaponId].GetRange();
  	const AIFloat3 enemyPos = CTerrainManager::CorrectPosition(startPos, dir, range);  // range adjusted
@@ -3327,7 +3348,7 @@ index 0be6a835..50601754 100644
  }
  
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..82d6ad6e 100644
+index c3aaefe5..95501adf 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -3722,7 +3743,35 @@ index c3aaefe5..82d6ad6e 100644
  }
  
  bool CInitScript::Init()
-@@ -920,22 +1231,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -782,6 +1093,7 @@ bool CInitScript::Init()
+ 	mainInfo.receiveMessage = script->GetFunc(mod, "void AiMessage(const string& in, int)");
+ 	mainInfo.unitFinished = script->GetFunc(mod, "void AiUnitFinished(CCircuitUnit@)");
+ 	mainInfo.unitDestroyed = script->GetFunc(mod, "void AiUnitDestroyed(CCircuitUnit@)");
++	mainInfo.pickStart = script->GetFunc(mod, "AIFloat3 AiPickStartPos(const AIFloat3& in, const AIFloat3& in, const AIFloat3& in)");
+ 	asIScriptFunction* main = script->GetFunc(mod, "void AiMain()");
+ 	if (main == nullptr) {
+ 		return false;
+@@ -793,6 +1105,19 @@ bool CInitScript::Init()
+ 	return true;
+ }
+ 
++bool CInitScript::PickStartPos(const AIFloat3& lo, const AIFloat3& hi, const AIFloat3& them, AIFloat3& out)
++{
++	if (mainInfo.pickStart == nullptr) return false;
++	asIScriptContext* ctx = script->PrepareContext(mainInfo.pickStart);
++	ctx->SetArgObject(0, const_cast<AIFloat3*>(&lo));
++	ctx->SetArgObject(1, const_cast<AIFloat3*>(&hi));
++	ctx->SetArgObject(2, const_cast<AIFloat3*>(&them));
++	const bool ok = script->Exec(ctx);
++	if (ok) out = *static_cast<AIFloat3*>(ctx->GetReturnObject());
++	script->ReturnContext(ctx);
++	return ok;
++}
++
+ void CInitScript::Update()
+ {
+ 	if (mainInfo.update == nullptr) {
+@@ -920,22 +1245,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  
@@ -3746,10 +3795,18 @@ index c3aaefe5..82d6ad6e 100644
  {
  	float bestSqDist = std::numeric_limits<float>::max();
 diff --git a/src/circuit/script/InitScript.h b/src/circuit/script/InitScript.h
-index bc7d286a..5fc79dcd 100644
+index bc7d286a..720b7eef 100644
 --- a/src/circuit/script/InitScript.h
 +++ b/src/circuit/script/InitScript.h
-@@ -83,11 +83,9 @@ private:
+@@ -65,6 +65,7 @@ public:
+ 	void LuaMessage(const char* inData);
+ 	void UnitFinished(CCircuitUnit* unit);
+ 	void UnitDestroyed(CCircuitUnit* unit);
++	bool PickStartPos(const springai::AIFloat3& lo, const springai::AIFloat3& hi, const springai::AIFloat3& them, springai::AIFloat3& out);  // Anarva
+ 
+ private:
+ 	template <class T>
+@@ -83,11 +84,9 @@ private:
  	void DelPoint(const springai::AIFloat3& pos) const;
  	void AddLine(const springai::AIFloat3& posA, const springai::AIFloat3& posB) const;
  	void Pause(bool enable, const std::string& msg) const;
@@ -3761,6 +3818,14 @@ index bc7d286a..5fc79dcd 100644
  
  	void SendMessage(const std::string& msg, int toTeamId = -1);
  	void ReceiveMessage(const std::string& msg, int fromTeamId);
+@@ -100,6 +99,7 @@ private:
+ 	struct SScriptInfo {
+ 		asIScriptFunction* unitFinished = nullptr;
+ 		asIScriptFunction* unitDestroyed = nullptr;
++		asIScriptFunction* pickStart = nullptr;  // Anarva
+ 		asIScriptFunction* update = nullptr;
+ 		asIScriptFunction* luaMessage = nullptr;
+ 		asIScriptFunction* receiveMessage = nullptr;
 diff --git a/src/circuit/script/MilitaryScript.cpp b/src/circuit/script/MilitaryScript.cpp
 index 89633988..cf9dd498 100644
 --- a/src/circuit/script/MilitaryScript.cpp
@@ -3876,11 +3941,49 @@ index 5d4e3b26..2de0d9d7 100644
  	CHierarchCluster clust;
  	CEncloseCircle enclose;
  
+diff --git a/src/circuit/setup/SetupData.h b/src/circuit/setup/SetupData.h
+index 2446f154..2490961f 100644
+--- a/src/circuit/setup/SetupData.h
++++ b/src/circuit/setup/SetupData.h
+@@ -36,10 +36,11 @@ public:
+ 	void ParseSetupScript(CCircuitAI* circuit, const char* setupScript);
+ 
+ 	bool IsInitialized() const { return isInitialized; }
+-	bool CanChooseStartPos() const { return false/*startPosType == CGameSetup::StartPos_ChooseInGame*/; }
++	bool CanChooseStartPos() const { return startPosType == CGameSetup::StartPos_ChooseInGame; }  // Anarva: was hard false
+ 
+ 	CAllyTeam* GetAllyTeam(int allyTeamId) { return allyTeams[allyTeamId]; }
+ 	const geom::CRegion* GetStartBox(int boxId) { return boxes[boxId]; }
++	const BoxMap& GetBoxes() const { return boxes; }  // Anarva
+ 
+ 	const ModOptions& GetModOptions() const { return modoptions; }
+ 
 diff --git a/src/circuit/setup/SetupManager.cpp b/src/circuit/setup/SetupManager.cpp
-index d809caf8..118beab1 100644
+index d809caf8..fef24f71 100644
 --- a/src/circuit/setup/SetupManager.cpp
 +++ b/src/circuit/setup/SetupManager.cpp
-@@ -180,13 +180,11 @@ void CSetupManager::PickStartPos(StartPosType type)
+@@ -133,6 +133,20 @@ bool CSetupManager::CanChooseStartPos() const
+ 	return setupData->CanChooseStartPos();
+ }
+ 
++AIFloat3 CSetupManager::GetEnemyStartCenter() const
++{
++	const geom::CRegion* ours = &circuit->GetAllyTeam()->GetStartBox();
++	AIFloat3 c(0.f, 0.f, 0.f);
++	int n = 0;
++	for (const auto& kv : setupData->GetBoxes()) {
++		if (kv.second == ours) continue;
++		const auto& b = kv.second->GetBox();
++		c.x += (b.left + b.right) / 2.f; c.z += (b.top + b.bottom) / 2.f; ++n;
++	}
++	if (n > 0) { c.x /= n; c.z /= n; }
++	return c;
++}
++
+ void CSetupManager::PickStartPos(StartPosType type)
+ {
+ 	CAllyTeam* allyTeam = circuit->GetAllyTeam();
+@@ -180,13 +194,11 @@ void CSetupManager::PickStartPos(StartPosType type)
  					SCluster c;
  					c.count = allyTeam->GetClusterTeam(kv.first).count;
  					const CMetalData::SCluster& cl = clusters[kv.first];
@@ -3896,7 +3999,7 @@ index d809caf8..118beab1 100644
  
  				auto cmp = [](const std::pair<int, SCluster>& a, const std::pair<int, SCluster>& b) {
  					if (a.second.count < b.second.count) {
-@@ -202,7 +200,9 @@ void CSetupManager::PickStartPos(StartPosType type)
+@@ -202,7 +214,9 @@ void CSetupManager::PickStartPos(StartPosType type)
  				allyTeam->OccupyCluster(clusterId, circuit->GetTeamId());
  
  				const CMetalData::MetalIndices& indices = validPoints[clusterId];
@@ -3907,7 +4010,7 @@ index d809caf8..118beab1 100644
  				CCircuitDef* mexDef = circuit->GetEconomyManager()->GetSideInfo().mexDef;
  				const float range = std::max(mexDef->GetDef()->GetXSize(), mexDef->GetDef()->GetZSize())
  						* SQUARE_SIZE / 2 * 1.4f + commChoice->GetRadius();
-@@ -235,8 +235,10 @@ void CSetupManager::SetBasePos(const AIFloat3& pos)
+@@ -235,8 +249,10 @@ void CSetupManager::SetBasePos(const AIFloat3& pos)
  //		refPos = circuit->GetMetalManager()->GetClusters()[index].position;
  //	}
  	const AIFloat3 enemyDir = (mapCenter - refPos).Normalize2D();
@@ -3919,7 +4022,7 @@ index d809caf8..118beab1 100644
  	metalBase = backPos + normal * 200.f;
  	energyBase = backPos - normal * 200.f;
  	energyBase2 = backPos - enemyDir * 400.f;
-@@ -297,7 +299,7 @@ bool CSetupManager::PickCommander()
+@@ -297,7 +313,7 @@ bool CSetupManager::PickCommander()
  	}
  
  	std::string cmd("ai_commander:");
@@ -3928,7 +4031,7 @@ index d809caf8..118beab1 100644
  	circuit->GetLua()->CallRules(cmd.c_str(), cmd.size());
  
  	return true;
-@@ -334,11 +336,12 @@ void CSetupManager::ReadConfig()
+@@ -334,11 +350,12 @@ void CSetupManager::ReadConfig()
  	const Json::Value& root = GetConfig();
  	const std::string& cfgName = GetConfigName();
  
@@ -3944,7 +4047,7 @@ index d809caf8..118beab1 100644
  
  	const Json::Value& comm = root["commander"];
  	const Json::Value& items = comm["unit"];
-@@ -360,14 +363,11 @@ void CSetupManager::ReadConfig()
+@@ -360,14 +377,11 @@ void CSetupManager::ReadConfig()
  //		commChoices.push_back(cdef);
  
  		const Json::Value& comm = items[commName];
@@ -3960,7 +4063,7 @@ index d809caf8..118beab1 100644
  
  		const Json::Value& upgr = mrph["module"];
  		morph.modules.reserve(upgr.size());
-@@ -379,24 +379,13 @@ void CSetupManager::ReadConfig()
+@@ -379,24 +393,13 @@ void CSetupManager::ReadConfig()
  			morph.modules.push_back(mdls);
  		}
  
@@ -3987,10 +4090,18 @@ index d809caf8..118beab1 100644
  	}
  
 diff --git a/src/circuit/setup/SetupManager.h b/src/circuit/setup/SetupManager.h
-index 9e1293b2..e113e6a7 100644
+index 9e1293b2..6ae74527 100644
 --- a/src/circuit/setup/SetupManager.h
 +++ b/src/circuit/setup/SetupManager.h
-@@ -81,7 +81,7 @@ public:
+@@ -58,6 +58,7 @@ public:
+ 	const CSetupData::ModOptions& GetModOptions() const;
+ 	bool HasStartBoxes() const;
+ 	bool CanChooseStartPos() const;
++	springai::AIFloat3 GetEnemyStartCenter() const;  // Anarva: centre of the start boxes not ours
+ 
+ 	void PickStartPos(StartPosType type);
+ 	void SetStartPos(const springai::AIFloat3& pos) { startPos = basePos = pos; }
+@@ -81,7 +82,7 @@ public:
  	CAllyTeam* GetAllyTeam() const;
  
  	void ReadConfig();

@@ -62,4 +62,10 @@ void AiUnitDestroyed(CCircuitUnit@ unit)  // any of our units
 	Brain::OnUnitDestroyed(unit);
 }
 
+// the start position, when the game lets us choose (#97): decided by the opening's plan value
+AIFloat3 AiPickStartPos(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3& in them)
+{
+	return Brain::Opening::PickStart(lo, hi, them);
+}
+
 }  // namespace Main

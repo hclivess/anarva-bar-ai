@@ -286,6 +286,29 @@ def read_info(path):
         return open(os.path.join(tmp, *info.split("/")), "rb").read().decode("utf-8", "replace")
 
 
+def fill_spots(maps_dir, report, names):
+    """Add extractor spot coordinates [[x, z], ...] to an existing report for the named maps (all when none)."""
+    reps = json.load(open(report))
+    for r in reps:
+        if names and r["name"] not in names:
+            continue
+        try:
+            files, smf_name, info_name = read_archive(os.path.join(maps_dir, r["file"]))
+            info = files.get(info_name, b"").decode("utf-8", "replace") if info_name else ""
+            ov = {}
+            blk = re.search(r"smf\s*=\s*\{(.*?)\}", info, re.S | re.I)
+            if blk:
+                for k, key in (("minheight", "min"), ("maxheight", "max")):
+                    m = re.search(k + r"\s*=\s*(-?[\d.]+)", blk.group(1), re.I)
+                    if m:
+                        ov[key] = float(m.group(1))
+            r["spots"] = [[round(sp[0]), round(sp[1])] for sp in mex_spots(parse_smf(files[smf_name], ov))]
+            print(r["name"], len(r["spots"]), "spots")
+        except Exception as e:
+            print("FAIL", r["file"], e)
+    json.dump(reps, open(report, "w"), indent=1)
+
+
 def fill_wind(maps_dir, report):
     reps = json.load(open(report))
     for r in reps:
@@ -342,6 +365,9 @@ def analyze(path):
 
 
 def main():
+    if sys.argv[1:2] == ["--spots"]:
+        fill_spots(sys.argv[2], sys.argv[3], set(sys.argv[4:]))
+        return
     if sys.argv[1:2] == ["--wind"]:
         fill_wind(sys.argv[2], sys.argv[3])
         return

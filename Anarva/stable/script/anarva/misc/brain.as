@@ -2639,7 +2639,13 @@ float raidDps = 0.f;
 float raidCostM = 1.f;
 float raidUnitTime = 1.f;
 
-AIFloat3 Home() { return HasBase() ? basePos : commander.GetPos(ai.frame); }
+// Planning a start before the game (no commander yet): the commander type, the candidate home and the enemy's box
+bool planning = false;
+const CCircuitDef@ planDef = null;
+AIFloat3 planHome, planThem;
+const CCircuitDef@ ComDef() { return planning ? planDef : commander.circuitDef; }
+AIFloat3 Home() { if (planning) return planHome; return HasBase() ? basePos : commander.GetPos(ai.frame); }
+AIFloat3 Them() { return planning ? planThem : aiEnemyMgr.GetEnemyPos(); }
 float Strength(const CCircuitDef@ d) { return sqrt(AiMax(0.f, d.GetSustainedDps()) * AiMax(1.f, d.health)); }
 
 // a spot near home where it can stand: home, else the first point of a ring at the commander's build distance
@@ -2647,7 +2653,7 @@ bool PlaceNearHome(CCircuitDef@ d, AIFloat3& out p)
 {
 	const AIFloat3 h = Home();
 	if (AiCanBeBuiltAt(d, h)) { p = h; return true; }
-	const float r = commander.circuitDef.GetBuildDistance() + d.GetRadius();
+	const float r = ComDef().GetBuildDistance() + d.GetRadius();
 	for (int k = 0; k < 16; ++k) {
 		const float ang = 2.f * Pi() * float(k) / 16.f;
 		AIFloat3 q(h.x + r * cos(ang), 0.f, h.z + r * sin(ang));
@@ -2659,9 +2665,9 @@ bool PlaceNearHome(CCircuitDef@ d, AIFloat3& out p)
 
 void Init()
 {
-	const CCircuitDef@ com = commander.circuitDef;
+	const CCircuitDef@ com = ComDef();
 	const float comBp = AiMax(1.f, com.buildSpeed);
-	const AIFloat3 home = Home(), them = aiEnemyMgr.GetEnemyPos();
+	const AIFloat3 home = Home(), them = Them();
 	const array<string> opts = Facts::BuildOptions(com.GetName());
 	plants.resize(0); plantPos.resize(0); labs.resize(0);
 	for (uint k = 0; k < opts.length(); ++k) {
@@ -2726,7 +2732,7 @@ float SpendRate(const Sim@ s)
 	float total = usable + AiMax(0.f, s.eInc - usable * eR) / epm;
 	float spend = 0.f;
 	if (Economist::mexT1 !is null)
-		spend = commander.circuitDef.buildSpeed * Economist::mexT1.costM / AiMax(1.f, Economist::mexT1.buildTime);
+		spend = ComDef().buildSpeed * Economist::mexT1.costM / AiMax(1.f, Economist::mexT1.buildTime);
 	if (s.lab >= 0 && s.t >= s.labAt) spend += labs[s.lab].spend;
 	return AiMin(total, spend);
 }
@@ -2790,9 +2796,9 @@ array<Opt@> Options(const Sim@ s, const array<AIFloat3>@ sp, const array<float>@
 		for (uint i = 0; i < sp.length(); ++i) {
 			if (!so[i] || s.usedSpot[i] || EcoPos::OwnSpot(sp[i]) || failedSpots.find(int(i)) >= 0) continue;
 			// the commander builds these: never where the chance of losing it (and the game) outweighs the extractor
-			if (CommPDeath(sp[i], EscapeTime(sp[i])) * GameValue() > Economist::AssetValue(Economist::mexT1)) continue;
+			if (!planning && CommPDeath(sp[i], EscapeTime(sp[i])) * GameValue() > Economist::AssetValue(Economist::mexT1)) continue;
 			Opt o; o.kind = 0; @o.def = Economist::mexT1; o.pos = sp[i]; o.spot = int(i);
-			const float dUs = Home().distance2D(sp[i]), dThem = aiEnemyMgr.GetEnemyPos().distance2D(sp[i]);
+			const float dUs = Home().distance2D(sp[i]), dThem = Them().distance2D(sp[i]);
 			const float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;  // the share we keep
 			o.yieldM = si[i] * Facts::ExtractsMetal(Economist::mexT1.GetName()) * keep;
 			opts.insertLast(o);
@@ -2818,6 +2824,75 @@ Sim@ Copy(const Sim@ a)
 	b.usedSpot = a.usedSpot; b.realized = a.realized;
 	b.nProd = a.nProd; b.prodYield = a.prodYield; b.prodHp = a.prodHp; b.prodCost = a.prodCost;
 	return b;
+}
+
+// the best plan from state s0: every first option followed by the best next step while one adds value
+float BestPlan(const Sim@ s0, float now, float H, const array<Opt@>@ first, int &out best, float bp, float speed,
+	const array<AIFloat3>@ sp, const array<float>@ si, const array<bool>@ so)
+{
+	best = -1;
+	float bestV = Value(s0, now, H);  // doing nothing more is the baseline
+	for (uint a = 0; a < first.length(); ++a) {
+		Sim@ s = Copy(s0);
+		Apply(s, first[a], bp, speed);
+		float cur = Value(s, now, H);
+		while (s.t < now + H) {
+			array<Opt@> nx = Options(s, sp, si, so);
+			int nb = -1; float nv = cur;
+			for (uint b = 0; b < nx.length(); ++b) {
+				Sim@ s2 = Copy(s);
+				Apply(s2, nx[b], bp, speed);
+				const float v2 = Value(s2, now, H);
+				if (v2 > nv) { nv = v2; nb = int(b); }
+			}
+			if (nb < 0) break;
+			Apply(s, nx[nb], bp, speed);
+			cur = nv;
+		}
+		if (cur > bestV) { bestV = cur; best = int(a); }
+	}
+	return bestV;
+}
+
+/*
+ * Where to start (#97, owner: "you haven't even made start picking dynamic"): when the game lets us choose, every
+ * candidate in our box - each extractor spot in it (the commander starts next to it) and the box's centre - is
+ * valued by the best opening plan from there against the enemy's box, and the best is taken. The plan already
+ * weighs the spots we keep (nearer us than them), the walk, energy, the lab and the earliest raid.
+ */
+AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3& in them)
+{
+	@planDef = aiSetupMgr.commChoice;
+	if (planDef is null) return AIFloat3(0.f, 0.f, 0.f);
+	planning = true;
+	planThem = them;
+	array<AIFloat3> sp; array<float> si; array<bool> so;
+	AiGetMetalSpots(sp, si, so);
+	array<AIFloat3> cands;
+	cands.insertLast(AIFloat3((lo.x + hi.x) / 2.f, 0.f, (lo.z + hi.z) / 2.f));
+	for (uint i = 0; i < sp.length(); ++i)
+		if (sp[i].x >= lo.x && sp[i].x <= hi.x && sp[i].z >= lo.z && sp[i].z <= hi.z) cands.insertLast(sp[i]);
+	const float H = AiMax(1.f, planDef.costM / AiMax(1e-3f, EcoPos::theirs)) + AiTerrainDiagonal() / AiMax(1.f, planDef.speed);
+	AIFloat3 bestP = cands[0]; float bestV = -1e30f;
+	for (uint c = 0; c < cands.length(); ++c) {
+		planHome = cands[c];
+		planHome.y = AiGetElevation(planHome.x, planHome.z);
+		ready = false; raidArrive = 1e9f;
+		Init();
+		Sim s0;
+		s0.t = 0.f; s0.M = aiEconomyMgr.metal.current; s0.E = aiEconomyMgr.energy.current;
+		s0.mInc = aiEconomyMgr.metal.income; s0.eInc = aiEconomyMgr.energy.income;
+		s0.pos = planHome; s0.labAt = 1e9f;
+		s0.usedSpot.resize(sp.length());
+		for (uint i = 0; i < sp.length(); ++i) s0.usedSpot[i] = false;
+		array<Opt@> first = Options(s0, sp, si, so);
+		int b = -1;
+		const float v = BestPlan(s0, 0.f, H, first, b, planDef.buildSpeed, planDef.speed, sp, si, so);
+		AiLog("[ANV-START] candidate (" + int(planHome.x) + "," + int(planHome.z) + ") plan value " + int(v));
+		if (v > bestV) { bestV = v; bestP = planHome; }
+	}
+	planning = false; ready = false; raidArrive = 1e9f;
+	return bestP;
 }
 
 void Update()
@@ -2854,30 +2929,11 @@ void Update()
 	s0.pos = commander.GetPos(ai.frame); s0.labAt = 1e9f;
 	s0.usedSpot.resize(sp.length());
 	for (uint i = 0; i < sp.length(); ++i) s0.usedSpot[i] = false;
-	const float bp = commander.circuitDef.buildSpeed, speed = commander.circuitDef.speed;
+	const float bp = ComDef().buildSpeed, speed = ComDef().speed;
 	const float H = AiMax(1.f, Economist::Horizon());
 	array<Opt@> first = Options(s0, sp, si, so);
-	int best = -1; float bestV = Value(s0, now, H);  // doing nothing more is the baseline
-	for (uint a = 0; a < first.length(); ++a) {
-		Sim@ s = Copy(s0);
-		Apply(s, first[a], bp, speed);
-		float cur = Value(s, now, H);
-		// rollout: the best next step while one adds value
-		while (s.t < now + H) {
-			array<Opt@> nx = Options(s, sp, si, so);
-			int nb = -1; float nv = cur;
-			for (uint b = 0; b < nx.length(); ++b) {
-				Sim@ s2 = Copy(s);
-				Apply(s2, nx[b], bp, speed);
-				const float v2 = Value(s2, now, H);
-				if (v2 > nv) { nv = v2; nb = int(b); }
-			}
-			if (nb < 0) break;
-			Apply(s, nx[nb], bp, speed);
-			cur = nv;
-		}
-		if (cur > bestV) { bestV = cur; best = int(a); }
-	}
+	int best = -1;
+	const float bestV = BestPlan(s0, now, H, first, best, bp, speed, sp, si, so);
 	if (best < 0) return;  // nothing the commander can do here adds value: the builders' valuation decides
 	const Opt@ o = first[best];
 	++plans;
@@ -2885,7 +2941,7 @@ void Update()
 	if (o.kind == 0)
 		@planned = aiBuilderMgr.Enqueue(TaskB::Spot(Task::BuildType::MEX, Task::Priority::NOW, o.def, o.pos, o.spot, true, OrderLife(o.def, o.pos)));
 	else if (o.kind == 1)
-		@planned = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::ENERGY, Task::Priority::NOW, o.def, o.pos, commander.circuitDef.GetBuildDistance(), true, OrderLife(o.def, o.pos)));
+		@planned = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::ENERGY, Task::Priority::NOW, o.def, o.pos, ComDef().GetBuildDistance(), true, OrderLife(o.def, o.pos)));
 	else
 		@planned = aiBuilderMgr.Enqueue(TaskB::Factory(Task::Priority::NOW, o.def, o.pos, o.def, 0.f, false, true, OrderLife(o.def, o.pos)));
 	if (planned !is null) aiBuilderMgr.AssignTask(commander, planned);
