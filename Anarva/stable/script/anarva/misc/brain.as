@@ -295,7 +295,8 @@ void Update()
 }  // namespace RezLab
 
 namespace EcoPos {
-bool wantConstructor = false;  // Production asks the core for a constructor while true
+bool wantConstructor = false;  // (kept for the status line)
+float constructorValue = 0.f;  // metal-eq one more constructor saves (Production compares it with every other unit)
 array<AIFloat3> raidPos; array<float> raidVal;  // expected enemy economy (Command objectives)
 // the cheapest mobile constructor any factory we own can build (unit facts via Facts::BuildOptions)
 CCircuitDef@ CheapestConstructor()
@@ -437,9 +438,10 @@ void Update()
 		}
 	}
 	const bool work = unclaimed > 0 && unemployed == 0 && conDef !is null && saved > Economist::MetalValue(conDef) && Director::ratio >= 1.f;
+	// the value Production weighs against every other unit: the yield saved, while every constructor has a job
+	constructorValue = (unclaimed > 0 && unemployed == 0) ? saved : 0.f;
 	wantConstructor = work;
-	aiFactoryMgr.buildpowerRatio = work ? 1e9f
-		: aiBuilderMgr.GetBuildPower() / AiMax(1e-3f, aiEconomyMgr.metal.income);  // otherwise hold constructors where they are
+	aiFactoryMgr.buildpowerRatio = 0.f;  // the core never asks for constructors itself: Production weighs constructorValue (#96)
 }
 string Status() { return "ecoPos " + (behind ? "behind" : "ahead") + " ours=" + int(ours) + " theirs~" + int(theirs); }
 }  // namespace EcoPos
@@ -609,7 +611,72 @@ void Update()
 		}
 	}
 	aiMilitaryMgr.SetScoutTargets(tp, tv);
-	aiMilitaryMgr.quota.scout = AiMax(1, int(worthy));
+	picks = tp; pickVals = tv;  // in value order (each pick was the best left)
+	// the chance a dark cell holds an enemy: their mobile units out of our sight (at least their commander) spread
+	// over the cells we can't see
+	{
+		uint hidden = 0, dark = 0;
+		for (uint i = 0; i < ne; ++i)
+			if (ed[i] !is null && ed[i].IsMobile() && (ef[i] & 1) == 0) ++hidden;
+		for (int c = 0; c < n; ++c) if (lastSeen[c] != ai.frame) ++dark;
+		pOccupied = AiMin(1.f, float(AiMax(1, int(hidden))) / float(AiMax(1, int(dark))));
+	}
+	Send();
+}
+// The scouts Production bought for their information (not for a fight): each goes to the most valuable cell no
+// other scout is on, the nearest scout first. Command leaves them alone.
+array<AIFloat3> picks; array<float> pickVals;
+float pOccupied = 0.f;
+array<CCircuitUnit@> scouts;
+array<int> pendingDefs;  // def ids ordered as scouts, not yet finished
+dictionary sentTo;       // scout id -> the cell it was sent to
+bool IsScout(CCircuitUnit@ u) { return scouts.findByRef(u) >= 0; }
+// what one more scout is worth: the next cell no scout covers, for the share of it its sight covers
+float NextValue(const CCircuitDef@ d)
+{
+	const uint k = scouts.length() + pendingDefs.length();
+	if (k >= pickVals.length()) return 0.f;
+	// worth only as much as there is something to find: the chance an enemy is in the cell (66 Fleas were bought on
+	// the value of what could be there, Eye of Horus 2026-11-25)
+	// ...and only if it lives to get there: the measured life of our scouts against its walk to the cell
+	const float walk = (HasBase() ? basePos.distance2D(picks[k]) : 0.f) / AiMax(1.f, d.speed);
+	const float alive = AiMax(0.f, 1.f - walk / AiMax(1.f, Life()));
+	return pickVals[k] * pOccupied * alive * AiMin(1.f, 2.f * d.losRadius / AiMax(1.f, Intel::CELL));
+}
+void OnFinished(CCircuitUnit@ u)
+{
+	const int at = pendingDefs.find(u.circuitDef.id);
+	if (at < 0) return;
+	pendingDefs.removeAt(at);
+	scouts.insertLast(u);
+}
+void OnDestroyed(CCircuitUnit@ u) { const int at = scouts.findByRef(u); if (at >= 0) { scouts.removeAt(at); ++lost; } }
+// how long our scouts live: scout-seconds survived / scouts lost (none lost yet: the horizon)
+float exposure = 0.f; int lost = 0; int lifeFrame = -1;
+float Life()
+{
+	if (lifeFrame >= 0) exposure += float(scouts.length()) * float(ai.frame - lifeFrame) / SECOND;
+	lifeFrame = ai.frame;
+	return (lost > 0) ? exposure / float(lost) : Economist::Horizon();
+}
+void Send()
+{
+	array<bool> used(scouts.length(), false);
+	for (uint p = 0; p < picks.length(); ++p) {
+		int best = -1; float bd = 1e30f;
+		for (uint i = 0; i < scouts.length(); ++i) {
+			if (used[i]) continue;
+			const float d = scouts[i].GetPos(ai.frame).distance2D(picks[p]);
+			if (d < bd) { bd = d; best = int(i); }
+		}
+		if (best < 0) break;
+		used[best] = true;
+		const string key = int(picks[p].x) + "," + int(picks[p].z);
+		string prev;
+		if (sentTo.get("" + scouts[best].id, prev) && prev == key) continue;  // already on its way there
+		sentTo.set("" + scouts[best].id, key);
+		scouts[best].CmdMoveTo(picks[p]);
+	}
 }
 
 string Status() { return "scout: worthy=" + worthy + " top=" + int(topValue) + " quota=" + aiMilitaryMgr.quota.scout; }
@@ -1871,95 +1938,107 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	IUnitTask@ mc = MohoConTask(fac);
 	if (mc !is null)
 		return mc;
-	if (aiEconomyMgr.isEnergyStalling)
-		return null;  // energy stall: the core's first answer is energy; don't queue power-hungry units
-	// (no opener window: production decides from the first unit; no fixed opener lists are queued)
 	const CCircuitDef@ fdef = fac.circuitDef;
 	if (fdef.IsMobile())
 		return null;
-	// Constructors are part of every factory's mix in the core's config (unit list index 0, ~25-35% of
-	// T1/T2 weights). Hand that share of decisions back to the core so its constructor logic keeps the
-	// economy growing; we choose only the army picks. (Debt: replace with a measured marginal value of a
-	// constructor: income it adds now vs its cost and the horizon.)
-	// constructor share as a quota, not a dice roll: a constructor whenever builders so far are below their share
-	// A constructor while income goes unspent (we can't spend what we earn); otherwise the metal is worth more as army.
-	// A constructor while claiming the free spots within the horizon needs more constructors than we have (EcoPos:
-	// walk + build per spot over the horizon), unless we are weaker than the enemy army we know of. Not "only while
-	// income goes unspent and we are behind": that held Throne at 1 constructor for 4 minutes (winners: 7).
-	if (EcoPos::wantConstructor) {
-		++builders;
-		return null;  // the core's constructor rule takes it (buildpowerRatio set by EcoPos)
-	}
-	CCircuitDef@ rez = RezToBuild(fdef);
-	if (rez !is null) {
-		++rezOrders;
-		last = rez.GetName();
-		return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, rez,
-			fac.GetPos(ai.frame), fac.circuitDef.GetRadius()));
-	}
-
-	// Scouted enemy mix -> how much each damage domain matters.
-	const float air = aiEnemyMgr.GetEnemyCost(RT::AIR);
-	const float sub = aiEnemyMgr.GetEnemyCost(RT::SUB);
-	const float stat = aiEnemyMgr.GetEnemyThreat(RT::STATIC);
-	float surf = aiEnemyMgr.GetEnemyCost(RT::RAIDER) + aiEnemyMgr.GetEnemyCost(RT::ASSAULT)
-		+ aiEnemyMgr.GetEnemyCost(RT::SKIRM) + aiEnemyMgr.GetEnemyCost(RT::RIOT) + aiEnemyMgr.GetEnemyCost(RT::HEAVY)
-		+ aiEnemyMgr.GetEnemyCost(RT::ARTY) + aiEnemyMgr.GetEnemyCost(RT::STATIC);
-	if (air + sub + surf <= 0.f) surf = 1.f;  // nothing seen yet: everyone starts on land
-	const float total = air + sub + surf;
-	const float wAir = air / total, wSub = sub / total, wSurf = surf / total;
-	const float wStatic = AiMin(1.f, stat / AiMax(1.f, Brain::Economist::KnownEnemyThreat() + stat));
-	const float wHeavy = AiMin(1.f, (aiEnemyMgr.GetEnemyCost(RT::HEAVY) + aiEnemyMgr.GetEnemyCost(RT::ARTY)) / surf);
-
-	MeasureArmy(wAir, wSurf, wSub);
-	MeasureEnemyAA();
-	wArty = AiMin(1.f, aiEnemyMgr.GetEnemyCost(RT::ARTY) / surf);
-	wStaticCost = AiMin(1.f, aiEnemyMgr.GetEnemyCost(RT::STATIC) / (surf + aiEnemyMgr.GetEnemyCost(RT::STATIC)));
-	array<CCircuitDef@> cands;
-	array<float> scores;
-	// Every unit this factory can build (facts: build options), not one per role.
+	/*
+	 * What this factory builds is one comparison (#96): every unit it can make is worth what it adds, in metal, per
+	 * metal it costs; the best is built. No roles, quotas, target mix or BARb default.
+	 *  - a fighter: the square law, per damage domain (air; surface = everything else). Our strength S = sum of
+	 *    sqrt(damage vs that domain x health); theirs E, as seen (unseen: at least as strong as ours, they earn as we
+	 *    do). The chance we win there is p = S^2/(S^2+E^2); the unit is worth what is at stake there (what we own and
+	 *    what they own, split by where their strength is) x how much it raises p - nothing where no enemy is, less
+	 *    and less where we already dominate. Discounted by the share of the horizon it spends walking to the front.
+	 *  - a constructor: the yield it saves by claiming free spots sooner (EcoPos), while every constructor has a job.
+	 *  - a scout (any unit, for its sight): the next most valuable cell no scout covers (Scout: what of ours an enemy
+	 *    there could reach before we answer, raidable spots gone dark), for the share of the cell its sight covers.
+	 * A unit can do one job: its value is the larger of the three.
+	 */
 	const array<string>@ opts = Facts::BuildOptions(fdef.GetName());
+	const AIFloat3 fpos = fac.GetPos(ai.frame), them = aiEnemyMgr.GetEnemyPos();
+	// our strength per domain
+	float sAir = 0.f, sSurf = 0.f;
+	{
+		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+		for (uint i = 0; i < mine.length(); ++i) {
+			const CCircuitDef@ d = mine[i].circuitDef;
+			if ((!IsArmy(d) && mine[i] !is commander) || Scout::IsScout(mine[i])) continue;  // the commander fights too
+			sAir += sqrt(AiMax(0.f, d.airThrDmg) * AiMax(1.f, d.health));
+			sSurf += sqrt(AiMax(0.f, d.surfThrDmg) * AiMax(1.f, d.health));
+		}
+	}
+	// theirs, as seen
+	float eAir = 0.f, eSurf = 0.f;
+	{
+		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+		for (uint i = 0; i < ne; ++i) {
+			const CCircuitDef@ d = ed[i];
+			if (d is null || d.GetSustainedDps() <= 0.f) continue;
+			const float st = sqrt(d.GetSustainedDps() * AiMax(1.f, eh[i] * d.health));
+			if (d.IsAbleToFly()) eAir += st; else eSurf += st;
+		}
+	}
+	eSurf = AiMax(eSurf, sSurf + sAir);  // unseen: at least as strong as we are (they earn as we do)
+	const float stake = Strategic::ownedMetal + Assess::EnemyValue();
+	const float eAll = AiMax(1e-3f, eAir + eSurf);
+	const float stakeAir = stake * eAir / eAll, stakeSurf = stake * eSurf / eAll;
+	const float H = AiMax(1.f, Economist::Horizon());
+	const float dist = Brain::Assess::frontDist > 0.f ? Brain::Assess::frontDist : fpos.distance2D(them) * 0.5f;
+	array<AIFloat3> theirSpots;
+	{
+		array<AIFloat3> msp; array<float> msi; array<bool> mso;
+		AiGetMetalSpots(msp, msi, mso);
+		for (uint k = 0; k < msp.length(); ++k) if (!Assess::OnOurSide(msp[k])) theirSpots.insertLast(msp[k]);
+		if (theirSpots.length() == 0) theirSpots.insertLast(them);
+	}
+	CCircuitDef@ bestDef = null; float bestRatio = 0.f, bestV = 0.f; int bestJob = -1;  // 0 fight, 1 build, 2 scout
+	string why = "";
 	for (uint i = 0; i < opts.length(); ++i) {
 		CCircuitDef@ d = ai.GetCircuitDef(opts[i]);
-		if (d is null || !d.IsMobile() || d.IsRoleAny(Unit::Role::BUILDER.mask) || InList(rezDefs, d) || cands.findByRef(d) >= 0)
-			continue;
-		const float s = Score(d, wAir, wSurf, wSub, wStatic, wHeavy);
-		if (s > 0.f) {
-			cands.insertLast(d);
-			scores.insertLast(s);
+		if (d is null || !d.IsMobile() || !d.IsAvailable(ai.frame) || d.costM <= 0.f || InList(rezDefs, d)) continue;
+		if (!d.IsAbleToFly()) {  // it must reach somewhere that matters: an extractor spot on their side
+			bool reach = false;
+			for (uint k = 0; k < theirSpots.length() && !reach; ++k) reach = AiDefCanReach(d, fpos, theirSpots[k]);
+			if (!reach) continue;
+		}
+		float vFight = 0.f, vBuild = 0.f, vScout = 0.f;
+		if (d.IsRoleAny(Unit::Role::BUILDER.mask) && d.buildSpeed > 0.f) {
+			vBuild = EcoPos::constructorValue;
+		} else if (d.GetSustainedDps() > 0.f) {
+			const float hp = AiMax(1.f, d.health);
+			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp), us = sqrt(AiMax(0.f, d.surfThrDmg) * hp);
+			vFight = stakeAir * (WinShare(sAir + ua, eAir) - WinShare(sAir, eAir))
+				+ stakeSurf * (WinShare(sSurf + us, eSurf) - WinShare(sSurf, eSurf));
+			vFight *= AiMax(0.f, 1.f - dist / AiMax(1.f, d.speed) / H);
+		}
+		vScout = Scout::NextValue(d);
+		const float v = AiMax(vFight, AiMax(vBuild, vScout));
+		const float ratio = v / AiMax(1.f, Economist::MetalValue(d));
+		why += " " + d.GetName() + "=" + F2(ratio);
+		if (ratio > bestRatio) {
+			bestRatio = ratio; @bestDef = d; bestV = v;
+			bestJob = (v == vScout) ? 2 : ((v == vBuild) ? 1 : 0);
 		}
 	}
-	// factories without facts fall back to one candidate per role
-	for (uint i = 0; opts.length() == 0 && i < roles.length(); ++i) {
-		CCircuitDef@ d = aiFactoryMgr.GetRoleDef(fdef, roles[i]);
-		if (d is null || !d.IsMobile() || cands.findByRef(d) >= 0)
-			continue;
-		const float s = Score(d, wAir, wSurf, wSub, wStatic, wHeavy);
-		if (s > 0.f) {
-			cands.insertLast(d);
-			scores.insertLast(s);
-		}
-	}	if (cands.length() == 0)
+	if (bestDef is null) {
+		AiLog("[ANV-PROD] " + fdef.GetName() + ": no unit adds value now:" + why);
 		return null;
-	// Largest deficit, not dice: each candidate's target share of what we build is its share of the scores; pick the
-	// one furthest below its target in metal built so far.
-	float sumS = 0.f, sumB = 0.f;
-	for (uint i = 0; i < cands.length(); ++i) { sumS += scores[i]; sumB += float(built[cands[i].id]) * cands[i].costM; }
-	int pick = -1; float bestGap = -1e30f;
-	for (uint i = 0; i < cands.length(); ++i) {
-		const float want = scores[i] / AiMax(1e-6f, sumS);
-		const float have = sumB > 0.f ? float(built[cands[i].id]) * cands[i].costM / sumB : 0.f;
-		if (want - have > bestGap) { bestGap = want - have; pick = int(i); }
 	}
-	if (pick < 0)
-		return null;
-	CCircuitDef@ d = cands[pick];
-	++built[d.id];
-	++choices;
-	last = d.GetName();
-	return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::FIREPOWER, Task::Priority::NORMAL, d,
-		fac.GetPos(ai.frame), fac.circuitDef.GetRadius()));
+	if (bestJob == 2) Scout::pendingDefs.insertLast(bestDef.id);
+	if (bestJob == 1) ++builders; else ++choices;
+	++built[bestDef.id];
+	last = bestDef.GetName();
+	AiLog("[ANV-PROD] " + fdef.GetName() + " -> " + bestDef.GetName() + " as " + (bestJob == 2 ? "scout" : (bestJob == 1 ? "constructor" : "fighter"))
+		+ " (value " + int(bestV) + " per metal " + F2(bestRatio) + "; S air/surf " + int(sAir) + "/" + int(sSurf) + " E " + int(eAir) + "/" + int(eSurf) + ")" + " |" + why);
+	return aiFactoryMgr.Enqueue(TaskS::Recruit(bestJob == 1 ? Task::RecruitType::BUILDPOWER : Task::RecruitType::FIREPOWER,
+		Task::Priority::NORMAL, bestDef, fpos, fac.circuitDef.GetRadius()));
 }
+// The share of what is contested that strength S holds against E. Fights come piecemeal (raids, local fights),
+// where each unit adds in proportion (Lanchester's linear law); the square law over one big battle made a small army
+// worth nothing at the margin exactly when it was behind (S 56 vs E 364: 39 Fleas instead of fighters, Eye of Horus
+// 2026-11-25). The square law still decides whether a fight is taken (Command).
+float WinShare(float S, float E) { return (S + E > 0.f) ? S / (S + E) : 0.f; }
 
 string Status() { return "moho=" + mohoCons + "(" + mohoWhy + ") prod=" + choices + "/b" + builders + " rez=" + rezBots.length() + "/" + rezOrders + " last=" + last; }
 
@@ -2487,6 +2566,7 @@ void OnUnitFinished(CCircuitUnit@ unit)
 		++Strategic::minelayers;
 	Economist::OnFinished(unit);
 	Production::OnFinished(unit);
+	Scout::OnFinished(unit);
 }
 
 /*
@@ -3027,7 +3107,7 @@ void Update()
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	array<CCircuitUnit@> force;
 	for (uint i = 0; i < all.length(); ++i)
-		if (Owns(all[i].circuitDef) && all[i].task is mine) force.insertLast(all[i]);
+		if (Owns(all[i].circuitDef) && all[i].task is mine && !Scout::IsScout(all[i])) force.insertLast(all[i]);
 	const uint n = AiGetEnemies(ePos, eVel, eDef, eCost, eFlags, eHp, eBuilt);
 	AiGetEnemyIds(eIds);
 	{
@@ -3828,6 +3908,7 @@ string NearestEnemyText(const AIFloat3& in p)
 void OnUnitDestroyed(CCircuitUnit@ unit)
 {
 	Command::OnDestroyed(unit);
+	Scout::OnDestroyed(unit);
 	if (Economist::IsProducer(unit.circuitDef)) ++Economist::producerLosses;
 	{  // every loss, for the checklist: what, where, on which job
 		const AIFloat3 p = unit.GetPos(ai.frame);
