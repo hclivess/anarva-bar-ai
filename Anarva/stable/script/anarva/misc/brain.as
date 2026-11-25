@@ -417,12 +417,16 @@ void Update()
 		// it, our strength / (ours + theirs) (20 constructors and an army of 54-420 against the winners' 15 and
 		// 648-3395: spots nobody could hold drove constructor production, Gasbag Grabens 2026-11-25)
 		const float control = Production::ArmyControl();
+		// our side is held too, by the army, the commander and our armed buildings: the raids come there first (a
+		// spot at home counted in full while the enemy's 1387 strength faced our 24 - the lab built 14 constructors
+		// and army 0 at minute 4 against the winners' 656, Gasbag 2026-11-25)
+		const float homeControl = Production::ArmyControl(true);
 		for (int i = 0; i < ns2; ++i)
 			if (mso2[i] && !OwnSpot(msp2[i])) {
 				// weighted by the share we keep: how much sooner we reach the spot than they do
 				const float dUs = basePos.distance2D(msp2[i]), dThem = AiEnemyBasePos().distance2D(msp2[i]);
 				float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;
-				if (dThem < dUs) keep *= control;
+				keep *= (dThem < dUs) ? control : homeControl;
 				claimWork += keep * (dUs / conSpeed + conBuild);
 				claimYield += keep * msi2[i] * ext;
 			}
@@ -2128,13 +2132,14 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 }
 // our army's share of control: our strength (armed units and commander) against theirs, as seen (unseen: at least
 // ours), on the linear share below
-float ArmyControl()
+float ArmyControl(bool home = false)
 {
 	float S = 0.f, E = 0.f;
 	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
 	for (uint i = 0; i < mine.length(); ++i) {
 		const CCircuitDef@ d = mine[i].circuitDef;
-		if (!IsArmy(d) && mine[i] !is commander) continue;
+		const bool tower = home && !d.IsMobile() && d.GetSustainedDps() > 0.f;
+		if (!IsArmy(d) && mine[i] !is commander && !tower) continue;
 		S += sqrt(AiMax(0.f, d.GetSustainedDps()) * AiMax(1.f, d.health));
 	}
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
