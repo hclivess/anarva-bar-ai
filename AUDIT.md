@@ -1082,3 +1082,7 @@ The patch is mostly clean: ToFiringSpot ranks spots by trip length, GetRangeAt r
 | Total | 5 | 75 | 80 |
 
 (Mixed rows 5, 6, 12 are counted once under RANDOM. Of the RANDOM rows, the random part can be switched off from config today in 5, 6, 12, 23, 29, 31, 72 (and #9's thr_mod already is). The rest need C++.)
+
+## Closed: owner ruling, 2026-11-25
+
+"those hardcoded numbers have nothing to do with the ai decision making". The remaining digits stay: frame rate, pi/e/1/2 inside formulas, tier and flag identifiers, and numeric guards. They are facts or notation, not decisions (CLAUDE.md section 2). #71 and #42 are closed.
