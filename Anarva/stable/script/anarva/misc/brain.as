@@ -3352,7 +3352,12 @@ void Update()
 {
 	if (done || commander is null) return;  // from frame 0: the opening also decides the first building
 	CheckFailedSpot();
-	if (!ready) Init();
+	if (!ready) {
+		Init();
+		// tell a watching player which side is Anarva (owner, 2026-11-25: "i have no idea of who is who")
+		const AIFloat3 cp = commander.GetPos(ai.frame);
+		AiSay("Anarva here: team " + ai.teamId + ", commander " + commander.circuitDef.GetName() + " at (" + int(cp.x) + ", " + int(cp.z) + ")");
+	}
 	const float now = float(ai.frame) / SECOND;
 	// a lab of ours stands: the opening's decision is made, the builders' job valuation takes over
 	if (Intel::allFactories.length() > 0) {
@@ -3492,14 +3497,27 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 		mWorth = (needM > 0.f) ? 1.f / needM : 0.f;
 		eWorth = (needE > 0.f) ? 1.f / needE : 0.f;
 	}
-	float bestV = -1e30f;
+	// Production is the least of what metal and energy allow (owner). While the lab's draw isn't covered, our share of
+	// it is min(metal income / its metal draw, energy income / its energy draw); a producer is worth how much it raises
+	// that minimum per second of commander time - the resource that isn't the limit adds nothing until the other catches
+	// up. "The share of its own gap" picked a third extractor at 14 s with metal at 69% and energy at 43% of the lab's
+	// draw: no plant until 146 s, the lab at 136 s, energy stalled (owner's game, BarR 1.1, 2026-11-25: "stalling metal
+	// extractors on energy - bad!"; winners: solar 24 s, wind 29 s, lab 64 s).
+	const bool leontief = (drawM > 0.f) && (drawE > 0.f) && (needM > 0.f || needE > 0.f);
+	const float rM = (drawM > 0.f) ? s0.mInc / drawM : 1.f, rE = (drawE > 0.f) ? s0.eInc / drawE : 1.f;
+	float bestV = -1e30f, bestTie = -1e30f;
 	for (uint a = 0; a < opts.length(); ++a) {
 		if (opts[a].kind == 2) continue;
 		const float time = s0.pos.distance2D(opts[a].pos) / AiMax(1.f, speed) + opts[a].def.buildTime / AiMax(1.f, bp);
-		const float v = (opts[a].yieldM * mWorth + opts[a].yieldE * eWorth) / AiMax(1e-3f, time);
-		if (v > bestV) { bestV = v; best = int(a); }
+		const float tie = (opts[a].yieldM * mWorth + opts[a].yieldE * eWorth) / AiMax(1e-3f, time);
+		float v = tie;
+		if (leontief) {
+			const float gain = AiMin(AiMin(1.f, rM + opts[a].yieldM / drawM), AiMin(1.f, rE + opts[a].yieldE / drawE)) - AiMin(AiMin(1.f, rM), AiMin(1.f, rE));
+			v = gain / AiMax(1e-3f, time);
+		}
+		if (v > bestV || (v == bestV && tie > bestTie)) { bestV = v; bestTie = tie; best = int(a); }
 	}
-	if (best >= 0) why += "best producer per second of commander time: " + opts[best].def.GetName() + " " + F2(bestV) + " metal-eq/s per s";
+	if (best >= 0) why += "best producer per second of commander time: " + opts[best].def.GetName() + " " + F2(bestV) + (leontief ? (" (lab share: metal " + F2(rM) + ", energy " + F2(rE) + ")") : " metal-eq/s per s");
 	return bestV;
 }
 
