@@ -46,6 +46,27 @@ choice, and the value it compared. Usually it is a frozen rule, a missing option
 Build the reason into the AI as a value computed from the live game (CLAUDE.md §2: no constants, no tables).
 Log every decision with its alternatives, so the next game shows what it weighed.
 
+### How to trace (confirmed by the owner, 2026-11-25: "good vector, good working procedures")
+
+1. **Start at the earliest gap.** Take the first minute where check_game puts us outside the winners' spread
+   (often energy and extractors at minutes 3 and 4), not the biggest gap later.
+2. **Read the decision lines with their inputs:**
+   - `[ANV-PICK]` gives each job's value, the metal and energy prices (pM/pE) and the bank.
+   - `[ANV-JOBS]`, `[ANV-PROD]` and `[ANV-CHECK]` give jobs per type, production picks and stalls.
+   - Ask whether the chosen job is what a player would pick here, and which input made it win.
+3. **If the logs don't explain it, add a diagnostic log where it fails, then run one short game.** Example: `[ANV-MEXIDLE]` logs
+   distance, velocity and spot offset at each idle. It showed builders "failing" while walking at full speed.
+4. **Read the inherited code that actually decides.** Hidden rules found this way:
+   - Idles on the way counted as build failures, and spots were then marked blocked.
+   - Re-assigning the same job restarted the walk.
+   - Towers were re-ordered on every update.
+5. **Fix the cause as a player reasons it, from unit facts and live measurements.** Examples:
+   - Production is the least of build power, metal and energy. A full bank means that resource doesn't bind.
+   - Price a job's own energy draw.
+   - Value wind as it blows, including lulls.
+6. **Test one short game on the map that showed the failure, then read the logs again.** Repeat until the mechanism is right, then go to step 6
+   with the batch.
+
 ## 6. Verify: one round, then back to 3
 
 Run one round under step 2's conditions and read the ranked gaps. Did the gap close, and did nothing else open?
