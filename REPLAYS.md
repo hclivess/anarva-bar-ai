@@ -61,3 +61,22 @@ are allowed to show, the same mistake as a fixed threshold. Categories come out 
 | 1v1 losers trail the winners on extractors from minute 4 (6.5 vs 8.0 at 4; 11.8 vs 22.2 at 8) | first 11 1v1 games in the DB | issue #82 |
 | Commanders leave the start at ~3 min; in 1v1, median 300–1160 out over minutes 3–11; in team games 1400–2900 out | 60 replays: 24 duels, 9 team, 27 vs bots (runs/comm_study, 2026-11-24) | STRATEGY.md §30 |
 | BARb's commander stays 350–450 from start all game and dies there (76 of 168) | the same 27 vs-bots replays | STRATEGY.md §30 |
+
+## Milestones of the 1v1 winners (replays.db, 107 winning players, 2026-11-26)
+
+When each milestone first appears (minutes), and in how many of the 107 games it appears at all:
+
+| Milestone | Games | Median | 25%-75% |
+|---|---|---|---|
+| First lab or plant | 103 | 1.1 | 0.9-1.2 |
+| First construction turret | 102 | 4.7 | 3.7-5.7 |
+| First T2 factory | 41 | 12.7 | 9.7-16.0 |
+| First T2 extractor | 34 | 14.9 | 11.1-17.2 |
+| First fusion | 24 | 16.6 | 13.2-20.7 |
+| First advanced fusion | 9 | 18.2 | 17.4-18.8 |
+| First T3 gantry | 12 | 26.3 | 24.3-30.8 |
+| Juggernaut / Behemoth / Titan | 1 each | 41 / 46 / 33 | - |
+
+Most 1v1 games are decided at T1 (only 41 of 107 winners build a T2 factory): expansion, the first construction
+turret by ~5 minutes and the T1 army decide them. Query: first `built` frame per (replay, team) for the unit names
+of each milestone, 1v1 winners only.
