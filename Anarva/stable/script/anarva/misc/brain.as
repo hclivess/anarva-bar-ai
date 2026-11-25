@@ -1739,8 +1739,29 @@ bool TerrainFortify()
 	const AIFloat3 high(m.hx[myStart], 0.f, m.hz[myStart]);
 	const AIFloat3 choke(m.cx[myStart], 0.f, m.cz[myStart]);
 	if (!TurretSurvives(tur, high)) { forts -= n; return true; }
-	for (int k = 0; k < n; ++k)
-		aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, high, tur.GetRadius() * 2.f * float(k), true, OrderLife(tur, high)));  // side by side, a turret width apart
+	// A choke tower holds the choke only if its fire reaches across the whole mouth: else raiders walk past along the
+	// edges (owner, 2026-11-25, watching: "chokepoint tower placement - but can be avoided, doesnt reach to corners").
+	// Reach from the high ground to the far edge = its distance to the choke centre + half the measured choke width.
+	const float reachNeeded = high.distance2D(choke) + 0.5f * AiMax(0.f, m.choke);
+	if (reachNeeded > tur.GetMaxRange()) {
+		forts -= n;
+		AiLog("[ANV] Terrain: no choke tower - " + tur.GetName() + " reaches " + int(tur.GetMaxRange()) + ", the choke's far edge is " + int(reachNeeded) + " away");
+		return true;
+	}
+	// worth what a raid through the choke would take behind it (our producers, as raid towers value them), competing
+	// with every other job - not urgent (as NOW it skipped the comparison and came before extractors)
+	float behind = 0.f;
+	{
+		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+		CCircuitDef@ con = EcoPos::CheapestConstructor();
+		for (uint i = 0; i < mine.length(); ++i)
+			if (Economist::IsProducer(mine[i].circuitDef)) behind += MexPorc::RaidLoss(mine[i], con);
+	}
+	for (int k = 0; k < n; ++k) {
+		IUnitTask@ t = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NORMAL, tur, high, tur.GetRadius() * 2.f * float(k), true, OrderLife(tur, high)));  // side by side, a turret width apart
+		IBuilderTask@ bt = cast<IBuilderTask>(t);
+		if (bt !is null) bt.value = behind;
+	}
 	if (wallDef !is null && wallDef.IsAvailable(ai.frame) && forts % 2 == 1) {
 		AIFloat3 dir = choke - AIFloat3(m.sx[myStart], 0.f, m.sz[myStart]);
 		const float len = AiMax(1.f, dir.Length2D());
