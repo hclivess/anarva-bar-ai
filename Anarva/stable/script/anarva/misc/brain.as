@@ -2030,7 +2030,9 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				+ stakeSurf * (WinShare(sSurf + us, eSurf) - WinShare(sSurf, eSurf));
 			vFight *= AiMax(0.f, 1.f - dist / AiMax(1.f, d.speed) / H);
 		}
-		vScout = Scout::NextValue(d);
+		// information is worth what we can do with it: the share of a fight our forces could contest (a warning saves
+		// nothing when the army can't answer - 29 Fleas and 3 fighters at our 25 strength against 3789, round 20)
+		vScout = Scout::NextValue(d) * WinShare(sSurf + sAir, eSurf + eAir);
 		const float v = AiMax(vFight, AiMax(vBuild, vScout));
 		const float ratio = v / AiMax(1.f, Economist::CostNow(d));  // energy at its price now (binding or not)
 		why += " " + d.GetName() + "=" + F2(ratio);
@@ -3712,6 +3714,34 @@ void Update()
 				const CCircuitDef@ sd = all[k].circuitDef;
 				if (sd.IsMobile() || sd.threat <= 0.f || sd.surfThrDmg <= 0.f) continue;
 				if (all[k].GetPos(ai.frame).distance2D(cp[best]) <= sd.GetMaxRange()) S += sd.threat;
+			}
+			// A threat at home that the free units can't beat: recall units from raid ops (raid spots, the least valuable
+			// first) until it can be won, if it is worth more than those raids (players pull raiders back when the base
+			// is hit: on Feast of Hades our Grunts raided far spots one by one while Gators killed our extractors and
+			// Command skipped them, strength 1.1 vs 4.3, round 20).
+			if (S <= need && cid[best] >= 0 && Assess::OnOurSide(cp[best])) {
+				array<int> raidOps;
+				for (uint o = 0; o < ops.length(); ++o) if (ops[o].enemyId < 0) raidOps.insertLast(int(o));
+				// least valuable first
+				for (uint a2 = 0; a2 < raidOps.length(); ++a2)
+					for (uint b2 = a2 + 1; b2 < raidOps.length(); ++b2)
+						if (ops[raidOps[b2]].value < ops[raidOps[a2]].value) { const int tmp = raidOps[a2]; raidOps[a2] = raidOps[b2]; raidOps[b2] = tmp; }
+				float S2 = S, given = 0.f;
+				array<int> take;
+				for (uint q = 0; q < raidOps.length() && S2 <= need; ++q) {
+					for (uint k = 0; k < ops[raidOps[q]].units.length(); ++k) S2 += ops[raidOps[q]].units[k].circuitDef.threat;
+					given += ops[raidOps[q]].value;
+					take.insertLast(raidOps[q]);
+				}
+				if (S2 > need && cv[best] > given) {
+					take.sortDesc();  // remove from the highest index down (earlier removals shift the later ones)
+					for (int q = 0; q < int(take.length()); ++q) {
+						for (uint k = 0; k < ops[take[q]].units.length(); ++k) { pick.insertLast(ops[take[q]].units[k]); metal += ops[take[q]].units[k].circuitDef.costM; }
+						ops.removeAt(take[q]);
+					}
+					S = S2;
+					AiLog("[ANV-CMD] recall " + take.length() + " raid ops to defend (" + int(cp[best].x) + "," + int(cp[best].z) + "): strength " + F1(S) + " > " + F1(need));
+				}
 			}
 			if (S <= need) {  // what is free can't win it
 				if (cid[best] >= 0) AiLog("[ANV-CMD] skip enemy " + cid[best] + " at (" + int(cp[best].x) + "," + int(cp[best].z) + ") value " + int(cv[best])
