@@ -399,25 +399,29 @@ void Update()
 	// unclaimed spots within the planning horizon needs  sum over them of (walk from base + build) / H  constructors.
 	// Neither unlimited (1e9: the lab made only constructors, army 344 vs 1560 at minute 7, Throne) nor income-bound
 	// (build power x income: the commander alone covered it, 2 constructors and 5 extractors in 10 minutes, Avalanche).
-	float claimWork = 0.f;  // constructor-seconds
+	// One more constructor is worth the yield it saves by claiming the free spots sooner. With N constructors the
+	// remaining claim work takes work/N seconds, each spot waits half of that on average and yields nothing meanwhile,
+	// so the (N+1)th saves  yield x work/2 x (1/N - 1/(N+1)). Build one while that beats its cost (and while we are not
+	// weaker than the known enemy army). "Enough to claim within the horizon" asked for 1-2 constructors early (the
+	// horizon is long while we own the commander's 2700 metal) while the winners run 7 by minute 4.
+	float claimWork = 0.f, claimYield = 0.f;  // constructor-seconds; metal/s the free spots would yield us
 	CCircuitDef@ conDef = CheapestConstructor();
 	if (conDef !is null && Economist::mexT1 !is null && HasBase()) {
 		const float conSpeed = AiMax(1.f, conDef.speed);
 		const float conBuild = Economist::mexT1.buildTime / AiMax(1.f, conDef.buildSpeed);
+		const float ext = Facts::ExtractsMetal(Economist::mexT1.GetName());
 		for (int i = 0; i < ns2; ++i)
 			if (mso2[i] && !OwnSpot(msp2[i])) {
 				// weighted by the share we keep: how much sooner we reach the spot than they do
 				const float dUs = basePos.distance2D(msp2[i]), dThem = aiEnemyMgr.GetEnemyPos().distance2D(msp2[i]);
 				const float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;
 				claimWork += keep * (dUs / conSpeed + conBuild);
+				claimYield += keep * msi2[i] * ext;
 			}
 	}
-	const float H = AiMax(1.f, Economist::Horizon());
-	const int consNeeded = int(claimWork / H) + ((claimWork > 0.f) ? 1 : 0);
-	// Protect what we own before expanding it: while we are weaker than the army we know of (Director ratio < 1),
-	// constructors only feed raids and the factory makes army (Avalanche 2026-11-25: 'constructors first' held the
-	// lab on constructors for 10 minutes, army never above 86 metal, 2500 metal banked).
-	const bool work = unclaimed > 0 && int(aiBuilderMgr.GetWorkerCount()) < consNeeded && Director::ratio >= 1.f;
+	const float N = float(AiMax(1, int(aiBuilderMgr.GetWorkerCount())));
+	const float saved = claimYield * claimWork / 2.f * (1.f / N - 1.f / (N + 1.f));
+	const bool work = unclaimed > 0 && conDef !is null && saved > Economist::MetalValue(conDef) && Director::ratio >= 1.f;
 	wantConstructor = work;
 	aiFactoryMgr.buildpowerRatio = work ? 1e9f
 		: aiBuilderMgr.GetBuildPower() / AiMax(1e-3f, aiEconomyMgr.metal.income);  // otherwise hold constructors where they are
@@ -1992,6 +1996,25 @@ void OnFinished(CCircuitUnit@ u) { if (InList(mexDefs, u.circuitDef)) mexes.inse
 void OnDestroyed(CCircuitUnit@ u) { RemoveUnit(mexes, u); }
 
 float MetalValue(const CCircuitDef@ d) { return d.costM + d.costE / energyPerMetal; }
+// what a building is worth to whoever owns it: its cost plus what it yields over the horizon (extraction at the map's
+// mean spot, metal make, energy make or negative upkeep at the converter rate) - one valuation for ours and theirs
+float AssetValue(const CCircuitDef@ d)
+{
+	if (d is null) return 0.f;
+	const string nm = d.GetName();
+	float spotM = 0.f;
+	{
+		array<AIFloat3> sp; array<float> si; array<bool> so;
+		const uint ns = AiGetMetalSpots(sp, si, so);
+		float sum = 0.f;
+		for (uint i = 0; i < ns; ++i) sum += si[i];
+		spotM = (ns > 0) ? sum / float(ns) : 0.f;
+	}
+	const float upkeep = Facts::EnergyUpkeep(nm);
+	const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
+	const float yield = Facts::ExtractsMetal(nm) * spotM + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, energyPerMetal);
+	return MetalValue(d) + ((yield > 0.f) ? yield * Horizon() : 0.f);
+}
 
 // Planning horizon (s): how long what we own keeps paying (see below).
 float Horizon()
@@ -2528,8 +2551,10 @@ float Value(const Sim@ s, float H)
 		const float theirLab = labDef.buildTime / AiMax(1.f, commander.circuitDef.buildSpeed);
 		raid = rate * AiMax(0.f, deadline - theirLab);
 	}
-	const float held = (raid > 0.f) ? AiMin(1.f, army / raid) : 1.f;
-	return income * held + army + s.M + s.E / epm;
+	// (No "income held only as far as the army matches the raid": a raid of one or two early raiders destroys a few
+	// buildings, not all income, and answering raids is Command's job; scored that way the plan rushed energy and the
+	// lab and built its first extractor at 159 s, 2026-11-25.)
+	return income + army + s.M + s.E / epm;
 }
 
 // time to do o from state s (walk + build at bp, waiting for missing resources), applied to s
@@ -2555,9 +2580,12 @@ array<Opt@> Options(const Sim@ s, const array<AIFloat3>@ sp, const array<float>@
 	if (Economist::mexT1 !is null) {
 		// the nearest free spots (each spot is its own option)
 		for (uint i = 0; i < sp.length(); ++i) {
-			if (!so[i] || s.usedSpot[i] || EcoPos::OwnSpot(sp[i])) continue;
+			if (!so[i] || s.usedSpot[i] || EcoPos::OwnSpot(sp[i]) || failedSpots.find(int(i)) >= 0) continue;
 			Opt o; o.kind = 0; @o.def = Economist::mexT1; o.pos = sp[i]; o.spot = int(i);
-			o.yieldM = si[i] * Facts::ExtractsMetal(Economist::mexT1.GetName());
+			// the share we keep: how much sooner we reach the spot than they do (as the builders' ranking)
+			const float dUs = Home().distance2D(sp[i]), dThem = aiEnemyMgr.GetEnemyPos().distance2D(sp[i]);
+			const float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;
+			o.yieldM = si[i] * Facts::ExtractsMetal(Economist::mexT1.GetName()) * keep;
 			opts.insertLast(o);
 		}
 	}
@@ -2583,6 +2611,7 @@ Sim@ Copy(const Sim@ a)
 void Update()
 {
 	if (done || commander is null) return;  // from frame 0: the opening also decides the first building
+	CheckFailedSpot();
 	if (deadline < 0.f) { Init(); if (deadline < 0.f) { done = true; return; } }
 	const float now = float(ai.frame) / SECOND;
 	// an armed enemy seen closer moves the deadline: its distance over its speed
@@ -2644,6 +2673,7 @@ void Update()
 	if (best < 0) return;
 	const Opt@ o = first[best];
 	++plans;
+	plannedSpot = (o.kind == 0) ? o.spot : -1;
 	if (o.kind == 0)
 		@planned = aiBuilderMgr.Enqueue(TaskB::Spot(Task::BuildType::MEX, Task::Priority::NOW, o.def, o.pos, o.spot, true, OrderLife(o.def, o.pos)));
 	else if (o.kind == 1)
@@ -2654,7 +2684,29 @@ void Update()
 	AiLog("[ANV-OPEN] t=" + int(now) + "s commander -> " + o.def.GetName() + (o.kind == 0 ? (" at spot " + o.spot) : "")
 		+ " (best plan to the " + int(deadline) + " s deadline, value " + int(bestV) + ", " + first.length() + " options)");
 }
-void OnTaskRemoved(IUnitTask@ task) { if (task is planned) @planned = null; }
+// a planned extractor whose job ended without the extractor standing failed there (taken, blocked or unreachable):
+// the opening stops planning that spot
+array<int> failedSpots;
+int plannedSpot = -1;
+void OnTaskRemoved(IUnitTask@ task)
+{
+	if (task !is planned) return;
+	@planned = null;
+	checkSpot = plannedSpot;  // judged on the next update: a finished extractor registers after its job ends
+	plannedSpot = -1;
+}
+int checkSpot = -1;
+void CheckFailedSpot()
+{
+	if (checkSpot < 0) return;
+	array<AIFloat3> sp; array<float> si; array<bool> so;
+	AiGetMetalSpots(sp, si, so);
+	if (uint(checkSpot) < sp.length() && !EcoPos::OwnSpot(sp[checkSpot]) && failedSpots.find(checkSpot) < 0) {
+		failedSpots.insertLast(checkSpot);
+		AiLog("[ANV-OPEN] spot " + checkSpot + " failed (job ended, no extractor): dropped from the plan");
+	}
+	checkSpot = -1;
+}
 }  // namespace Opening
 
 /*
@@ -3417,7 +3469,9 @@ void BuilderSafeUpdate()
 		const float tHome = MoveTime(d, fac.GetPos(ai.frame).distance2D(c));
 		const float P = UnitPDeath(u, c, tHome);
 		IBuilderTask@ bt = cast<IBuilderTask>(u.task);
-		const float jobV = (bt !is null && bt.buildDef !is null) ? Brain::Economist::MetalValue(bt.buildDef) : 0.f;
+		// the job is worth what it yields over the horizon, like the builder's own future (cost alone made every
+		// builder run: 134 evacuations in 5 minutes on Avalanche, 1-2 extractors standing, 2026-11-25)
+		const float jobV = (bt !is null && bt.buildDef !is null) ? Brain::Economist::AssetValue(bt.buildDef) : 0.f;
 		const float own = Brain::Economist::MetalValue(d);
 		// the job is at risk too (owner: kept upgrading a mex with 4 pawns on it): if the structure dies before it is
 		// finished, the metal sunk into it is lost (bounded by its full value; progress isn't visible to the script)
