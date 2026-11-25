@@ -3330,9 +3330,14 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 	// energy's worth in metal: at the production ratio while it keeps the lab from running, else the converter rate
 	// each resource is worth as much as it closes the gap that keeps the lab from running: a unit of the short one
 	// closes 1/need of it (both short: each by its own gap); not short: energy at the converter rate, metal at 1
+	// each resource is worth the share of ITS gap it closes; once a gap is closed, more of that resource doesn't bring
+	// the lab closer (players switch to energy after the extractors: 3 extractors, solar 24 s, wind 29 s, lab 45 s;
+	// metal at worth 1 kept the commander on extractors until 56 s with energy short)
 	float eWorth = 1.f / epm, mWorth = 1.f;
-	if (needM > 0.f && needE > 0.f) { mWorth = 1.f / needM; eWorth = 1.f / needE; }
-	else if (needE > 0.f) { eWorth = AiMax(eWorth, drawM / AiMax(1e-3f, drawE)); }
+	if (needM > 0.f || needE > 0.f) {
+		mWorth = (needM > 0.f) ? 1.f / needM : 0.f;
+		eWorth = (needE > 0.f) ? 1.f / needE : 0.f;
+	}
 	float bestV = -1e30f;
 	for (uint a = 0; a < opts.length(); ++a) {
 		if (opts[a].kind == 2) continue;
@@ -4039,6 +4044,10 @@ float CommFog(const AIFloat3& in p, float tHome, float seenThreat, float seenSpe
 {
 	const float hidden = AiMax(0.f, Brain::Economist::EnemyThreat() - seenThreat);
 	if (hidden <= 0.f) return 0.f;
+	// a hidden army can only be where it could have walked since it could first be built: before the earliest enemy
+	// raid can arrive, there is nothing hidden near us (fog read danger 12.8 at minute 1 and pulled the commander off
+	// its jobs, Feast of Hades 2026-11-25)
+	if (float(ai.frame) / SECOND < Opening::raidArrive) return 0.f;
 	Director::MeasuredPower();
 	const float sp = seenN > 0 ? seenSpeed / float(seenN) : AiMax(1.f, Director::allSpeed);
 	const float dist = AiEnemyBasePos().distance2D(p);

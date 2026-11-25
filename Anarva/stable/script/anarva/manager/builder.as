@@ -8,6 +8,10 @@ CCircuitUnit@ energizer2 = null;
 
 IUnitTask@ AiMakeTask(CCircuitUnit@ unit)
 {
+	// the opener owns the commander until its lab stands: the core's own pick re-ordered it every few seconds and the
+	// commander crawled (100 elmos in 11 s at 37/s, Feast of Hades 2026-11-25)
+	if (unit is Brain::commander && !Brain::Opening::done && Brain::Opening::planned !is null)
+		return Brain::Opening::planned;
 	IUnitTask@ task = aiBuilderMgr.DefaultMakeTask(unit);
 	if (unit.circuitDef.IsRoleAny(Unit::Role::COMM.mask))
 		return Brain::CommanderTask(unit, task);
