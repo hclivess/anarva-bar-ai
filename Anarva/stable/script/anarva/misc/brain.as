@@ -3664,7 +3664,14 @@ float EnemyValue(uint i, float H)
 	const float upkeep = Facts::EnergyUpkeep(nm);
 	const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
 	const float yield = Economist::Extract(nm) * spotIncome + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
-	if (yield > 0.f) v += yield * H;
+	// they rebuild as we do: what a kill takes from them is its yield until it stands again (a constructor's walk from
+	// their base and its build), not its whole future - symmetric with what a raid takes from us (MexPorc::RaidLoss)
+	if (yield > 0.f) {
+		const CCircuitDef@ con = EcoPos::CheapestConstructor();
+		float rebuild = H;
+		if (con !is null) rebuild = AiMin(H, AiEnemyBasePos().distance2D(ePos[i]) / AiMax(1.f, con.speed) + d.buildTime / AiMax(1.f, con.buildSpeed));
+		v += yield * rebuild;
+	}
 	return v;
 }
 // armed enemies covering p: in their reach now, or able to get there within t seconds
@@ -3696,7 +3703,10 @@ float OursThreatened(uint i, const array<CCircuitUnit@>@ mine, float tAnswer)
 			const float upkeep = Facts::EnergyUpkeep(nm);
 			const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
 			const float yield = Economist::Extract(nm) * spotIncome + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
-			v += Economist::MetalValue(d) + ((yield > 0.f) ? yield * Economist::Horizon() : 0.f);
+			// what a raid takes: its cost and its yield until it stands again, as for raid towers (MexPorc::RaidLoss).
+			// With its whole future yield every defence looked worth any odds and the army threw itself away (army
+			// 54-354 at minute 8 in round 31 vs 1400-1900 at minute 12 in round 30).
+			if (yield >= 0.f) v += MexPorc::RaidLoss(mine[k], EcoPos::CheapestConstructor());
 		}
 	}
 	return v;
