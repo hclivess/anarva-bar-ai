@@ -3709,6 +3709,19 @@ void Order(CCircuitUnit@ u, const string& in key, int kind, const AIFloat3& in p
 
 	u.CmdMoveTo(p);  // plain moves only: units fire at what is in reach while moving and can dodge
 }
+// A fight is worth taking when what it keeps beats what it risks: p = our share at strength S x trade against defence
+// D (the win share production uses); winning keeps the value at a square-law share of our metal lost, losing costs it
+// all. A fixed "S x trade > D" gate skipped a Pawn raid at our base 7 times at 11.0 vs 11.4 while it killed 1880
+// metal of economy (Theta, round 30): an even fight for that much is taken by any player.
+float FightGain(float value, float S, float D, float metal)
+{
+	const float st = S * AiMax(1e-3f, Assess::trade);
+	if (D <= 0.f) return value;
+	const float p = Production::WinShare(st, D);
+	const float r = D / AiMax(1e-6f, st);
+	const float loss = p * metal * AiMin(1.f, r * r) + (1.f - p) * metal;
+	return value * p - loss;
+}
 float Strength(const array<CCircuitUnit@>@ us)
 {
 	float s = 0.f;
@@ -3754,7 +3767,9 @@ void Update()
 		}
 		const float S = Strength(op.units);
 		op.defence = Cover(op.pos, 0.f);
-		if (!alive || op.units.length() == 0 || S * trade <= op.defence) {
+		float opMetal = 0.f;
+		for (uint k = 0; k < op.units.length(); ++k) opMetal += op.units[k].circuitDef.costM;
+		if (!alive || op.units.length() == 0 || FightGain(op.value, S, op.defence, opMetal) <= 0.f) {
 			if (alive && op.units.length() > 0) {
 				++retreats;
 				AiLog("[ANV-CMD] pull back from (" + int(op.pos.x) + "," + int(op.pos.z) + "): strength " + F1(S) + " x trade "
@@ -3870,7 +3885,7 @@ void Update()
 					given += ops[raidOps[q]].value;
 					take.insertLast(raidOps[q]);
 				}
-				if (S2 > need && cv[best] > given) {
+				if (FightGain(cv[best], S2, dfc[best], metal) > FightGain(cv[best], S, dfc[best], metal) + given) {
 					take.sortDesc();  // remove from the highest index down (earlier removals shift the later ones)
 					for (int q = 0; q < int(take.length()); ++q) {
 						for (uint k = 0; k < ops[take[q]].units.length(); ++k) { pick.insertLast(ops[take[q]].units[k]); metal += ops[take[q]].units[k].circuitDef.costM; }
@@ -3880,15 +3895,11 @@ void Update()
 					AiLog("[ANV-CMD] recall " + take.length() + " raid ops to defend (" + int(cp[best].x) + "," + int(cp[best].z) + "): strength " + F1(S) + " > " + F1(need));
 				}
 			}
-			if (S <= need) {  // what is free can't win it
+			const float gain = FightGain(cv[best], S, dfc[best], metal);
+			const float loss = cv[best] - gain;  // for the log
+			if (gain <= 0.f) {  // what it keeps doesn't beat what it risks
 				if (cid[best] >= 0) AiLog("[ANV-CMD] skip enemy " + cid[best] + " at (" + int(cp[best].x) + "," + int(cp[best].z) + ") value " + int(cv[best])
-					+ ": strength " + F1(S) + " <= defence " + F1(dfc[best]) + " / trade " + F2(trade));
-				continue;
-			}
-			const float r = dfc[best] / AiMax(1e-6f, S);
-			const float loss = metal * r * r;  // square law
-			if (cv[best] <= loss) {  // it costs more than it is worth
-				if (cid[best] >= 0) AiLog("[ANV-CMD] skip enemy " + cid[best] + " value " + int(cv[best]) + " <= expected loss " + int(loss));
+					+ ": strength " + F1(S) + " vs defence " + F1(dfc[best]) + " (trade " + F2(trade) + ") gain " + int(gain));
 				continue;
 			}
 			Op op;
