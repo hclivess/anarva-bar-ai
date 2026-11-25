@@ -1820,7 +1820,7 @@ index 733f7a43..d0117186 100644
  	bool IsAllyOpenMexSpot(int spotId) const;
  	bool IsOpenMexSpot(int spotId) const;
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
-index 54fef916..e0495f1c 100644
+index 54fef916..780da7ec 100644
 --- a/src/circuit/module/FactoryManager.cpp
 +++ b/src/circuit/module/FactoryManager.cpp
 @@ -6,6 +6,8 @@
@@ -2034,21 +2034,25 @@ index 54fef916..e0495f1c 100644
  								circuit->GetSkirmishAIId() * WATCHDOG_COUNT + 11);
  	};
  
-@@ -1043,9 +931,11 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+@@ -1043,10 +931,13 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const float metalIncome = std::min(economyMgr->GetAvgMetalIncome(), economyMgr->GetAvgEnergyIncome());
 -	const int r = rand();
+-	if ((circuit->GetBuilderManager()->GetBuildPower() >= metalIncome * bpRatio)
+-		|| (isActive && (r >= RAND_MAX / 2)))
+-	{
 +	// Anarva (switch decide): no coin flip. An extra constructor only adds value while income goes unspent (metal pull
 +	// below income); once we spend everything we are metal-limited and the same metal is worth more as army.
 +	const bool unspent = economyMgr->GetMetalPull() < economyMgr->GetAvgMetalIncome();
- 	if ((circuit->GetBuilderManager()->GetBuildPower() >= metalIncome * bpRatio)
--		|| (isActive && (r >= RAND_MAX / 2)))
-+		|| (isActive && !unspent))
- 	{
++	// Anarva: the script decides (bpRatio from EcoPos: claim work over the horizon); "metal-limited -> army" refused
++	// constructors exactly when expansion pays most (Throne 2026-11-25: 1 constructor for 4 minutes, winners 7)
++	(void)unspent;
++	if (circuit->GetBuilderManager()->GetBuildPower() >= metalIncome * bpRatio) {
  		return nullptr;
  	}
-@@ -1063,10 +953,10 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+ 
+@@ -1063,10 +954,10 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  			return nullptr;
  		}
  #ifdef FACTORY_CHOICE
@@ -2062,7 +2066,7 @@ index 54fef916..e0495f1c 100644
  	}
  	return nullptr;
  }
-@@ -1116,11 +1006,9 @@ void CFactoryManager::DelFactory(const CCircuitDef* cdef)
+@@ -1116,11 +1007,9 @@ void CFactoryManager::DelFactory(const CCircuitDef* cdef)
  
  bool CFactoryManager::IsT1Factory(const CCircuitDef* cdef)
  {
@@ -2077,7 +2081,7 @@ index 54fef916..e0495f1c 100644
  }
  
  CCircuitDef* CFactoryManager::GetRoleDef(const CCircuitDef* facDef, CCircuitDef::RoleT role) const
-@@ -1151,7 +1039,7 @@ CCircuitDef* CFactoryManager::GetRepresenter(const CCircuitDef* facDef) const
+@@ -1151,7 +1040,7 @@ CCircuitDef* CFactoryManager::GetRepresenter(const CCircuitDef* facDef) const
  			CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  			SArea* area = terrainMgr->GetMobileTypeById(landDef->GetMobileId())->areaLargest;
  			// FIXME: area->percentOfMap < 40.0 doesn't seem right as water identifier
@@ -2086,7 +2090,7 @@ index 54fef916..e0495f1c 100644
  		}
  	} else {
  		return GetWaterDef(facDef);
-@@ -1229,7 +1117,7 @@ void CFactoryManager::EnableFactory(CCircuitUnit* unit)
+@@ -1229,7 +1118,7 @@ void CFactoryManager::EnableFactory(CCircuitUnit* unit)
  	std::map<CCircuitDef*, SAssistant> nanos;
  	const AIFloat3& pos = unit->GetPos(circuit->GetLastFrame());
  	COOAICallback* clb = circuit->GetCallback();
@@ -2095,7 +2099,7 @@ index 54fef916..e0495f1c 100644
  	int teamId = circuit->GetTeamId();
  	for (Unit* nano : units) {
  		int unitId = nano->GetUnitId();
-@@ -1359,7 +1247,7 @@ void CFactoryManager::DisableFactory(CCircuitUnit* unit)
+@@ -1359,7 +1248,7 @@ void CFactoryManager::DisableFactory(CCircuitUnit* unit)
  				// queue new factory with builder
  				CCircuitDef* facDef = GetFactoryToBuild(-RgtVector, true, true);
  				if (facDef != nullptr) {
@@ -2104,7 +2108,7 @@ index 54fef916..e0495f1c 100644
  				}
  			}
  		}
-@@ -1465,7 +1353,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1465,7 +1354,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  			if (validAir.find(unit) != validAir.end()) {
  				DisableFactory(unit);
  			}
@@ -2113,7 +2117,7 @@ index 54fef916..e0495f1c 100644
  		}
  	}
  
-@@ -1478,11 +1366,11 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1478,11 +1367,11 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const bool isStalling = economyMgr->IsMetalEmpty() &&
@@ -2127,7 +2131,7 @@ index 54fef916..e0495f1c 100644
  	}
  
  	task = UpdateFirePower(unit, isActive);
-@@ -1490,7 +1378,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1490,7 +1379,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  		return task;
  	}
  
@@ -2136,7 +2140,7 @@ index 54fef916..e0495f1c 100644
  }
  
  IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
-@@ -1508,7 +1396,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
+@@ -1508,7 +1397,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
  	float curCost = std::numeric_limits<float>::max();
  	circuit->UpdateFriendlyUnits();
  	// NOTE: OOAICallback::GetFriendlyUnitsIn depends on unit's radius
@@ -2145,7 +2149,7 @@ index 54fef916..e0495f1c 100644
  	for (Unit* u : units) {
  		auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
  		if ((cand == nullptr) || (cand == unit)
-@@ -1558,7 +1446,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
+@@ -1558,7 +1447,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
  		}
  	}
  
@@ -2154,7 +2158,7 @@ index 54fef916..e0495f1c 100644
  }
  
  void CFactoryManager::Watchdog()
-@@ -1625,7 +1513,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1625,7 +1514,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  
  	const int iS = terrainMgr->GetSectorIndex(pos);
  	auto isEnemyInArea = [&](CCircuitDef* bd) {
@@ -2163,7 +2167,7 @@ index 54fef916..e0495f1c 100644
  			return true;
  		}
  		SArea* area;
-@@ -1634,7 +1522,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1634,7 +1523,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  		return isValid && ((area == nullptr) || terrainMgr->IsEnemyInArea(area));
  	};
  	auto isAvailableDef = [&](CCircuitDef* bd) {
@@ -2172,7 +2176,7 @@ index 54fef916..e0495f1c 100644
  			&& bd->IsAvailable(frame)
  			&& (isActive || bd->IsAttrRare())
  			&& terrainMgr->CanBeBuiltAt(bd, pos, range)
-@@ -1651,13 +1539,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1651,13 +1540,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  #endif
  	CCircuitDef* buildDef = nullptr;
  	bool isResponse = false;
@@ -2187,7 +2191,7 @@ index 54fef916..e0495f1c 100644
  
  	struct SCandidate {
  		CCircuitDef* cdef;
-@@ -1667,9 +1549,6 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1667,9 +1550,6 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  	std::vector<SCandidate> candidates;
  	candidates.reserve(facDef.buildDefs.size());
  
@@ -2197,7 +2201,7 @@ index 54fef916..e0495f1c 100644
  	for (unsigned i = 0; i < facDef.buildDefs.size(); ++i) {
  		CCircuitDef* bd = facDef.buildDefs[i];
  		if (!isAvailableDef(bd)) {
-@@ -1691,42 +1570,23 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1691,42 +1571,23 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  			continue;
  		}
  
@@ -2250,7 +2254,7 @@ index 54fef916..e0495f1c 100644
  			}
  		}
  	}
-@@ -1799,19 +1659,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
+@@ -1799,19 +1660,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
  	}
  
  	CCircuitDef* buildDef = nullptr;

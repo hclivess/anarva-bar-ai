@@ -294,6 +294,7 @@ void Update()
 }  // namespace RezLab
 
 namespace EcoPos {
+bool wantConstructor = false;  // Production asks the core for a constructor while true
 array<AIFloat3> raidPos; array<float> raidVal;  // expected enemy economy (Command objectives)
 // the cheapest mobile constructor any factory we own can build (unit facts via Facts::BuildOptions)
 CCircuitDef@ CheapestConstructor()
@@ -412,6 +413,7 @@ void Update()
 	// constructors only feed raids and the factory makes army (Avalanche 2026-11-25: 'constructors first' held the
 	// lab on constructors for 10 minutes, army never above 86 metal, 2500 metal banked).
 	const bool work = unclaimed > 0 && int(aiBuilderMgr.GetWorkerCount()) < consNeeded && Director::ratio >= 1.f;
+	wantConstructor = work;
 	aiFactoryMgr.buildpowerRatio = work ? 1e9f
 		: aiBuilderMgr.GetBuildPower() / AiMax(1e-3f, aiEconomyMgr.metal.income);  // otherwise hold constructors where they are
 }
@@ -1857,9 +1859,12 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// constructor: income it adds now vs its cost and the horizon.)
 	// constructor share as a quota, not a dice roll: a constructor whenever builders so far are below their share
 	// A constructor while income goes unspent (we can't spend what we earn); otherwise the metal is worth more as army.
-	if (aiEconomyMgr.metal.pull < aiEconomyMgr.metal.income && EcoPos::behind) {
+	// A constructor while claiming the free spots within the horizon needs more constructors than we have (EcoPos:
+	// walk + build per spot over the horizon), unless we are weaker than the enemy army we know of. Not "only while
+	// income goes unspent and we are behind": that held Throne at 1 constructor for 4 minutes (winners: 7).
+	if (EcoPos::wantConstructor) {
 		++builders;
-		return null;
+		return null;  // the core's constructor rule takes it (buildpowerRatio set by EcoPos)
 	}
 	CCircuitDef@ rez = RezToBuild(fdef);
 	if (rez !is null) {
@@ -2775,6 +2780,15 @@ void Update()
 		if (freeUnits[i].GetPos(ai.frame).distance2D(basePos) > freeUnits[i].circuitDef.GetMaxRange()) Order(freeUnits[i], "home", 0, basePos, -1);
 }
 string Status() { return "ops=" + ops.length() + " created=" + created + " pulledBack=" + retreats; }
+// a dead unit leaves its squad at once (a handle kept until the next update crashed the game when read: GetPos)
+void OnDestroyed(CCircuitUnit@ unit)
+{
+	for (uint o = 0; o < ops.length(); ++o) {
+		const int k = ops[o].units.findByRef(unit);
+		if (k >= 0) ops[o].units.removeAt(k);
+	}
+	lastOrder.delete("" + unit.id);
+}
 }  // namespace Command
 
 /*
@@ -2911,7 +2925,7 @@ void Micro()
 	string spread = "";
 	for (uint q = 0; q < Command::ops.length(); ++q) {
 		const array<CCircuitUnit@>@ su = Command::ops[q].units;
-		if (su.length() < 2) continue;
+		if (su.length() < 2) continue;  // (dead units leave squads on death: Command::OnDestroyed)
 		AIFloat3 c(0.f, 0.f, 0.f); float minReach = 1e9f;
 		for (uint k = 0; k < su.length(); ++k) { c = c + su[k].GetPos(ai.frame); minReach = AiMin(minReach, su[k].circuitDef.GetMaxRange()); }
 		c = c / float(su.length());
@@ -3294,6 +3308,7 @@ void CommGuardUpdate()
 
 void OnUnitDestroyed(CCircuitUnit@ unit)
 {
+	Command::OnDestroyed(unit);
 	if (unit.circuitDef.IsRoleAny(Unit::Role::COMM.mask)) {
 		const AIFloat3 p = unit.GetPos(ai.frame);
 		AiLog("[ANV] COMMANDER LOST at (" + int(p.x) + "," + int(p.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(p) : -1.f)
