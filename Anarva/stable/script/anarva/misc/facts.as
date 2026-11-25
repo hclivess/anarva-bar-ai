@@ -3,62 +3,179 @@
 namespace Facts {
 
 array<string> empUnits = {"armcomlvl10", "armcomlvl3", "armcomlvl4", "armcomlvl5", "armcomlvl6", "armcomlvl7", "armcomlvl8", "armcomlvl9", "armdfly", "armemp", "armshockwave", "armspid", "armstil", "armthor", "armzapper", "corbw", "cormandot4", "legcomecon", "legcomoff", "legcomt2com", "legcomt2def", "legcomt2off", "raptor_air_bomber_emp_t2_v1", "raptor_air_gunship_emp_t2_v1", "raptor_allterrain_arty_emp_t2_v1", "raptor_allterrain_arty_emp_t4_v1", "raptor_allterrain_assault_emp_t2_v1", "raptor_allterrain_swarmer_emp_t2_v1", "raptor_land_assault_emp_t2_v1", "raptor_land_swarmer_emp_t2_v1", "raptor_matriarch_electric", "raptor_turret_emp_t2_v1", "raptor_turret_emp_t3_v1", "raptor_turret_emp_t4_v1", "raptor_turret_emp_t4_v2", "scavempspawner"};
-array<string> crawlUnits = {"armvader", "armvadert4", "corroach", "corsktl", "legsnapper", "raptor_queen_easy", "raptor_queen_epic", "raptor_queen_hard", "raptor_queen_normal", "raptor_queen_veryeasy", "raptor_queen_veryhard"};
+array<string> crawlUnits = {"armvader", "armvadert4", "corroach", "corsktl", "legsnapper"};
 array<string> rezUnits = {"armcomboss", "armfify", "armrecl", "armrectr", "corcomboss", "cornecro", "correcl", "legnavyrezsub", "legrezbot"};
 
 // factory -> what it can build
 dictionary buildOptions = {
 	{"armaap", array<string> = {"armaca", "armbrawl", "armpnix", "armlance", "armhawk", "armawac", "armdfly", "armblade", "armstil", "armliche"}},
+	{"armaca", array<string> = {"armfus", "armafus", "armckfus", "armageo", "armuwageo", "armgmm", "armmoho", "armmmkr", "armuwadves", "armuwadvms", "armarad", "armveil", "armfort", "armtarg", "armsd", "armgate", "armamb", "armpb", "armanni", "armflak", "armmercury", "armemp", "armamd", "armsilo", "armbrtha", "armvulc", "armdf", "armap", "armaap", "armplat", "armshltx"}},
+	{"armack", array<string> = {"armfus", "armafus", "armckfus", "armshltx", "armageo", "armgmm", "armmoho", "armmmkr", "armuwadves", "armuwadvms", "armarad", "armveil", "armfort", "armtarg", "armsd", "armgate", "armamb", "armpb", "armanni", "armflak", "armmercury", "armemp", "armamd", "armsilo", "armbrtha", "armvulc", "armdf", "armlab", "armalab"}},
+	{"armacsub", array<string> = {"armuwfus", "armuwmmm", "armuwmme", "armuwadves", "armuwadvms", "armshltxuw", "armasy", "armsy", "armason", "armfatf", "armatl", "armfflak", "armkraken", "armuwageo"}},
+	{"armacv", array<string> = {"armfus", "armckfus", "armafus", "armageo", "armgmm", "armmoho", "armmmkr", "armuwadves", "armuwadvms", "armarad", "armveil", "armfort", "armtarg", "armsd", "armgate", "armamb", "armpb", "armanni", "armflak", "armmercury", "armemp", "armamd", "armsilo", "armbrtha", "armvulc", "armdf", "armvp", "armavp", "armshltx"}},
 	{"armalab", array<string> = {"armack", "armfark", "armfast", "armamph", "armzeus", "armmav", "armsptk", "armfido", "armsnipe", "armfboy", "armspid", "armaak", "armvader", "armdecom", "armscab", "armaser", "armspy", "armmark"}},
 	{"armamsub", array<string> = {"armbeaver", "armpincer", "armcroc", "armjeth", "armaak", "armdecom"}},
 	{"armap", array<string> = {"armca", "armpeep", "armfig", "armthund", "armatlas", "armkam", "armhvytrans"}},
+	{"armapt3", array<string> = {"armaca", "armthundt4", "armfepocht4", "armlichet4"}},
 	{"armasy", array<string> = {"armacsub", "armmls", "armcrus", "armsubk", "armserp", "armaas", "armsjam", "armantiship", "armbats", "armmship", "armepoch", "armlship"}},
 	{"armavp", array<string> = {"armacv", "armconsul", "armcroc", "armlatnk", "armbull", "armgremlin", "armmart", "armmerl", "armmanni", "armyork", "armseer", "armjam"}},
+	{"armbeaver", array<string> = {"armsolar", "armadvsol", "armwin", "armgeo", "armmstor", "armestor", "armmex", "armamex", "armmakr", "armlab", "armvp", "armap", "armhp", "armavp", "armnanotc", "armnanotcplat", "armeyes", "armrad", "armdrag", "armclaw", "armllt", "armbeamer", "armhlt", "armguard", "armrl", "armferret", "armcir", "armjuno", "armdl", "armjamt", "armfhp", "armsy", "armtide", "armfmkr", "armuwms", "armuwes", "armamsub", "armplat", "armfdrag", "armfrad", "armfhlt", "armfrt", "armtl", "armuwgeo"}},
+	{"armca", array<string> = {"armsolar", "armadvsol", "armwin", "armgeo", "armmstor", "armestor", "armmex", "armamex", "armmakr", "armaap", "armlab", "armvp", "armap", "armhp", "armnanotc", "armeyes", "armrad", "armdrag", "armclaw", "armllt", "armbeamer", "armhlt", "armguard", "armrl", "armferret", "armcir", "armdl", "armjamt", "armjuno", "armsy", "armuwgeo"}},
+	{"armch", array<string> = {"armsolar", "armadvsol", "armwin", "armgeo", "armmstor", "armestor", "armmex", "armamex", "armmakr", "armlab", "armvp", "armap", "armhp", "armnanotc", "armnanotcplat", "armeyes", "armrad", "armdrag", "armclaw", "armllt", "armbeamer", "armhlt", "armguard", "armrl", "armferret", "armcir", "armdl", "armjamt", "armjuno", "armfhp", "armsy", "armamsub", "armplat", "armtide", "armfmkr", "armuwms", "armuwes", "armfdrag", "armfrad", "armfhlt", "armfrt", "armtl", "armavp", "armasy", "armuwgeo"}},
+	{"armck", array<string> = {"armsolar", "armadvsol", "armwin", "armgeo", "armmstor", "armestor", "armmex", "armamex", "armmakr", "armalab", "armlab", "armvp", "armap", "armhp", "armnanotc", "armeyes", "armrad", "armdrag", "armclaw", "armllt", "armbeamer", "armhlt", "armguard", "armrl", "armferret", "armcir", "armdl", "armjamt", "armjuno", "armsy"}},
+	{"armcom", array<string> = {"armsolar", "armwin", "armmstor", "armestor", "armmex", "armmakr", "armlab", "armvp", "armap", "armeyes", "armrad", "armdrag", "armllt", "armrl", "armdl", "armtide", "armuwms", "armuwes", "armfmkr", "armsy", "armfdrag", "armtl", "armfrt", "armfrad", "armhp", "armfhp"}},
+	{"armcomboss", array<string> = {"armbanth", "corkorg"}},
+	{"armcomcon", array<string> = {"armrectr", "armca", "armck", "armch", "armcsa", "armcs", "armcv"}},
+	{"armcomlvl10", array<string> = {"armmoho", "armadvsol", "armwin", "armfus", "armmmkr", "armageo", "armamex", "armtide", "armuwadves", "armuwadvms", "armuwmmm", "armlab", "armvp", "armap", "armeyes", "armarad", "armmine1", "armmine2", "armmine3", "armdrag", "armfort", "armjamt", "armclaw", "armbeamer", "armpb", "armanni", "armatl", "armflak", "armmercury", "armdl", "armamb", "armjuno", "armfflak", "armuwmme", "armuwageo", "armsy", "armnanotc", "armnanotcplat", "armfdrag", "armfrad", "armhp", "armfhp", "armdecom", "armshockwave", "armgate", "armlwall", "armannit3"}},
+	{"armcomlvl2", array<string> = {"armsolar", "armwin", "armmstor", "armestor", "armmex", "armmakr", "armlab", "armvp", "armap", "armeyes", "armrad", "armdrag", "armllt", "armrl", "armdl", "armtide", "armuwms", "armuwes", "armfmkr", "armsy", "armfdrag", "armtl", "armfrt", "armfrad", "armhp", "armfhp", "armmine1", "armmine2", "armmine3", "armbeamer", "armhlt", "armferret", "armfrock"}},
+	{"armcomlvl3", array<string> = {"armmex", "armsolar", "armwin", "armadvsol", "armmakr", "armgeo", "armamex", "armtide", "armestor", "armmstor", "armfmkr", "armlab", "armvp", "armap", "armeyes", "armrad", "armmine1", "armmine2", "armmine3", "armdrag", "armjamt", "armclaw", "armllt", "armbeamer", "armhlt", "armtl", "armguard", "armrl", "armferret", "armcir", "armfrock", "armjuno", "armuwgeo", "armuwms", "armuwes", "armdl", "armsy", "armnanotc", "armnanotcplat", "armfdrag", "armfrt", "armfrad", "armhp", "armfhp", "armdecom"}},
+	{"armcomlvl4", array<string> = {"armmex", "armsolar", "armwin", "armadvsol", "armmakr", "armgeo", "armamex", "armtide", "armestor", "armmstor", "armfmkr", "armlab", "armvp", "armap", "armeyes", "armrad", "armmine1", "armmine2", "armmine3", "armdrag", "armjamt", "armclaw", "armpb", "armbeamer", "armhlt", "armtl", "armamb", "armrl", "armferret", "armcir", "armfrock", "armjuno", "armuwgeo", "armuwms", "armuwes", "armdl", "armsy", "armnanotc", "armnanotcplat", "armfdrag", "armfrt", "armfrad", "armhp", "armfhp", "armdecom"}},
+	{"armcomlvl5", array<string> = {"armmoho", "armadvsol", "armwin", "armfus", "armmmkr", "armageo", "armamex", "armtide", "armuwadves", "armuwadvms", "armuwmmm", "armlab", "armvp", "armap", "armeyes", "armarad", "armmine1", "armmine2", "armmine3", "armdrag", "armfort", "armjamt", "armclaw", "armbeamer", "armpb", "armanni", "armatl", "armflak", "armmercury", "armdl", "armamb", "armjuno", "armfflak", "armuwmme", "armuwageo", "armsy", "armnanotc", "armnanotcplat", "armfdrag", "armfrad", "armhp", "armfhp", "armdecom", "armshockwave"}},
+	{"armcomlvl6", array<string> = {"armmoho", "armadvsol", "armwin", "armfus", "armmmkr", "armageo", "armamex", "armtide", "armuwadves", "armuwadvms", "armuwmmm", "armlab", "armvp", "armap", "armeyes", "armarad", "armmine1", "armmine2", "armmine3", "armdrag", "armfort", "armjamt", "armclaw", "armbeamer", "armpb", "armanni", "armatl", "armflak", "armmercury", "armdl", "armamb", "armjuno", "armfflak", "armuwmme", "armuwageo", "armsy", "armnanotc", "armnanotcplat", "armfdrag", "armfrad", "armhp", "armfhp", "armdecom", "armshockwave"}},
+	{"armcomlvl7", array<string> = {"armmoho", "armadvsol", "armwin", "armfus", "armmmkr", "armageo", "armamex", "armtide", "armuwadves", "armuwadvms", "armuwmmm", "armlab", "armvp", "armap", "armeyes", "armarad", "armmine1", "armmine2", "armmine3", "armdrag", "armfort", "armjamt", "armclaw", "armbeamer", "armpb", "armanni", "armatl", "armflak", "armmercury", "armdl", "armamb", "armjuno", "armfflak", "armuwmme", "armuwageo", "armsy", "armnanotc", "armnanotcplat", "armfdrag", "armfrad", "armhp", "armfhp", "armdecom", "armshockwave", "armlwall"}},
+	{"armcomlvl8", array<string> = {"armmoho", "armadvsol", "armwin", "armfus", "armmmkr", "armageo", "armamex", "armtide", "armuwadves", "armuwadvms", "armuwmmm", "armlab", "armvp", "armap", "armeyes", "armarad", "armmine1", "armmine2", "armmine3", "armdrag", "armfort", "armjamt", "armclaw", "armbeamer", "armpb", "armanni", "armatl", "armflak", "armmercury", "armdl", "armamb", "armjuno", "armfflak", "armuwmme", "armuwageo", "armsy", "armnanotc", "armnanotcplat", "armfdrag", "armfrad", "armhp", "armfhp", "armdecom", "armshockwave", "armgate", "armlwall", "armannit3"}},
+	{"armcomlvl9", array<string> = {"armmoho", "armadvsol", "armwin", "armfus", "armmmkr", "armageo", "armamex", "armtide", "armuwadves", "armuwadvms", "armuwmmm", "armlab", "armvp", "armap", "armeyes", "armarad", "armmine1", "armmine2", "armmine3", "armdrag", "armfort", "armjamt", "armclaw", "armbeamer", "armpb", "armanni", "armatl", "armflak", "armmercury", "armdl", "armamb", "armjuno", "armfflak", "armuwmme", "armuwageo", "armsy", "armnanotc", "armnanotcplat", "armfdrag", "armfrad", "armhp", "armfhp", "armdecom", "armshockwave", "armgate", "armlwall", "armannit3"}},
+	{"armcomnew", array<string> = {"armsolar", "armwin", "armmstor", "armestor", "armmex", "armmakr", "armlab", "armvp", "armap", "armeyes", "armrad", "armdrag", "armllt", "armrl", "armdl", "armtide", "armuwms", "armuwes", "armfmkr", "armsy", "armfdrag", "armtl", "armfrt", "armfrad", "armhp", "armfhp"}},
+	{"armconsul", array<string> = {"armsolar", "armmex", "armvp", "armnanotc", "armeyes", "armveil", "armfort", "armarad", "armmine2", "armdl", "armbeamer", "armamb", "armferret", "armflak", "armcv", "armpw", "armjeth", "armspid", "armfast", "armmav", "armcs", "armroy", "armamph"}},
+	{"armcs", array<string> = {"armmex", "armvp", "armap", "armlab", "armeyes", "armdl", "armdrag", "armclaw", "armguard", "armtide", "armgeo", "armuwgeo", "armfmkr", "armuwms", "armuwes", "armsy", "armasy", "armnanotcplat", "armfhp", "armamsub", "armplat", "armfrad", "armfdrag", "armtl", "armfrt", "armfhlt"}},
+	{"armcsa", array<string> = {"armsolar", "armadvsol", "armwin", "armgeo", "armmstor", "armestor", "armmex", "armamex", "armmakr", "armlab", "armvp", "armap", "armhp", "armnanotc", "armnanotcplat", "armeyes", "armrad", "armdrag", "armclaw", "armllt", "armbeamer", "armhlt", "armguard", "armrl", "armferret", "armcir", "armdl", "armjamt", "armjuno", "armfhp", "armsy", "armamsub", "armplat", "armaap", "armtide", "armfmkr", "armuwms", "armuwes", "armfdrag", "armfrad", "armfhlt", "armfrt", "armtl", "armuwgeo"}},
+	{"armcv", array<string> = {"armsolar", "armadvsol", "armwin", "armgeo", "armmstor", "armestor", "armmex", "armamex", "armmakr", "armavp", "armlab", "armvp", "armap", "armhp", "armnanotc", "armeyes", "armrad", "armdrag", "armclaw", "armllt", "armbeamer", "armhlt", "armguard", "armrl", "armferret", "armcir", "armdl", "armjamt", "armjuno", "armsy"}},
+	{"armdecom", array<string> = {"armmine1", "armmine2", "armmine3", "armsolar", "armwin", "armmstor", "armestor", "armmex", "armmakr", "armrad", "armllt", "armrl", "armtide", "armuwms", "armuwes", "armfmkr"}},
+	{"armfark", array<string> = {"armsolar", "armwin", "armmex", "armmakr", "armeyes", "armmark", "armaser"}},
 	{"armfhp", array<string> = {"armch", "armsh", "armanac", "armah", "armmh"}},
 	{"armhaap", array<string> = {"armhaca", "armhawk", "armpnix", "armlance", "armawac", "armdfly", "armliche", "armblade", "armbrawl", "armstil"}},
+	{"armhaapuw", array<string> = {"armaca", "armseap", "armsb", "armsfig", "armsehak", "armsaber", "armhvytrans"}},
+	{"armhaca", array<string> = {"armafus", "armfus", "armckfus", "armageo", "armgmm", "armmoho", "armmmkr", "armuwadves", "armuwadvms", "armfort", "armtarg", "armgate", "armamb", "armpb", "armanni", "armflak", "armmercury", "armemp", "armamd", "armsilo", "armbrtha", "armvulc", "armdf", "armbanth", "armaap", "armhaap", "armlab", "armvp", "armap", "armsy", "armsd", "armshltx"}},
+	{"armhack", array<string> = {"armafus", "armfus", "armckfus", "armageo", "armgmm", "armmoho", "armmmkr", "armuwadves", "armuwadvms", "armfort", "armtarg", "armgate", "armamb", "armpb", "armanni", "armflak", "armmercury", "armemp", "armamd", "armsilo", "armbrtha", "armvulc", "armdf", "armbanth", "armalab", "armhalab", "armlab", "armvp", "armap", "armsy", "armsd", "armshltx"}},
+	{"armhacs", array<string> = {"armuwfus", "armuwmmm", "armuwmme", "armuwadves", "armuwadvms", "armasy", "armhasy", "armfatf", "armatl", "armfflak", "armkraken", "armuwageo", "armbanth", "armafus", "armtide", "armanni", "armpb", "armmercury", "armfdrag", "armgate", "armsd", "armlab", "armvp", "armap", "armsy", "armbrtha", "armsilo", "armvulc", "armshltxuw"}},
+	{"armhacv", array<string> = {"armafus", "armfus", "armckfus", "armageo", "armgmm", "armmoho", "armmmkr", "armuwadves", "armuwadvms", "armfort", "armtarg", "armgate", "armamb", "armpb", "armanni", "armflak", "armmercury", "armemp", "armamd", "armsilo", "armbrtha", "armvulc", "armdf", "armbanth", "armavp", "armhavp", "armlab", "armvp", "armap", "armsy", "armsd", "armshltx"}},
 	{"armhalab", array<string> = {"armhack", "armsnipe", "armfboy", "armaser", "armdecom", "armscab", "armzeus", "armmar", "armspy", "armaak"}},
 	{"armhasy", array<string> = {"armhacs", "armserp", "armbats", "armepoch", "armantiship", "armlship", "armlun", "armaas", "armmship"}},
 	{"armhavp", array<string> = {"armhacv", "armbull", "armmerl", "armmanni", "armyork", "armjam", "armgremlin", "armlun", "armlatnk"}},
 	{"armhp", array<string> = {"armch", "armsh", "armanac", "armah", "armmh"}},
 	{"armlab", array<string> = {"armck", "armpw", "armrectr", "armrock", "armham", "armjeth", "armwar", "armflea"}},
+	{"armmls", array<string> = {"armtide", "armmex", "armfrad", "armarad", "armnanotcplat", "armsy", "armcs", "armtl", "armfhlt", "armfflak", "armpt", "armdecade", "armroy", "armamph", "armfmine3", "armamb", "armkraken", "armfdrag"}},
+	{"armmlv", array<string> = {"armmine1", "armmine2", "armmine3", "armdrag", "armeyes"}},
 	{"armplat", array<string> = {"armcsa", "armsaber", "armsb", "armseap", "armsfig", "armsehak"}},
 	{"armshltx", array<string> = {"armbanth", "armraz", "armmar", "armvang", "armlun", "armthor"}},
+	{"armshltxuw", array<string> = {"armbanth", "armmar", "armcroc", "armlun"}},
 	{"armsy", array<string> = {"armcs", "armrecl", "armdecade", "armpt", "armpship", "armroy", "armsub"}},
 	{"armvp", array<string> = {"armcv", "armbeaver", "armmlv", "armfav", "armflash", "armpincer", "armstump", "armart", "armjanus", "armsam"}},
 	{"coraap", array<string> = {"coraca", "corape", "corhurc", "cortitan", "corvamp", "corawac", "corseah", "corcrwh"}},
+	{"coraca", array<string> = {"corfus", "corafus", "corageo", "coruwageo", "corbhmth", "cormoho", "cormexp", "cormmkr", "coruwadves", "coruwadvms", "corarad", "corshroud", "corfort", "cortarg", "corsd", "corgate", "cortoast", "corvipe", "cordoom", "corflak", "corscreamer", "cortron", "corfmd", "corsilo", "corint", "corbuzz", "corap", "coraap", "corplat", "corgant"}},
+	{"corack", array<string> = {"corfus", "corafus", "corgant", "corageo", "corbhmth", "cormoho", "cormexp", "cormmkr", "coruwadves", "coruwadvms", "corarad", "corshroud", "corfort", "cortarg", "corsd", "corgate", "cortoast", "corvipe", "cordoom", "corflak", "corscreamer", "cortron", "corfmd", "corsilo", "corint", "corbuzz", "corlab", "coralab"}},
+	{"coracsub", array<string> = {"coruwfus", "coruwmmm", "coruwmme", "coruwadves", "coruwadvms", "corgantuw", "corasy", "corsy", "corason", "corfatf", "coratl", "corenaa", "corfdoom", "coruwageo"}},
+	{"coracv", array<string> = {"corfus", "corafus", "corageo", "corbhmth", "cormoho", "cormexp", "cormmkr", "coruwadves", "coruwadvms", "corarad", "corshroud", "corfort", "cortarg", "corsd", "corgate", "cortoast", "corvipe", "cordoom", "corflak", "corscreamer", "cortron", "corfmd", "corsilo", "corint", "corbuzz", "corvp", "coravp", "corgant"}},
 	{"coralab", array<string> = {"corack", "corfast", "corpyro", "coramph", "corcan", "corsumo", "cortermite", "cormort", "corhrk", "coraak", "corroach", "corsktl", "cordecom", "corvoyr", "corspy", "corspec", "cormando"}},
 	{"coramsub", array<string> = {"cormuskrat", "corgarp", "corsala", "corparrow", "corcrash", "coraak", "cordecom"}},
 	{"corap", array<string> = {"corca", "corfink", "corveng", "corshad", "corvalk", "corbw", "corhvytrans"}},
+	{"corapt3", array<string> = {"coraca", "corcrwt4", "corfblackhyt4", "cordronecarryair"}},
 	{"corasy", array<string> = {"coracsub", "cormls", "corcrus", "corshark", "corssub", "corarch", "corsjam", "corantiship", "corbats", "cormship", "corblackhy", "corfship"}},
 	{"coravp", array<string> = {"coracv", "corsala", "correap", "corparrow", "corgol", "corban", "cormart", "corvroc", "cortrem", "corsent", "cormabm", "coreter", "corvrad"}},
+	{"corca", array<string> = {"corsolar", "coradvsol", "corwin", "corgeo", "cormstor", "corestor", "cormex", "corexp", "cormakr", "coraap", "corlab", "corvp", "corap", "corhp", "cornanotc", "coreyes", "corrad", "cordrag", "cormaw", "corllt", "corhllt", "corhlt", "corpun", "corrl", "cormadsam", "corerad", "cordl", "corjamt", "corjuno", "corsy", "coruwgeo"}},
+	{"corch", array<string> = {"corsolar", "coradvsol", "corwin", "corgeo", "cormstor", "corestor", "cormex", "corexp", "cormakr", "corlab", "corvp", "corap", "corhp", "cornanotc", "cornanotcplat", "coreyes", "corrad", "cordrag", "cormaw", "corllt", "corhllt", "corhlt", "corpun", "corrl", "cormadsam", "corerad", "cordl", "corjamt", "corjuno", "corfhp", "corsy", "coramsub", "corplat", "cortide", "corfmkr", "coruwms", "coruwes", "corfdrag", "corfrad", "corfhlt", "corfrt", "cortl", "coravp", "corasy", "coruwgeo"}},
+	{"corck", array<string> = {"corsolar", "coradvsol", "corwin", "corgeo", "cormstor", "corestor", "cormex", "corexp", "cormakr", "coralab", "corlab", "corvp", "corap", "corhp", "cornanotc", "coreyes", "corrad", "cordrag", "cormaw", "corllt", "corhllt", "corhlt", "corpun", "corrl", "cormadsam", "corerad", "cordl", "corjamt", "corjuno", "corsy"}},
+	{"corcom", array<string> = {"corsolar", "corwin", "cormstor", "corestor", "cormex", "cormakr", "corlab", "corvp", "corap", "coreyes", "corrad", "cordrag", "corllt", "corrl", "cordl", "cortide", "coruwms", "coruwes", "corfmkr", "corsy", "corfdrag", "cortl", "corfrt", "corfrad", "corhp", "corfhp"}},
+	{"corcomboss", array<string> = {"armbanth", "corkorg"}},
+	{"corcomcon", array<string> = {"cornecro", "corca", "corck", "corch", "corcsa", "corcs", "corcv"}},
+	{"corcomlvl10", array<string> = {"cormoho", "coradvsol", "corwin", "corageo", "cormmkr", "coruwadves", "coruwadvms", "cortide", "cormexp", "coruwmmm", "coruwmme", "corarad", "coreyes", "cordrag", "corfort", "cormaw", "corhllt", "corvipe", "cordoom", "cortoast", "corflak", "corscreamer", "cordl", "corshroud", "corjuno", "corlab", "corvp", "corap", "coratl", "corenaa", "corfrad", "corfus", "corsy", "cornanotc", "corhp", "corfdrag", "cornanotcplat", "corfhp", "coruwageo", "corgate"}},
+	{"corcomlvl2", array<string> = {"corsolar", "corwin", "cormstor", "corestor", "cormex", "cormakr", "corlab", "corvp", "corap", "coreyes", "corrad", "cordrag", "corllt", "corrl", "cordl", "cortide", "coruwms", "coruwes", "corfmkr", "corsy", "corfdrag", "cortl", "corfrt", "corfrad", "corhp", "corfhp"}},
+	{"corcomlvl3", array<string> = {"cormex", "corsolar", "corwin", "coradvsol", "corgeo", "cormakr", "corestor", "coruwms", "cortide", "corexp", "cormstor", "coruwes", "corfmkr", "coreyes", "corrad", "cordrag", "cormaw", "corllt", "corhllt", "corhlt", "corpun", "corfrock", "cormadsam", "corerad", "cordl", "corjamt", "corjuno", "corlab", "corvp", "corap", "cortl", "corfrt", "corfrad", "corsy", "cornanotc", "corhp", "corfdrag", "cornanotcplat", "corfhp"}},
+	{"corcomlvl4", array<string> = {"cormex", "corsolar", "corwin", "coradvsol", "corgeo", "cormakr", "corestor", "coruwms", "cortide", "corexp", "cormstor", "coruwes", "corfmkr", "coreyes", "corrad", "cordrag", "cormaw", "corllt", "corhllt", "corhlt", "corpun", "corfrock", "cormadsam", "corerad", "cordl", "corjamt", "corjuno", "corlab", "corvp", "corap", "cortl", "corfrt", "corfrad", "corsy", "cornanotc", "corhp", "corfdrag", "cornanotcplat", "corfhp"}},
+	{"corcomlvl5", array<string> = {"cormoho", "coradvsol", "corwin", "corageo", "cormmkr", "coruwadves", "coruwadvms", "cortide", "cormexp", "coruwmmm", "coruwmme", "corarad", "coreyes", "cordrag", "corfort", "cormaw", "corhllt", "corvipe", "cordoom", "cortoast", "corflak", "corscreamer", "cordl", "corshroud", "corjuno", "corlab", "corvp", "corap", "coratl", "corenaa", "corfrad", "corfus", "corsy", "cornanotc", "corhp", "corfdrag", "cornanotcplat", "corfhp", "coruwageo"}},
+	{"corcomlvl6", array<string> = {"cormoho", "coradvsol", "corwin", "corageo", "cormmkr", "coruwadves", "coruwadvms", "cortide", "cormexp", "coruwmmm", "coruwmme", "corarad", "coreyes", "cordrag", "corfort", "cormaw", "corhllt", "corvipe", "cordoom", "cortoast", "corflak", "corscreamer", "cordl", "corshroud", "corjuno", "corlab", "corvp", "corap", "coratl", "corenaa", "corfrad", "corfus", "corsy", "cornanotc", "corhp", "corfdrag", "cornanotcplat", "corfhp", "coruwageo"}},
+	{"corcomlvl7", array<string> = {"cormoho", "coradvsol", "corwin", "corageo", "cormmkr", "coruwadves", "coruwadvms", "cortide", "cormexp", "coruwmmm", "coruwmme", "corarad", "coreyes", "cordrag", "corfort", "cormaw", "corhllt", "corvipe", "cordoom", "cortoast", "corflak", "corscreamer", "cordl", "corshroud", "corjuno", "corlab", "corvp", "corap", "coratl", "corenaa", "corfrad", "corfus", "corsy", "cornanotc", "corhp", "corfdrag", "cornanotcplat", "corfhp", "coruwageo"}},
+	{"corcomlvl8", array<string> = {"cormoho", "coradvsol", "corwin", "corageo", "cormmkr", "coruwadves", "coruwadvms", "cortide", "cormexp", "coruwmmm", "coruwmme", "corarad", "coreyes", "cordrag", "corfort", "cormaw", "corhllt", "corvipe", "cordoom", "cortoast", "corflak", "corscreamer", "cordl", "corshroud", "corjuno", "corlab", "corvp", "corap", "coratl", "corenaa", "corfrad", "corfus", "corsy", "cornanotc", "corhp", "corfdrag", "cornanotcplat", "corfhp", "coruwageo", "corgate"}},
+	{"corcomlvl9", array<string> = {"cormoho", "coradvsol", "corwin", "corageo", "cormmkr", "coruwadves", "coruwadvms", "cortide", "cormexp", "coruwmmm", "coruwmme", "corarad", "coreyes", "cordrag", "corfort", "cormaw", "corhllt", "corvipe", "cordoom", "cortoast", "corflak", "corscreamer", "cordl", "corshroud", "corjuno", "corlab", "corvp", "corap", "coratl", "corenaa", "corfrad", "corfus", "corsy", "cornanotc", "corhp", "corfdrag", "cornanotcplat", "corfhp", "coruwageo", "corgate"}},
+	{"corcs", array<string> = {"cormex", "corvp", "corap", "corlab", "coreyes", "cordl", "cordrag", "cormaw", "corpun", "cortide", "corgeo", "coruwgeo", "corfmkr", "coruwms", "coruwes", "corsy", "corasy", "cornanotcplat", "corfhp", "coramsub", "corplat", "corfrad", "corfdrag", "cortl", "corfrt", "corfhlt"}},
+	{"corcsa", array<string> = {"corsolar", "coradvsol", "corwin", "corgeo", "cormstor", "corestor", "cormex", "corexp", "cormakr", "corlab", "corvp", "corap", "corhp", "cornanotc", "cornanotcplat", "coreyes", "corrad", "cordrag", "cormaw", "corllt", "corhllt", "corhlt", "corpun", "corrl", "cormadsam", "corerad", "cordl", "corjamt", "corjuno", "corfhp", "corsy", "coramsub", "corplat", "coraap", "cortide", "corfmkr", "coruwms", "coruwes", "corfdrag", "corfrad", "corfhlt", "corfrt", "cortl", "coruwgeo"}},
+	{"corcv", array<string> = {"corsolar", "coradvsol", "corwin", "corgeo", "cormstor", "corestor", "cormex", "corexp", "cormakr", "coravp", "corlab", "corvp", "corap", "corhp", "cornanotc", "coreyes", "corrad", "cordrag", "cormaw", "corllt", "corhllt", "corhlt", "corpun", "corrl", "cormadsam", "corerad", "cordl", "corjamt", "corjuno", "corsy"}},
+	{"cordecom", array<string> = {"cormine1", "cormine2", "cormine3", "corsolar", "corwin", "cormstor", "corestor", "cormex", "cormakr", "corrad", "corllt", "corrl", "cortide", "coruwms", "coruwes", "corfmkr"}},
+	{"corfast", array<string> = {"corsolar", "cormex", "corlab", "cornanotc", "coreyes", "corshroud", "corfort", "corarad", "cormine2", "cordl", "corhllt", "cortoast", "cormadsam", "corflak", "corck", "corak", "corcrash", "cormando", "corpyro", "coramph", "corcs", "corroy", "cortermite"}},
 	{"corfhp", array<string> = {"corch", "corsh", "corsnap", "corah", "cormh", "corhal"}},
+	{"corforge", array<string> = {"corsolar", "corwin", "cormex", "cormakr", "coreyes", "corvoyr", "corspec"}},
 	{"corgant", array<string> = {"corkorg", "corkarg", "corjugg", "corshiva", "corcat", "corsok", "cordemon"}},
 	{"corgantuw", array<string> = {"corkorg", "corshiva", "corsala", "corparrow", "corsok"}},
 	{"corhaap", array<string> = {"corhaca", "corape", "corhurc", "cortitan", "corvamp", "corseah", "corawac", "corcrwh"}},
+	{"corhaapuw", array<string> = {"coraca", "corhunt", "corcut", "corsb", "corseap", "corsfig", "corhvytrans"}},
+	{"corhaca", array<string> = {"corafus", "corfus", "corageo", "corbhmth", "cormoho", "cormexp", "cormmkr", "coruwadves", "coruwadvms", "corfort", "cortarg", "corgate", "cortoast", "corvipe", "cordoom", "corflak", "corscreamer", "cortron", "corfmd", "corsilo", "corint", "corbuzz", "coraap", "corhaap", "corjugg", "corkorg", "corlab", "corsy", "corvp", "corap", "corgant", "corsd"}},
+	{"corhack", array<string> = {"corafus", "corfus", "corageo", "corbhmth", "cormoho", "cormexp", "cormmkr", "coruwadves", "coruwadvms", "corfort", "cortarg", "corgate", "cortoast", "corvipe", "cordoom", "corflak", "corscreamer", "cortron", "corfmd", "corsilo", "corint", "corbuzz", "coralab", "corhalab", "corjugg", "corkorg", "corsy", "corap", "corvp", "corlab", "corgant", "corsd"}},
+	{"corhacs", array<string> = {"coruwfus", "coruwmmm", "coruwmme", "coruwadves", "coruwadvms", "corhasy", "corasy", "corfatf", "coratl", "corenaa", "corfdoom", "coruwageo", "corjugg", "corkorg", "corafus", "cortide", "corscreamer", "corvipe", "corfdrag", "corgate", "corsd", "corlab", "corap", "corvp", "corsy", "corint", "corsilo", "corbuzz", "corgantuw"}},
+	{"corhacv", array<string> = {"corafus", "corfus", "corageo", "corbhmth", "cormoho", "cormexp", "cormmkr", "coruwadves", "coruwadvms", "corfort", "cortarg", "corgate", "cortoast", "corvipe", "cordoom", "corflak", "corscreamer", "cortron", "corfmd", "corsilo", "corint", "corbuzz", "coravp", "corhavp", "corjugg", "corkorg", "corsd", "corlab", "corap", "corsy", "corvp", "corgant"}},
 	{"corhalab", array<string> = {"coraak", "corshiva", "corpyro", "corhack", "corsumo", "cordecom", "corsktl", "corspec"}},
 	{"corhasy", array<string> = {"corhacs", "corssub", "corbats", "corblackhy", "corarch", "corfship", "corsok", "corantiship", "cormship"}},
 	{"corhavp", array<string> = {"corhacv", "corgol", "corvroc", "cortrem", "corsent", "cormabm", "coreter", "corsok", "corparrow", "corsala"}},
 	{"corhp", array<string> = {"corch", "corsh", "corsnap", "corah", "cormh", "corhal"}},
 	{"corlab", array<string> = {"corck", "corak", "cornecro", "corstorm", "corthud", "corcrash"}},
+	{"cormando", array<string> = {"corvalk", "corfink", "cormine2", "cormaw", "cordrag", "coreyes", "corjamt"}},
+	{"cormandot4", array<string> = {"corape", "cormine3", "cormwall", "corfort", "cortron"}},
+	{"cormls", array<string> = {"cortide", "cormex", "corfrad", "corarad", "cornanotcplat", "corsy", "corcs", "cortl", "corfhlt", "corenaa", "corpt", "coresupp", "corroy", "corfmine3", "cortoast", "corfdoom", "corfdrag"}},
+	{"cormlv", array<string> = {"cormine1", "cormine2", "cormine3", "cordrag", "coreyes"}},
+	{"cormuskrat", array<string> = {"corsolar", "coradvsol", "corwin", "corgeo", "cormstor", "corestor", "cormex", "corexp", "cormakr", "corlab", "corvp", "corap", "corhp", "coravp", "cornanotc", "cornanotcplat", "coreyes", "corrad", "cordrag", "cormaw", "corllt", "corhllt", "corhlt", "corpun", "corrl", "cormadsam", "corerad", "corjuno", "cordl", "corjamt", "corfhp", "coramsub", "corplat", "corsy", "cortide", "corfmkr", "coruwms", "coruwes", "corfdrag", "corfrad", "corfhlt", "corfrt", "cortl", "coruwgeo"}},
 	{"corplat", array<string> = {"corcsa", "corcut", "corsb", "corseap", "corsfig", "corhunt"}},
+	{"corprinter", array<string> = {"cormex", "corsolar", "corrad", "corfort"}},
 	{"corsy", array<string> = {"corcs", "correcl", "coresupp", "corpt", "corpship", "corroy", "corsub"}},
+	{"corvac", array<string> = {"cormex", "corsolar", "corrad", "corfort"}},
+	{"corvacct", array<string> = {"cormex", "corsolar", "corrad", "corfort"}},
 	{"corvp", array<string> = {"corcv", "cormuskrat", "cormlv", "corfav", "corgator", "corgarp", "corraid", "corlevlr", "corwolv", "cormist"}},
 	{"legaap", array<string> = {"legaca", "legstronghold", "legmineb", "legatorpbomber", "legafigdef", "legwhisper", "legfort", "legphoenix", "legvenator"}},
+	{"legaca", array<string> = {"legfus", "legafus", "legageo", "leganavaladvgeo", "legrampart", "legmoho", "legmohocon", "legadveconv", "legadvestore", "legamstor", "legarad", "legajam", "legforti", "legtarg", "legsd", "legdeflector", "legacluster", "legapopupdef", "legbastion", "legflak", "leglraa", "legperdition", "legabm", "legsilo", "leglrpc", "legstarfall", "legap", "legaap", "legsplab", "leggant"}},
+	{"legaceb", array<string> = {"legsolar", "legmex", "leglab", "legnanotc", "legeyes", "legajam", "legforti", "legarad", "legctl", "legdtr", "legacluster", "legflak", "legck", "leggob", "legaabot", "legstr", "legnavyfrigate", "legnavyconship", "legamph"}},
+	{"legack", array<string> = {"legfus", "legafus", "leggant", "legageo", "legrampart", "legmoho", "legmohocon", "legadveconv", "legadvestore", "legamstor", "legarad", "legajam", "legforti", "legtarg", "legsd", "legdeflector", "legacluster", "legapopupdef", "legbastion", "legflak", "leglraa", "legperdition", "legabm", "legsilo", "leglrpc", "legstarfall", "leglab", "legalab"}},
+	{"legacv", array<string> = {"legfus", "legafus", "leggant", "legageo", "legrampart", "legmoho", "legmohocon", "legadveconv", "legadvestore", "legamstor", "legarad", "legajam", "legforti", "legtarg", "legsd", "legdeflector", "legacluster", "legapopupdef", "legbastion", "legflak", "leglraa", "legperdition", "legabm", "legsilo", "leglrpc", "legstarfall", "legvp", "legavp"}},
+	{"legadvshipyard", array<string> = {"leganavyconsub", "leganavyengineer", "leganavycruiser", "leganavyheavysub", "leganavybattlesub", "leganavyaaship", "leganavyradjamship", "leganavyantinukecarrier", "leganavybattleship", "leganavyartyship", "leganavymissileship", "leganavyflagship", "leganavyantiswarm"}},
+	{"legafcv", array<string> = {"legwin", "legsolar", "legdrag", "legrad", "legmex", "leglht"}},
 	{"legalab", array<string> = {"legack", "legaceb", "legstr", "legamph", "legshot", "leginc", "legsrail", "legbart", "leginfestor", "leghrk", "legadvaabot", "legsnapper", "legaradk", "legaspy", "legajamk", "legdecom"}},
 	{"legamphlab", array<string> = {"legotter", "legamphtank", "legfloat", "legamph", "legaabot", "legadvaabot", "legdecom"}},
+	{"leganavyconsub", array<string> = {"leganavalfusion", "leganavaleconv", "leganavalmex", "legadvestore", "legamstor", "leggantuw", "legadvshipyard", "legsy", "leganavalsonarstation", "leganavalpinpointer", "leganavaltorpturret", "leganavalaaturret", "leganavaldefturret", "leganavaladvgeo"}},
+	{"leganavyengineer", array<string> = {"legtide", "legmex", "legfrad", "legarad", "legnanotcplat", "legsy", "legnavyconship", "legtl", "legfmg", "leganavalaaturret", "legnavyaaship", "legnavyscout", "legnavydestro", "corfmine3", "legacluster", "leganavaldefturret", "legfdrag", "legfhive"}},
 	{"legap", array<string> = {"legca", "legfig", "legkam", "legcib", "legmos", "leglts", "legatrans"}},
+	{"legapt3", array<string> = {"legaca", "legmost3", "legfortt4"}},
 	{"legavp", array<string> = {"legacv", "legmrv", "legaskirmtank", "legfloat", "legaheattank", "legmed", "legamcluster", "legvcarry", "legavroc", "leginf", "legvflak", "legavantinuke", "legavjam", "legavrad", "legafcv"}},
+	{"legca", array<string> = {"legsolar", "legadvsol", "legwin", "leggeo", "leguwgeo", "legmstor", "legestor", "legmex", "legeconv", "legaap", "leglab", "legvp", "legap", "leghp", "legnanotc", "legeyes", "legrad", "legdrag", "legdtr", "leglht", "legmg", "legcluster", "legrl", "legrhapsis", "leglupara", "legctl", "legjam", "legjuno", "legsy", "leghive"}},
+	{"legch", array<string> = {"legsolar", "legadvsol", "legwin", "leggeo", "legmstor", "legestor", "legmex", "legeconv", "leglab", "legvp", "legap", "leghp", "legavp", "legnanotc", "legnanotcplat", "legeyes", "legrad", "legdrag", "legdtr", "leglht", "legmg", "legcluster", "legrl", "legrhapsis", "leglupara", "legjuno", "legctl", "legjam", "legfhp", "legamphlab", "legsplab", "legsy", "legtide", "legfeconv", "leguwmstore", "leguwestore", "legfdrag", "legfrad", "legfmg", "legfrl", "legtl", "leguwgeo", "legadvshipyard", "leghive", "legfhive"}},
+	{"legck", array<string> = {"legsolar", "legadvsol", "legwin", "leggeo", "legmstor", "legestor", "legmex", "legeconv", "legalab", "leglab", "legvp", "legap", "leghp", "legnanotc", "legeyes", "legrad", "legdrag", "legdtr", "leglht", "legmg", "legcluster", "legrl", "legrhapsis", "leglupara", "legctl", "legjam", "legjuno", "legsy", "leghive"}},
+	{"legcom", array<string> = {"legsolar", "legwin", "legmstor", "legestor", "legmex", "legeconv", "leglab", "legvp", "legap", "legeyes", "legrad", "legdrag", "leglht", "legrl", "legctl", "legtide", "leguwmstore", "leguwestore", "legfeconv", "legsy", "legfdrag", "legtl", "legfrl", "legfrad", "leghp", "legfhp"}},
+	{"legcomecon", array<string> = {"armsolar", "armwin", "armmstor", "armestor", "legmex", "armmakr", "leglab", "legvp", "armap", "armeyes", "armrad", "armdrag", "armllt", "armrl", "armdl", "armtide", "armuwms", "armuwes", "armfmkr", "armsy", "armfdrag", "armtl", "armfrt", "armfrad", "armhp", "armfhp", "armadvsol", "armnanotc", "armferret", "armgeo"}},
+	{"legcomlvl10", array<string> = {"legmoho", "legfus", "legwin", "legadveconv", "legadvsol", "leggeo", "legtide", "legadvestore", "legamstor", "leganavaladvgeo", "leganavalmex", "leganavaleconv", "legaheattank", "leginf", "legshot", "legmrv", "leginfestor", "legvflak", "legflak", "leganavaltorpturret", "legmed", "legdtr", "legvcarry", "legmg", "legjuno", "legctl", "leganavalaaturret", "legbastion", "legeyes", "legavrad", "legavjam", "legdrag", "legarad", "legfrad", "legstronghold", "legforti", "legfdrag", "leglab", "legvp", "legap", "legsy", "leghp", "legfhp", "legavantinuke", "legkeres", "legeshotgunmech", "legnanotc", "legnanotcplat", "legdeflector"}},
+	{"legcomlvl2", array<string> = {"legsolar", "legwin", "legmstor", "legestor", "legmex", "legeconv", "leglab", "legvp", "legap", "legeyes", "legrad", "legdrag", "leglht", "legrl", "legctl", "legtide", "leguwmstore", "leguwestore", "legfeconv", "legsy", "legfdrag", "legtl", "legfrl", "legfrad", "leghp", "legfhp", "leggob", "leglob", "leghades", "leghelios"}},
+	{"legcomlvl3", array<string> = {"legmex", "legsolar", "legwin", "legadvsol", "legeconv", "leggeo", "legtide", "legestor", "legmstor", "leguwestore", "legfeconv", "leguwmstore", "leguwgeo", "leggat", "legbar", "legkark", "legcen", "leginfestor", "legrail", "legmg", "legtl", "leghive", "legdtr", "legrl", "legjuno", "legctl", "legfrl", "legeyes", "legavrad", "legavjam", "legdrag", "legrad", "legfrad", "legstronghold", "legfdrag", "leglab", "legvp", "legap", "legsy", "leghp", "legfhp", "legnanotc", "legnanotcplat"}},
+	{"legcomlvl4", array<string> = {"legmex", "legsolar", "legwin", "legadvsol", "legeconv", "leggeo", "legtide", "legestor", "legmstor", "leguwestore", "legfeconv", "leguwmstore", "leguwgeo", "leggat", "legbart", "legshot", "legstr", "leginfestor", "legvflak", "legflak", "leganavaltorpturret", "legmed", "legdtr", "legvcarry", "legmg", "legjuno", "legctl", "leganavalaaturret", "legeyes", "legavrad", "legavjam", "legdrag", "legarad", "legfrad", "legstronghold", "legforti", "legfdrag", "leglab", "legvp", "legap", "legsy", "leghp", "legfhp", "legavantinuke", "legnanotc", "legnanotcplat"}},
+	{"legcomlvl5", array<string> = {"legmoho", "legadvsol", "legwin", "legfus", "legadveconv", "legsolar", "leggeo", "legtide", "legadvestore", "legamstor", "leganavaladvgeo", "leganavalmex", "leganavaleconv", "legaheattank", "leginf", "legshot", "legstr", "leginfestor", "legvflak", "legflak", "leganavaltorpturret", "legmed", "legdtr", "legvcarry", "legmg", "legjuno", "legctl", "leganavalaaturret", "legeyes", "legavrad", "legavjam", "legdrag", "legarad", "legfrad", "legstronghold", "legforti", "legfdrag", "leglab", "legvp", "legap", "legsy", "leghp", "legfhp", "legavantinuke", "legnanotc", "legnanotcplat"}},
+	{"legcomlvl6", array<string> = {"legmoho", "legfus", "legwin", "legadveconv", "legadvsol", "leggeo", "legtide", "legadvestore", "legamstor", "leganavaladvgeo", "leganavalmex", "leganavaleconv", "legaheattank", "leginf", "legshot", "legmrv", "leginfestor", "legvflak", "legflak", "leganavaltorpturret", "legmed", "legdtr", "legvcarry", "legmg", "legjuno", "legctl", "leganavalaaturret", "legbastion", "legeyes", "legavrad", "legavjam", "legdrag", "legarad", "legfrad", "legstronghold", "legforti", "legfdrag", "leglab", "legvp", "legap", "legsy", "leghp", "legfhp", "legavantinuke", "legkeres", "legnanotc", "legnanotcplat"}},
+	{"legcomlvl7", array<string> = {"legmoho", "legfus", "legwin", "legadveconv", "legadvsol", "leggeo", "legtide", "legadvestore", "legamstor", "leganavaladvgeo", "leganavalmex", "leganavaleconv", "legaheattank", "leginf", "legshot", "legmrv", "leginfestor", "legvflak", "legflak", "leganavaltorpturret", "legmed", "legdtr", "legvcarry", "legmg", "legjuno", "legctl", "leganavalaaturret", "legbastion", "legeyes", "legavrad", "legavjam", "legdrag", "legarad", "legfrad", "legstronghold", "legforti", "legfdrag", "leglab", "legvp", "legap", "legsy", "leghp", "legfhp", "legavantinuke", "legkeres", "legnanotc", "legnanotcplat"}},
+	{"legcomlvl8", array<string> = {"legmoho", "legfus", "legwin", "legadveconv", "legadvsol", "leggeo", "legtide", "legadvestore", "legamstor", "leganavaladvgeo", "leganavalmex", "leganavaleconv", "legaheattank", "leginf", "legshot", "legmrv", "leginfestor", "legvflak", "legflak", "leganavaltorpturret", "legmed", "legdtr", "legvcarry", "legmg", "legjuno", "legctl", "leganavalaaturret", "legbastion", "legeyes", "legavrad", "legavjam", "legdrag", "legarad", "legfrad", "legstronghold", "legforti", "legfdrag", "leglab", "legvp", "legap", "legsy", "leghp", "legfhp", "legavantinuke", "legkeres", "legnanotc", "legnanotcplat", "legdeflector"}},
+	{"legcomlvl9", array<string> = {"legmoho", "legfus", "legwin", "legadveconv", "legadvsol", "leggeo", "legtide", "legadvestore", "legamstor", "leganavaladvgeo", "leganavalmex", "leganavaleconv", "legaheattank", "leginf", "legshot", "legmrv", "leginfestor", "legvflak", "legflak", "leganavaltorpturret", "legmed", "legdtr", "legvcarry", "legmg", "legjuno", "legctl", "leganavalaaturret", "legbastion", "legeyes", "legavrad", "legavjam", "legdrag", "legarad", "legfrad", "legstronghold", "legforti", "legfdrag", "leglab", "legvp", "legap", "legsy", "leghp", "legfhp", "legavantinuke", "legkeres", "legeshotgunmech", "legnanotc", "legnanotcplat", "legdeflector"}},
+	{"legcomoff", array<string> = {"armsolar", "armwin", "armmstor", "armestor", "legmex", "armmakr", "leglab", "legvp", "armap", "armeyes", "armrad", "armdrag", "armllt", "armrl", "armdl", "armtide", "armuwms", "armuwes", "armfmkr", "armsy", "armfdrag", "armtl", "armfrt", "armfrad", "armhp", "armfhp", "leggob", "corjamt"}},
+	{"legcomt2com", array<string> = {"armsolar", "armwin", "armmstor", "armestor", "legmex", "armmakr", "leglab", "legvp", "armap", "armeyes", "armrad", "armdrag", "armllt", "armrl", "armdl", "armtide", "armuwms", "armuwes", "armfmkr", "armsy", "armfdrag", "armtl", "armfrt", "armfrad", "armhp", "armfhp", "leggob", "corjamt", "legmg", "armferret", "armnanotc"}},
+	{"legcomt2def", array<string> = {"armsolar", "armwin", "armmstor", "armestor", "legmex", "armmakr", "leglab", "legvp", "armap", "armeyes", "armrad", "armdrag", "armllt", "armrl", "armdl", "armtide", "armuwms", "armuwes", "armfmkr", "armsy", "armfdrag", "armtl", "armfrt", "armfrad", "armhp", "armfhp", "legmg", "armclaw", "armferret", "corjamt", "armguard", "armcir"}},
+	{"legcomt2off", array<string> = {"armsolar", "armwin", "armmstor", "armestor", "legmex", "armmakr", "leglab", "legvp", "armap", "armeyes", "armrad", "armdrag", "armllt", "armrl", "armdl", "armtide", "armuwms", "armuwes", "armfmkr", "armsy", "armfdrag", "armtl", "armfrt", "armfrad", "armhp", "armfhp", "leggob", "corjamt", "armmine1", "armatlas", "armpeep", "legmg", "armferret", "legbal", "leggat", "armnanotc", "armadvsol", "armgeo"}},
+	{"legcv", array<string> = {"legsolar", "legadvsol", "legwin", "leggeo", "legmstor", "legestor", "legmex", "legeconv", "legavp", "leglab", "legvp", "legap", "leghp", "legnanotc", "legeyes", "legrad", "legdrag", "legdtr", "leglht", "legmg", "legcluster", "legrl", "legrhapsis", "leglupara", "legctl", "legjam", "legjuno", "legsy", "leghive"}},
+	{"legdecom", array<string> = {"legmine1", "legmine2", "legmine3", "legsolar", "legwin", "legmstor", "legestor", "legmex", "legeconv", "legrad", "leglht", "legrl", "legtide", "leguwmstore", "leguwestore", "legfeconv"}},
 	{"legfhp", array<string> = {"legch", "legsh", "legner", "legah", "legmh", "legcar"}},
 	{"leggant", array<string> = {"legeheatraymech", "legeallterrainmech", "legjav", "legelrpcmech", "legehovertank", "legerailtank", "legeshotgunmech", "legkeres"}},
 	{"leggantuw", array<string> = {"legeheatraymech", "legjav", "legehovertank", "legfloat", "legamph", "leganavybattleship"}},
 	{"leghaap", array<string> = {"leghaca", "legstronghold", "legmineb", "legatorpbomber", "legafigdef", "legwhisper", "legfort", "legphoenix", "legvenator"}},
+	{"leghaca", array<string> = {"legafus", "leggant", "legageo", "legrampart", "legmoho", "legadveconv", "legadvestore", "legamstor", "legforti", "legtarg", "legdeflector", "legacluster", "legapopupdef", "legbastion", "legflak", "leglraa", "legperdition", "legabm", "legsilo", "leglrpc", "legstarfall", "legaap", "leghaap", "legvp", "legap", "legsy", "legnanotc", "legfus", "legsd", "leglab", "legeheatraymech", "legelrpcmech"}},
+	{"leghack", array<string> = {"legafus", "leggant", "legageo", "legrampart", "legmoho", "legadveconv", "legadvestore", "legamstor", "legforti", "legtarg", "legdeflector", "legacluster", "legapopupdef", "legbastion", "legflak", "leglraa", "legperdition", "legabm", "legsilo", "leglrpc", "legstarfall", "legalab", "leghalab", "legvp", "legap", "legsy", "legnanotc", "legfus", "legsd", "leglab", "legeheatraymech", "legelrpcmech"}},
+	{"leghacv", array<string> = {"legafus", "leggant", "legageo", "legrampart", "legmoho", "legadveconv", "legadvestore", "legamstor", "legforti", "legtarg", "legdeflector", "legacluster", "legapopupdef", "legbastion", "legflak", "leglraa", "legperdition", "legabm", "legsilo", "leglrpc", "legstarfall", "legavp", "leghavp", "legvp", "legap", "legsy", "legnanotc", "legfus", "legsd", "leglab", "legeheatraymech", "legelrpcmech"}},
 	{"leghalab", array<string> = {"leghack", "leginc", "legsrail", "legajamk", "legdecom", "legadvaabot", "legjav", "legshot", "legamph", "legaspy"}},
 	{"leghavp", array<string> = {"leghacv", "legaheattank", "legmed", "legavroc", "leginf", "legvflak", "legavantinuke", "legavjam", "legmrv", "legehovertank"}},
 	{"leghp", array<string> = {"legch", "legsh", "legner", "legah", "legmh", "legcar"}},
+	{"leginfestor", array<string> = {"leginfestor"}},
 	{"leglab", array<string> = {"legck", "legrezbot", "leggob", "leglob", "legcen", "legbal", "legkark", "legaabot"}},
+	{"legmlv", array<string> = {"legmine1", "legmine2", "legmine3", "legdrag", "legeyes"}},
+	{"legnavyconship", array<string> = {"legmex", "legvp", "legap", "leglab", "legeyes", "legctl", "legdrag", "legdtr", "legcluster", "legtide", "leggeo", "leguwgeo", "legfeconv", "leguwmstore", "leguwestore", "legsy", "legadvshipyard", "legnanotcplat", "legfhp", "legamphlab", "legsplab", "legfrad", "legfdrag", "legtl", "legfrl", "legfmg", "legfhive"}},
+	{"legotter", array<string> = {"legsolar", "legadvsol", "legwin", "leggeo", "legmstor", "legestor", "legmex", "legeconv", "leglab", "legvp", "legap", "leghp", "legavp", "legnanotc", "legnanotcplat", "legeyes", "legrad", "legdrag", "legdtr", "leglht", "legmg", "legcluster", "legrl", "legrhapsis", "leglupara", "legjuno", "legctl", "legjam", "legfhp", "legamphlab", "legsplab", "legsy", "legtide", "leguwmstore", "leguwestore", "legfeconv", "legfdrag", "legfrad", "legfmg", "legfrl", "legtl", "leguwgeo", "leghive", "legfhive"}},
+	{"legspcon", array<string> = {"legsolar", "legadvsol", "legwin", "leggeo", "legmstor", "legestor", "legmex", "legeconv", "leglab", "legvp", "legap", "leghp", "legnanotc", "legnanotcplat", "legeyes", "legrad", "legdrag", "legdtr", "leglht", "leghive", "legmg", "legcluster", "legrl", "legrhapsis", "leglupara", "legctl", "legjam", "legjuno", "legfhp", "legsy", "legaap", "legamphlab", "legsplab", "legtide", "legfeconv", "leguwmstore", "leguwestore", "legfdrag", "legfrad", "legfmg", "legfrl", "legtl", "leguwgeo", "legfhive"}},
 	{"legsplab", array<string> = {"legspcon", "legspsurfacegunship", "legspcarrier", "legspbomber", "legsptorpgunship", "legspfighter", "legspradarsonarplane"}},
 	{"legsy", array<string> = {"legnavyconship", "legnavyrezsub", "legnavyscout", "legnavyaaship", "legnavyfrigate", "legnavydestro", "legnavysub", "legnavyartyship"}},
-	{"legvp", array<string> = {"legscout", "legcv", "legotter", "leghades", "leghelios", "leggat", "legbar", "legrail", "legmlv", "legamphtank"}}
+	{"legvp", array<string> = {"legscout", "legcv", "legotter", "leghades", "leghelios", "leggat", "legbar", "legrail", "legmlv", "legamphtank"}},
+	{"raptor_land_swarmer_heal_t1_v1", array<string> = {"raptor_turret_basic_t2_v1", "raptor_turret_antiair_t2_v1"}},
+	{"raptor_land_swarmer_heal_t2_v1", array<string> = {"raptor_turret_basic_t2_v1", "raptor_turret_antiair_t2_v1", "raptor_turret_acid_t2_v1", "raptor_turret_emp_t2_v1"}},
+	{"raptor_land_swarmer_heal_t3_v1", array<string> = {"raptor_turret_basic_t3_v1", "raptor_turret_antiair_t3_v1", "raptor_turret_acid_t2_v1", "raptor_turret_emp_t2_v1"}},
+	{"raptor_land_swarmer_heal_t4_v1", array<string> = {"raptor_turret_basic_t3_v1", "raptor_turret_antiair_t3_v1", "raptor_turret_acid_t3_v1", "raptor_turret_emp_t3_v1"}},
+	{"raptor_matriarch_healer", array<string> = {"raptor_turret_basic_t4_v1", "raptor_turret_antiair_t4_v1", "raptor_turret_acid_t4_v1", "raptor_turret_emp_t4_v1", "raptor_turret_meteor_t4_v1"}}
 };
 
 // extractor facts: extractsmetal relative to T1, energy upkeep (E/s)
@@ -75,28 +192,11 @@ class SConv { float capE; float eff; float costM; float costE; float buildTime; 
 dictionary converters;
 void InitConverters()
 {
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 3000; c.costE = 30000; c.buildTime = 75000; converters.set("armcomlvl2", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 4000; c.costE = 40000; c.buildTime = 85000; converters.set("armcomlvl3", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 5000; c.costE = 50000; c.buildTime = 94800; converters.set("armcomlvl4", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 6000; c.costE = 60000; c.buildTime = 111600; converters.set("armcomlvl5", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 7000; c.costE = 70000; c.buildTime = 128400; converters.set("armcomlvl6", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 8000; c.costE = 80000; c.buildTime = 145200; converters.set("armcomlvl7", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 9000; c.costE = 90000; c.buildTime = 162000; converters.set("armcomlvl8", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 10000; c.costE = 100000; c.buildTime = 178000; converters.set("armcomlvl9", @c); }
 	{ SConv c; c.capE = 70; c.eff = 0.01429; c.costM = 1; c.costE = 1150; c.buildTime = 2600; converters.set("armfmkr", @c); }
 	{ SConv c; c.capE = 70; c.eff = 0.01429; c.costM = 1; c.costE = 1150; c.buildTime = 2600; converters.set("armmakr", @c); }
 	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 380; c.costE = 21000; c.buildTime = 35000; converters.set("armmmkr", @c); }
 	{ SConv c; c.capE = 6000; c.eff = 0.02; c.costM = 9000; c.costE = 550000; c.buildTime = 350000; converters.set("armmmkrt3", @c); }
 	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 380; c.costE = 21000; c.buildTime = 35000; converters.set("armuwmmm", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 11000; c.costE = 110000; c.buildTime = 240000; converters.set("corcomlvl10", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 3000; c.costE = 30000; c.buildTime = 112500; converters.set("corcomlvl2", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 4000; c.costE = 40000; c.buildTime = 120000; converters.set("corcomlvl3", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 5000; c.costE = 50000; c.buildTime = 140000; converters.set("corcomlvl4", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 6000; c.costE = 60000; c.buildTime = 154800; converters.set("corcomlvl5", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 7000; c.costE = 70000; c.buildTime = 182000; converters.set("corcomlvl6", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 8000; c.costE = 80000; c.buildTime = 210000; converters.set("corcomlvl7", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 9000; c.costE = 90000; c.buildTime = 230000; converters.set("corcomlvl8", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 10000; c.costE = 100000; c.buildTime = 240000; converters.set("corcomlvl9", @c); }
 	{ SConv c; c.capE = 70; c.eff = 0.01429; c.costM = 1; c.costE = 1250; c.buildTime = 2680; converters.set("corfmkr", @c); }
 	{ SConv c; c.capE = 70; c.eff = 0.01429; c.costM = 1; c.costE = 1250; c.buildTime = 2680; converters.set("cormakr", @c); }
 	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 370; c.costE = 21000; c.buildTime = 31300; converters.set("cormmkr", @c); }
@@ -105,12 +205,6 @@ void InitConverters()
 	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 370; c.costE = 21000; c.buildTime = 31300; converters.set("legadveconv", @c); }
 	{ SConv c; c.capE = 6000; c.eff = 0.02; c.costM = 9000; c.costE = 550000; c.buildTime = 350000; converters.set("legadveconvt3", @c); }
 	{ SConv c; c.capE = 600; c.eff = 0.01724; c.costM = 370; c.costE = 21000; c.buildTime = 31300; converters.set("leganavaleconv", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 11000; c.costE = 110000; c.buildTime = 264000; converters.set("legcomlvl10", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 6000; c.costE = 60000; c.buildTime = 187500; converters.set("legcomlvl5", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 7000; c.costE = 70000; c.buildTime = 187500; converters.set("legcomlvl6", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 8000; c.costE = 80000; c.buildTime = 192000; converters.set("legcomlvl7", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 9000; c.costE = 90000; c.buildTime = 216000; converters.set("legcomlvl8", @c); }
-	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 10000; c.costE = 100000; c.buildTime = 240000; converters.set("legcomlvl9", @c); }
 	{ SConv c; c.capE = 70; c.eff = 0.0142857; c.costM = 1; c.costE = 1150; c.buildTime = 2600; converters.set("legeconv", @c); }
 	{ SConv c; c.capE = 70; c.eff = 0.01429; c.costM = 1; c.costE = 1250; c.buildTime = 2680; converters.set("legfeconv", @c); }
 }
@@ -271,14 +365,7 @@ dictionary extractsmetal_ = {
 	{"legmoho", 0.004},
 	{"legmohobp", 0.004},
 	{"legmohocon", 0.004},
-	{"legmohoconin", 0.004},
-	{"raptor_turret_acid_t2_v1", 0.001},
-	{"raptor_turret_antiair_t2_v1", 0.001},
-	{"raptor_turret_antinuke_t2_v1", 0.001},
-	{"raptor_turret_basic_t2_v1", 0.001},
-	{"raptor_turret_brood_t2_v1", 0.001},
-	{"raptor_turret_burrow_t2_v1", 0.001},
-	{"raptor_turret_emp_t2_v1", 0.001}
+	{"legmohoconin", 0.004}
 };
 float ExtractsMetal(const string& in name) { double v = 0; extractsmetal_.get(name, v); return float(v); }
 
@@ -286,14 +373,10 @@ dictionary energyupkeep_ = {
 	{"armamex", 3},
 	{"armaser", 80},
 	{"armcarry", 25},
-	{"armcomcon", 0},
 	{"armdronecarry", 25},
 	{"armdronecarryland", 25},
 	{"armeyes", 3},
 	{"armfatf", 150},
-	{"armfgate", 0},
-	{"armgate", 0},
-	{"armgatet3", 0},
 	{"armjam", 80},
 	{"armjamt", 40},
 	{"armmex", 3},
@@ -306,16 +389,12 @@ dictionary energyupkeep_ = {
 	{"armuwmme", 20},
 	{"armveil", 125},
 	{"corcarry", 25},
-	{"corcomcon", 0},
 	{"cordronecarry", 25},
 	{"cordronecarryair", 25},
 	{"coreter", 80},
 	{"corexp", 3},
 	{"coreyes", 5},
 	{"corfatf", 150},
-	{"corfgate", 0},
-	{"corgate", 0},
-	{"corgatet3", 0},
 	{"corjamt", 25},
 	{"cormex", 3},
 	{"cormexp", 20},
@@ -333,10 +412,7 @@ dictionary energyupkeep_ = {
 	{"leganavalpinpointer", 150},
 	{"leganavyradjamship", 120},
 	{"legavjam", 80},
-	{"legcomt2def", 0},
-	{"legdeflector", 0},
 	{"legeyes", 5},
-	{"leggatet3", 0},
 	{"legjam", 30},
 	{"legmex", 3},
 	{"legmext15", 30},
@@ -364,6 +440,7 @@ dictionary factorytier_ = {
 	{"armlab", 1},
 	{"armplat", 2},
 	{"armshltx", 3},
+	{"armshltxuw", 3},
 	{"armsy", 1},
 	{"armvp", 1},
 	{"coraap", 2},
@@ -381,12 +458,14 @@ dictionary factorytier_ = {
 	{"corsy", 1},
 	{"corvp", 1},
 	{"legaap", 2},
+	{"legadvshipyard", 2},
 	{"legalab", 2},
 	{"legamphlab", 2},
 	{"legap", 1},
 	{"legavp", 2},
 	{"legfhp", 1},
 	{"leggant", 3},
+	{"leggantuw", 3},
 	{"leghp", 1},
 	{"leglab", 1},
 	{"legsplab", 2},

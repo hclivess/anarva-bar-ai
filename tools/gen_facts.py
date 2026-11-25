@@ -10,7 +10,49 @@ import re
 import sys
 
 
+def _lua_table(v):
+    """lupa table -> Python (dict for keyed tables, list for 1..n arrays)."""
+    try:
+        items = list(v.items())
+    except AttributeError:
+        return v
+    d = {(k.lower() if isinstance(k, str) else k): _lua_table(x) for k, x in items}
+    if d and all(isinstance(k, int) for k in d):
+        return [d[k] for k in sorted(d)]
+    return d
+
+
+def _find(t, key):
+    """Every value of `key` anywhere in the evaluated unit table (keys are case-insensitive in the engine)."""
+    out = []
+    if isinstance(t, dict):
+        for k, v in t.items():
+            if k == key:
+                out.append(v)
+            out.extend(_find(v, key))
+    elif isinstance(t, list):
+        for v in t:
+            out.extend(_find(v, key))
+    return out
+
+
+def _num(v):
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):  # customparams hold numbers as strings, sometimes "a / b"
+        m = re.fullmatch(r"\s*(-?[\d.]+)\s*(?:/\s*([\d.]+))?\s*", v)
+        if m:
+            return float(m.group(1)) / (float(m.group(2)) if m.group(2) else 1.0)
+    return None
+
+
 def scan(units_dir):
+    """Evaluate every unit file as the engine does (a Lua program returning its def table), in the sandboxed
+    LuaJIT of analyze_maps.py, and read the facts from the table. (A regex over the text read literals only.)"""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from analyze_maps import eval_mapinfo
     defs = {}
     for root, _, files in os.walk(units_dir):
         for fn in files:
@@ -18,44 +60,48 @@ def scan(units_dir):
                 continue
             name = fn[:-4]
             text = open(os.path.join(root, fn), encoding="utf-8", errors="replace").read()
-            # only the top-level unit table named like the file
-            if not re.search(r"\b%s\s*=\s*\{" % re.escape(name), text):
+            try:
+                top = _lua_table(eval_mapinfo(text))
+            except Exception:
                 continue
+            if not isinstance(top, dict) or name not in top or not isinstance(top[name], dict):
+                continue  # only the unit table named like the file
+            u = top[name]
             d = {"name": name}
-            for key in ("metalcost", "energycost", "workertime", "extractsmetal", "energyupkeep", "buildtime", "metalmake", "energymake"):
-                m = re.search(r"\b%s\s*=\s*(-?[\d.]+)" % key, text, re.I)
-                if m:
-                    d[key] = float(m.group(1))
-            d["canresurrect"] = bool(re.search(r"\bcanresurrect\s*=\s*true", text, re.I))
-            d["paralyzer"] = bool(re.search(r"\bparalyzer\s*=\s*true", text, re.I))
-            d["crawl"] = bool(re.search(r'explodeas\s*=\s*"crawl_', text, re.I)) or bool(
-                re.search(r'selfdestructas\s*=\s*"crawl', text, re.I))
-            cap = re.search(r"energyconv_capacity\s*=\s*([\d.]+)", text)
-            eff = re.search(r"energyconv_efficiency\s*=\s*([\d.]+)(\s*/\s*([\d.]+))?", text)
-            if cap and eff:
-                e = float(eff.group(1)) / (float(eff.group(3)) if eff.group(3) else 1.0)
-                d["conv"] = (float(cap.group(1)), e)
-            # weapon/ability facts the script API can't see: stockpile time (s), metal per shot, shield radius
-            st = [float(x) for x in re.findall(r"\bstockpiletime\s*=\s*([\d.]+)", text, re.I)]
+            for key in ("metalcost", "energycost", "workertime", "extractsmetal", "energyupkeep", "buildtime", "metalmake", "energymake", "speed"):
+                x = _num(u.get(key))
+                if x is not None:
+                    d[key] = x
+            cp = u.get("customparams") if isinstance(u.get("customparams"), dict) else {}
+            d["commander"] = cp.get("iscommander") in (True, "true", "1", 1)
+            d["canresurrect"] = u.get("canresurrect") is True
+            d["paralyzer"] = any(v is True for v in _find(u, "paralyzer"))
+            boom = [str(u.get("explodeas", "")).lower(), str(u.get("selfdestructas", "")).lower()]
+            d["crawl"] = any(b.startswith("crawl") for b in boom)
+            cap = [_num(v) for v in _find(u, "energyconv_capacity")]
+            eff = [_num(v) for v in _find(u, "energyconv_efficiency")]
+            if cap and eff and cap[0] is not None and eff[0] is not None:
+                d["conv"] = (cap[0], eff[0])
+            st = [x for x in (_num(v) for v in _find(u, "stockpiletime")) if x is not None]
             if st:
                 d["stockpiletime"] = max(st)
-            mps = [float(x) for x in re.findall(r"\bmetalpershot\s*=\s*([\d.]+)", text, re.I)]
+            mps = [x for x in (_num(v) for v in _find(u, "metalpershot")) if x is not None]
             if mps and max(mps) > 0:
                 d["metalpershot"] = max(mps)
-            sr = [float(x) for x in re.findall(r"\bshield_radius\s*=\s*([\d.]+)", text, re.I)]
+            sr = [x for x in (_num(v) for v in _find(u, "shield_radius")) if x is not None]
             if sr:
                 d["shieldradius"] = max(sr)
             # a 'g' cell in the yardmap = must stand on a geothermal vent (engine yardmap code; a leading 'h' marks
             # the high-resolution format)
-            ym = re.search(r'\byardmap\s*=\s*"([^"]*)"', text, re.I)
-            if ym:
-                cells = ym.group(1).replace(" ", "").lower()
+            ym = u.get("yardmap")
+            if isinstance(ym, str):
+                cells = ym.replace(" ", "").lower()
                 if cells.startswith("h"):
                     cells = cells[1:]
                 if "g" in cells:
                     d["needgeo"] = 1.0
-            bo = re.search(r"\bbuildoptions\s*=\s*\{(.*?)\}", text, re.S | re.I)
-            d["buildoptions"] = re.findall(r'"([a-z0-9_]+)"', bo.group(1)) if bo else []
+            bo = u.get("buildoptions")
+            d["buildoptions"] = [x for x in bo if isinstance(x, str)] if isinstance(bo, list) else []
             defs[name] = d
     return defs
 
@@ -67,14 +113,13 @@ def as_list(names):
 def main():
     units_dir, out = sys.argv[1:3]
     defs = scan(units_dir)
-    factories = {n: d["buildoptions"] for n, d in defs.items()
-                 if d["buildoptions"] and not d.get("workertime", 0) == 0 and (
-                     n.endswith(("lab", "vp", "ap", "sy", "hp", "gant", "shltx", "plat", "amsub"))
-                     or "lab" in n or n.endswith("gantuw"))}
+    # every unit with build options (factories and constructors alike: the script needs both). A factory is one
+    # that builds and cannot move (unit facts, not name endings).
+    factories = {n: d["buildoptions"] for n, d in defs.items() if d["buildoptions"] and d.get("workertime", 0) > 0}
     # Factory tier by build depth from the commanders (facts, no name lists): a commander's labs are tier 1; a
     # constructor has its lab's tier; a lab built by a constructor of tier t is tier t + 1.
     tier = {}
-    frontier = [(c, 0) for c in ("armcom", "corcom", "legcom") if c in defs]
+    frontier = [(c, 0) for c, d in defs.items() if d.get("commander") and d.get("buildoptions")]
     seen = set()
     while frontier:
         b, t = frontier.pop(0)
@@ -82,7 +127,7 @@ def main():
             continue
         seen.add(b)
         for o in defs.get(b, {}).get("buildoptions", []):
-            if o in factories:
+            if o in factories and defs[o].get("speed", 0) <= 0:  # a factory: builds, cannot move
                 if o not in tier or tier[o] > t + 1:
                     tier[o] = t + 1
                 for u in factories[o]:
