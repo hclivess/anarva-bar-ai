@@ -16,10 +16,12 @@ IMPROVEMENT ONLY THEN YOU CAN TEST."
 - **Trust no inherited code.** BARb's scripts, configs and C++ hold hand-picked gates and dice that quietly block
   the reasoning layered on top (example: the Recycler never reclaimed a solar because three fixed conditions had to
   hold at once). Read what actually decides before adding anything on top of it.
-- **Know every unit from evidence, never from BARb's tables.** For every unit in the game: what it is good
-  against, what kills it, its weakness - measured from top players' replays (damage and kills by attacker unit vs
-  victim unit, per metal spent) and from its unit facts (range, speed, turn rate, damage type, armour, targets).
-  Production, targeting and counters use that knowledge. Owner, 2026-11-24: "What is a good unit against Behemoth
+- **Know every unit from its facts, decided live, never from a table.** What a unit is good against, what kills
+  it and its weakness follow from its unit facts (range, speed, turn rate, damage type, armour, targets, cost),
+  set against the enemy actually seen in this game (square law). No counter table: not BARb's, and not one built
+  from replay kills either (owner, 2026-11-25: "DO NOT rework unit composition from the replay kill matrix - this
+  is a static rule, stop suggesting static rules"). Replays explain *why* players pick units and are the yardstick
+  for how well we play; the AI never reads a replay-derived table. Owner, 2026-11-24: "What is a good unit against Behemoth
   in competitive play? Why haven't you analyzed the replays and taken notes? Why haven't you done it for every unit
   in the game and instead you just copied BARb on everything [and] ran 15000 tests. Pointless."
 - **Replays give the reason, the AI gets the decision.** In replays find the ACTUAL REASON why top players do

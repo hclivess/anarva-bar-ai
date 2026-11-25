@@ -2538,6 +2538,8 @@ bool MoveGroup(Op@ op, uint o, const AIFloat3& in dest)
 	return false;
 }
 dictionary lastOrder;  // unit id -> last order key (re-issued only when it changes)
+dictionary lastTarget;  // unit id -> enemy id it was told to prefer
+dictionary strafeSide;  // unit id -> "+" / "-" (side of its next sideways step)
 int created = 0, retreats = 0;
 
 // every armed mobile unit (BARb's scout role also covers raiders such as the Grunt, so it can't exclude anything)
@@ -2589,9 +2591,8 @@ void Order(CCircuitUnit@ u, const string& in key, int kind, const AIFloat3& in p
 	string prev;
 	if (lastOrder.get("" + u.id, prev) && prev == key) return;
 	lastOrder.set("" + u.id, key);
-	if (kind == 0) u.CmdMoveTo(p);
-	else if (kind == 1) u.CmdFightTo(p);
-	else if (!u.CmdAttackEnemy(target)) u.CmdFightTo(p);
+	(void)kind; (void)target;
+	u.CmdMoveTo(p);  // plain moves only: units fire at what is in reach while moving and can dodge
 }
 float Strength(const array<CCircuitUnit@>@ us)
 {
@@ -2762,22 +2763,41 @@ void Update()
 				const float v = EnemyValue(i, H) / AiMax(1.f, eHp[i] * eDef[i].health);
 				if (bi < 0 || v > bv) { bv = v; bi = int(i); }
 			}
-			if (ni >= 0 && reach > eDef[ni].GetMaxRange() && nd < eDef[ni].GetMaxRange()) {
-				// we out-range the nearest armed enemy and stand inside its reach: step back to our own range from it
+			// focus fire without stopping: set target (the unit keeps following its moves; plain moves still shoot
+			// whatever is in reach). Owner: attack orders and attack-moves stand still and don't dodge.
+			const int tgt = (bi >= 0) ? bi : ni;
+			if (tgt >= 0) {
+				string pt;
+				if (!lastTarget.get("" + u.id, pt) || pt != ("" + eIds[tgt])) {
+					lastTarget.set("" + u.id, "" + eIds[tgt]);
+					u.CmdSetTarget(eIds[tgt]);
+				}
+			}
+			if (ni >= 0 && nd <= reach + eDef[ni].GetMaxRange()) {
+				// in the fight: hold at our own reach from the nearest armed enemy (out-ranging it, that is outside its
+				// reach; otherwise as far as we can still hit from) and keep stepping sideways by one second of our
+				// speed, switching sides on arrival, so we are never standing where aimed shots land
 				AIFloat3 away = p - ePos[ni];
 				const float l = AiMax(1.f, away.Length2D());
-				const AIFloat3 back = ePos[ni] + away * (reach / l);
-				Order(u, "kite" + eIds[ni] + ":" + int(back.x / reach) + "," + int(back.z / reach), 0, back, -1);
-			} else if (bi >= 0) {
-				Order(u, "atk" + eIds[bi], 2, ePos[bi], eIds[bi]);
+				away = away / l;
+				const AIFloat3 side(-away.z, 0.f, away.x);
+				int sgn = 1;
+				{ string ss; if (strafeSide.get("" + u.id, ss) && ss == "-") sgn = -1; }
+				const float step = AiMax(1.f, u.circuitDef.speed);
+				const AIFloat3 spot = ePos[ni] + away * reach + side * (step * float(sgn));
+				if (p.distance2D(spot) <= AiMax(u.circuitDef.GetRadius(), step / float(SECOND))) {
+					sgn = -sgn;
+					strafeSide.set("" + u.id, sgn < 0 ? "-" : "+");
+				}
+				Order(u, "fpos" + eIds[ni] + ":" + sgn + ":" + int(spot.x / step) + "," + int(spot.z / step), 0, spot, -1);
 			} else {
-				Order(u, "fight" + o + ":" + int(op.pos.x / reach) + "," + int(op.pos.z / reach), 1, op.pos, -1);
+				Order(u, "to" + o + ":" + int(op.pos.x / reach) + "," + int(op.pos.z / reach), 0, op.pos, -1);
 			}
 		}
 	}
-	// free units wait at home, fighting what they meet on the way (an attack-move; a retreating squad uses plain moves)
+	// free units wait at home (plain move: units shoot what is in reach while moving; no attack-move)
 	for (uint i = 0; i < freeUnits.length(); ++i)
-		if (freeUnits[i].GetPos(ai.frame).distance2D(basePos) > freeUnits[i].circuitDef.GetMaxRange()) Order(freeUnits[i], "homeF", 1, basePos, -1);
+		if (freeUnits[i].GetPos(ai.frame).distance2D(basePos) > freeUnits[i].circuitDef.GetMaxRange()) Order(freeUnits[i], "home", 0, basePos, -1);
 }
 string Status() { return "ops=" + ops.length() + " created=" + created + " pulledBack=" + retreats; }
 // a dead unit leaves its squad at once (a handle kept until the next update crashed the game when read: GetPos)
@@ -2788,6 +2808,8 @@ void OnDestroyed(CCircuitUnit@ unit)
 		if (k >= 0) ops[o].units.removeAt(k);
 	}
 	lastOrder.delete("" + unit.id);
+	lastTarget.delete("" + unit.id);
+	strafeSide.delete("" + unit.id);
 }
 }  // namespace Command
 

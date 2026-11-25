@@ -77,7 +77,7 @@ everything in SQLite (`runs/replays.db`), so no replay is ever played twice:
 - per minute and player: metal and energy income, banked and storage, spending, army, defence and economy
   value, constructors, build power, extractors and their income, factories
 - every unit built, with time, place and kind
-- the damage and kill matrix by attacker unit and victim unit, for counters
+- the damage and kill matrix by attacker unit and victim unit (for studying fights; the AI never reads it as a table)
 - the commander's track, what it built and where it died
 
 1v1 is parsed first. Progress: `python tools/replay_db.py status`.
@@ -161,9 +161,9 @@ it buys, what it costs, in which situation) and computes the decision from the l
 are only the yardstick that Anarvā's results are compared against.
 
 **How does it know what each unit is good against?**
-From the damage and kill matrix of the replay database (attacker unit vs victim unit, metal killed per
-metal spent) and from unit facts (range, speed, weapons, targets). This replaces BARb's tables. Building
-the full per-unit table is open (#70).
+From each unit's facts (range, speed, weapons, targets, health, cost), set against the enemy units it
+actually sees in this game by the square law. There is no counter table: not BARb's, and not one built from
+replays. A table is a frozen rule, and the right answer depends on the enemy actually in this game.
 
 **Does it use transports, nukes, cloak, cameras?**
 

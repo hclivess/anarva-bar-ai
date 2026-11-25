@@ -66,7 +66,7 @@ radius, geothermal-vent units, metal make.
 
 Every open item is a GitHub issue. The big ones:
 - expansion to the winners' pace (one constructor per extractor, second factory by minutes 6–8)
-- per-unit counters from the replay damage matrix (#70)
+- composition decided live from unit facts against the enemy actually seen (#91); no counter table
 - the army used as an expansion opportunity cost (#84)
 - scouting driving the expand / army / attack choice (#85)
 - the bomber fake-landing trick (#80)

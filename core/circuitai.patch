@@ -3064,7 +3064,7 @@ index 0be6a835..50601754 100644
  }
  
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..7a04808a 100644
+index c3aaefe5..7b90504e 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -3172,7 +3172,7 @@ index c3aaefe5..7a04808a 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +776,196 @@ void CInitScript::RegisterCore()
+@@ -735,9 +776,206 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -3224,6 +3224,16 @@ index c3aaefe5..7a04808a 100644
 +static void CCircuitUnit_CmdFightTo(CCircuitUnit* u, const AIFloat3& p) { TRY_UNIT(bridgeAI, u, u->CmdFightTo(p, 0, NO_EXPIRY);) }
 +static void CCircuitUnit_CmdStop(CCircuitUnit* u) { TRY_UNIT(bridgeAI, u, u->CmdStop();) }
 +static void CCircuitUnit_CmdWantedSpeed(CCircuitUnit* u, float speed) { TRY_UNIT(bridgeAI, u, u->CmdWantedSpeed(speed);) }
++// set target: the unit prefers this enemy while it keeps moving (no attack order that stops it)
++static bool CCircuitUnit_CmdSetTarget(CCircuitUnit* u, int enemyId)
++{
++	CEnemyInfo* e = bridgeAI->GetEnemyInfo(enemyId);
++	if (e == nullptr) {
++		return false;
++	}
++	TRY_UNIT(bridgeAI, u, u->CmdSetTarget(e);)
++	return true;
++}
 +// can this unit's movement type stand at p (the core's terrain areas: water, slopes, cliffs)
 +static bool CCircuitUnit_CanMoveTo(CCircuitUnit* u, const AIFloat3& p) { return bridgeAI->GetTerrainManager()->CanMoveToPos(u->GetArea(), p); }
 +static bool CCircuitUnit_CmdAttackEnemy(CCircuitUnit* u, int enemyId)
@@ -3369,7 +3379,7 @@ index c3aaefe5..7a04808a 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +995,36 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +1005,37 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -3381,6 +3391,7 @@ index c3aaefe5..7a04808a 100644
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdFightTo(const AIFloat3& in)", asFUNCTION(CCircuitUnit_CmdFightTo), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdStop()", asFUNCTION(CCircuitUnit_CmdStop), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdWantedSpeed(float)", asFUNCTION(CCircuitUnit_CmdWantedSpeed), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
++	r = engine->RegisterObjectMethod("CCircuitUnit", "bool CmdSetTarget(int)", asFUNCTION(CCircuitUnit_CmdSetTarget), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "bool CanMoveTo(const AIFloat3& in)", asFUNCTION(CCircuitUnit_CanMoveTo), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "bool CmdAttackEnemy(int)", asFUNCTION(CCircuitUnit_CmdAttackEnemy), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemyGroups(array<AIFloat3>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemyGroups), asCALL_CDECL); ASSERT(r >= 0);
@@ -3406,7 +3417,7 @@ index c3aaefe5..7a04808a 100644
  }
  
  bool CInitScript::Init()
-@@ -920,22 +1178,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1189,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  
@@ -6458,7 +6469,7 @@ index 0247bcb8..59f74d2a 100644
  	float shieldRadius;
  	float maxShield;
 diff --git a/src/circuit/unit/CircuitUnit.cpp b/src/circuit/unit/CircuitUnit.cpp
-index 8416e294..02ace4af 100644
+index 8416e294..5fe86aa4 100644
 --- a/src/circuit/unit/CircuitUnit.cpp
 +++ b/src/circuit/unit/CircuitUnit.cpp
 @@ -131,7 +131,7 @@ void CCircuitUnit::PushTravelAct(ITravelAction* action)
@@ -6509,6 +6520,18 @@ index 8416e294..02ace4af 100644
  }
  
  /*
+@@ -328,7 +331,10 @@ void CCircuitUnit::CmdStop(short options, int timeout)
+ 
+ void CCircuitUnit::CmdSetTarget(CEnemyInfo* enemy)
+ {
+-//	unit->ExecuteCustomCommand(CMD_UNIT_SET_TARGET, {(float)target->GetId()});
++	// Anarva: BAR's target-on-the-move gadget: the unit prefers this target while it keeps following its move orders
++	if (enemy != nullptr) {
++		unit->ExecuteCustomCommand(CMD_UNIT_SET_TARGET, {(float)enemy->GetId()});
++	}
+ }
+ 
+ void CCircuitUnit::CmdCloak(bool state)
 diff --git a/src/circuit/unit/FactoryData.cpp b/src/circuit/unit/FactoryData.cpp
 index a16e2e21..2956ec26 100644
 --- a/src/circuit/unit/FactoryData.cpp
