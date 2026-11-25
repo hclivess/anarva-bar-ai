@@ -380,16 +380,9 @@ void Update()
 			}
 			if (pTaken <= 0.f) continue;
 			rp.insertLast(msp[i]);
-			// what killing their extractor there takes from them: its cost + its yield until they rebuild it (their
-			// constructor's walk from their base and its build) - the same measure as what a raid takes from us
-			// (MexPorc::RaidLoss). With the whole horizon's yield, a raid on their spot outranked defending ours: our army
-			// raided one unit at a time while 27 of 27 extractors we built died to Pawns and Fleas (Feast, round 32).
-			float rebuild = Economist::Horizon();
-			CCircuitDef@ con = CheapestConstructor();
-			if (con !is null && Economist::mexT1 !is null)
-				rebuild = AiMin(rebuild, AiEnemyBasePos().distance2D(msp[i]) / AiMax(1.f, con.speed) + Economist::mexT1.buildTime / AiMax(1.f, con.buildSpeed));
-			const float yieldR = (Economist::mexT1 is null) ? 0.f : msi[i] * Economist::Extract(Economist::mexT1.GetName()) * rebuild;
-			rv.insertLast(pTaken * (mexV + yieldR));
+			// what killing their extractor there is worth: its cost + what it would extract over our horizon
+			const float yieldH = (Economist::mexT1 is null) ? 0.f : msi[i] * Economist::Extract(Economist::mexT1.GetName()) * Economist::Horizon();
+			rv.insertLast(pTaken * (mexV + yieldH));
 		}
 		raidPos = rp; raidVal = rv;
 	}
