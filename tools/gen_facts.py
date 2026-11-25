@@ -22,7 +22,7 @@ def scan(units_dir):
             if not re.search(r"\b%s\s*=\s*\{" % re.escape(name), text):
                 continue
             d = {"name": name}
-            for key in ("metalcost", "energycost", "workertime", "extractsmetal", "energyupkeep", "buildtime"):
+            for key in ("metalcost", "energycost", "workertime", "extractsmetal", "energyupkeep", "buildtime", "metalmake"):
                 m = re.search(r"\b%s\s*=\s*(-?[\d.]+)" % key, text, re.I)
                 if m:
                     d[key] = float(m.group(1))
@@ -45,6 +45,15 @@ def scan(units_dir):
             sr = [float(x) for x in re.findall(r"\bshield_radius\s*=\s*([\d.]+)", text, re.I)]
             if sr:
                 d["shieldradius"] = max(sr)
+            # a 'g' cell in the yardmap = must stand on a geothermal vent (engine yardmap code; a leading 'h' marks
+            # the high-resolution format)
+            ym = re.search(r'\byardmap\s*=\s*"([^"]*)"', text, re.I)
+            if ym:
+                cells = ym.group(1).replace(" ", "").lower()
+                if cells.startswith("h"):
+                    cells = cells[1:]
+                if "g" in cells:
+                    d["needgeo"] = 1.0
             bo = re.search(r"\bbuildoptions\s*=\s*\{(.*?)\}", text, re.S | re.I)
             d["buildoptions"] = re.findall(r'"([a-z0-9_]+)"', bo.group(1)) if bo else []
             defs[name] = d
@@ -126,7 +135,8 @@ def main():
     lines.append("}")
     lines.append("")
     for key, fn in (("stockpiletime", "StockpileTime"), ("metalpershot", "ShotMetal"), ("shieldradius", "ShieldRadius"),
-                    ("extractsmetal", "ExtractsMetal"), ("energyupkeep", "EnergyUpkeep"), ("factorytier", "FactoryTier")):
+                    ("extractsmetal", "ExtractsMetal"), ("energyupkeep", "EnergyUpkeep"), ("factorytier", "FactoryTier"),
+                    ("needgeo", "NeedsGeo"), ("metalmake", "MetalMake")):
         items = sorted((n, d[key]) for n, d in defs.items() if key in d)
         lines.append("dictionary %s_ = {" % key)
         lines.append(",\n".join('\t{"%s", %g}' % (n, v) for n, v in items))

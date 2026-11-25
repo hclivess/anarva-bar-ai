@@ -395,6 +395,79 @@ dictionary factorytier_ = {
 };
 float FactoryTier(const string& in name) { double v = 0; factorytier_.get(name, v); return float(v); }
 
+dictionary needgeo_ = {
+	{"armageo", 1},
+	{"armgeo", 1},
+	{"armgmm", 1},
+	{"armuwageo", 1},
+	{"armuwgeo", 1},
+	{"corageo", 1},
+	{"corbhmth", 1},
+	{"corgeo", 1},
+	{"coruwageo", 1},
+	{"coruwgeo", 1},
+	{"legageo", 1},
+	{"leganavaladvgeo", 1},
+	{"leggeo", 1},
+	{"legrampart", 1},
+	{"leguwgeo", 1}
+};
+float NeedsGeo(const string& in name) { double v = 0; needgeo_.get(name, v); return float(v); }
+
+dictionary metalmake_ = {
+	{"armcom", 2},
+	{"armcomboss", 5},
+	{"armcomcon", 2},
+	{"armcomlvl10", 50},
+	{"armcomlvl2", 3},
+	{"armcomlvl3", 5},
+	{"armcomlvl4", 9},
+	{"armcomlvl5", 14},
+	{"armcomlvl6", 20},
+	{"armcomlvl7", 27},
+	{"armcomlvl8", 34},
+	{"armcomlvl9", 42},
+	{"armcomnew", 2},
+	{"corcom", 2},
+	{"corcomboss", 5},
+	{"corcomcon", 2},
+	{"corcomlvl10", 50},
+	{"corcomlvl2", 3},
+	{"corcomlvl3", 5},
+	{"corcomlvl4", 9},
+	{"corcomlvl5", 14},
+	{"corcomlvl6", 20},
+	{"corcomlvl7", 27},
+	{"corcomlvl8", 34},
+	{"corcomlvl9", 42},
+	{"legcom", 2},
+	{"legcomecon", 5},
+	{"legcomlvl10", 50},
+	{"legcomlvl2", 2},
+	{"legcomlvl3", 5},
+	{"legcomlvl4", 9},
+	{"legcomlvl5", 14},
+	{"legcomlvl6", 20},
+	{"legcomlvl7", 27},
+	{"legcomlvl8", 34},
+	{"legcomlvl9", 42},
+	{"legcomoff", 2},
+	{"legcomt2com", 2},
+	{"legcomt2def", 5},
+	{"legcomt2off", 5},
+	{"lootboxbronze", 20},
+	{"lootboxgold", 80},
+	{"lootboxplatinum", 140},
+	{"lootboxsilver", 40},
+	{"raptor_hive", 100},
+	{"resourcecheat", 1e+06},
+	{"scavbeacon_t1", 2},
+	{"scavbeacon_t2", 4},
+	{"scavbeacon_t3", 8},
+	{"scavbeacon_t4", 16}
+};
+float MetalMake(const string& in name) { double v = 0; metalmake_.get(name, v); return float(v); }
+
 array<string> BuildOptions(const string& in fac)
 {
 	array<string>@ o;
