@@ -5,7 +5,12 @@ the code that implements it. Sources (public domain, kept locally under `ref/str
 Art of War* (Giles translation); Clausewitz, *On War*; Napoleon's *Military Maxims*.
 
 
-> **Status:** every mechanism below is implemented, but several are off by default until they win head-to-head tests. The README status table is the source of truth for what's on.
+> **Status (2026-11-25):** there are no feature flags any more; the `F_*` flags were folded into the code
+> (commit 5e66eba). Each mechanism below says where it lives now: the script brain
+> (`Anarva/stable/script/anarva/misc/brain.as`, namespaces such as `Brain::Director`, `Brain::Production`) or the
+> C++ core patch (`core/circuitai.patch`, branch `anarva129`). Anything not in the code is marked planned or limit.
+> Since the rework Anarvā has not yet won a full-length 1v1 against BARb hard; results quoted below from earlier
+> builds are history (see the [README](README.md) status).
 
 ## 1. Know the enemy: scouting decides everything
 
@@ -14,18 +19,21 @@ Art of War* (Giles translation); Clausewitz, *On War*; Napoleon's *Military Maxi
 >
 > "…foreknowledge cannot be elicited from spirits…" — XIII.5 (it must come from scouts)
 
-- **Army vs. scaling** (`Brain::Director`). Each update, the scouted enemy mobile threat is compared
-  with our power and drives the core's constructor-vs-army knob (`aiFactoryMgr.buildpowerRatio`):
-  - enemy weak → scale (more constructors, expand, tech)
-  - enemy strong → army
-  - **blind** → hedge and push scouts, because scaling on a guess is a gamble
-- A permanent scout quota of at least 3 rises when we're blind or jammed. Air scouts are bought on
-  jammer alert.
+- **Army vs. scaling.** Each update `Brain::Director` compares our army with the enemy army we know of,
+  summed per known enemy unit, at our trade rate (`ratio`). `Brain::EcoPos` sets the core's
+  constructor-vs-army knob (`aiFactoryMgr.buildpowerRatio`) from it:
+  - more constructors only while open extractor spots need claiming (claim walking time over the planning
+    horizon, see §17) and we are not weaker (`ratio >= 1`)
+  - weaker than what we know of → army first
+  - **blind** → the enemy is assumed to be at least as strong as we are, or as strong as last seen
+    (`Economist::EnemyThreat`), so not seeing the enemy never reads as being ahead
+- Scouting is by the value of vision (`Brain::Scout`, §10): the scout quota is the number of dark cells
+  worth more than a scout (at least 1). There is no fixed quota and no air-scout timer.
 - **What we can't see** (`Brain::Intel`):
   - A seen jammer is treated as a hidden army, a phantom threat on its cluster.
-  - Places where we keep dying get Dragon's Eyes, because sight is the only thing a jammer can't
-    stop.
-  - Junos clear jammers and radar.
+  - Places where we keep dying get Dragon's Eyes (when the metal lost there beats a camera), because
+    sight is the only thing a jammer can't stop.
+  - Junos clear jammers and radar (`Brain::Strategic`, when the known jammer metal beats a Juno).
 
 ## 2. Measure strength, then choose the fight (Sun Tzu III.9-10)
 
@@ -33,9 +41,13 @@ Art of War* (Giles translation); Clausewitz, *On War*; Napoleon's *Military Maxi
 > our army into two. If equally matched, we can offer battle; if slightly inferior in numbers, we can
 > avoid the enemy; if quite unequal in every way, we can flee from him."
 
-The Director's postures follow this ladder, using our power ÷ the enemy's seen mobile threat:
+An earlier build mapped our power ÷ the enemy's seen mobile threat onto named postures (below). Those ratio
+bands were hand-picked and are gone from the code. The current `Brain::Director` keeps only the ratio
+(ours ÷ needed) and the needed power: the attack quota is the needed power (§3), and `ratio < 1` ("can't win
+an open fight") is what holds back constructors, shields, launchers and silos and starts terrain
+fortification (§25). The table is kept as the reasoning the ratio stands for:
 
-| ratio | posture | behaviour |
+| ratio | posture (earlier build) | behaviour |
 |------:|---------|-----------|
 | ≥ 4 | ALLIN | small waves, constant pressure, close the game |
 | ≥ 1.6 | PRESSURE | frequent waves; raiders split off to hit the weak points |
@@ -47,11 +59,12 @@ The Director's postures follow this ladder, using our power ÷ the enemy's seen 
 
 > "The first and most important rule… to concentrate as much as possible." — Clausewitz
 
-- **Wave control** (`Brain::Army::MakeTask`). Every new combat unit joins *one* gathering wave, sized
-  by the Director. When it's full it launches together. This replaces the core's habit of either
-  never launching or trickling.
-- **Broken-squad recall.** A squad that has lost most of its power is pulled back to regroup. Feeding
-  units in one by one is the opposite of concentration.
+- **Wave control** (`Brain::Director` update). The core's attack quota is set to the needed power (known
+  enemy army plus the army guessed under jammers, ÷ our trade rate), and the raid quota to the enemy
+  raider threat ÷ our trade rate. A squad gathers until it reaches that and then launches together. This
+  replaces the core's config floors and its habit of either never launching or trickling.
+- **Broken-squad recall** (`Brain::Army::CheckSquads`). A squad that has bled and is now weaker than what
+  we'd send fresh is pulled back to regroup. Feeding units in one by one is the opposite of concentration.
 
 ## 4. Avoid strength, strike weakness (Sun Tzu VI.30-31)
 
@@ -61,60 +74,81 @@ The Director's postures follow this ladder, using our power ÷ the enemy's seen 
 > "Attack him where he is unprepared." — I.24
 
 - Raiding packs (`raid` quota) go after eco and builders. The core's threat map steers them away from
-  defences.
-- **A greedy enemy** (lots of buildings, little army) is punished: we switch to PRESSURE instead of
-  trying to out-boom him.
-- Attack target choice compares our wave with each enemy group's strength
-  (`thr_mod.attack` 0.85-1.05 instead of BARb's suicidal 0.6-0.8).
+  defences. Scouts also look for unwatched enemy extractors to raid (`Brain::Scout`, #74).
+- **A greedy enemy** (lots of buildings, little army) should be punished rather than out-boomed. The
+  earlier build did this through the PRESSURE posture; the current code has no separate rule for it
+  (planned).
+- Attack target choice compares our wave with each enemy group's strength. The config `thr_mod` ranges
+  are no longer read; the core's target choice is by value per distance and per health
+  ([AUDIT.md](AUDIT.md)).
 
 ## 5. The culminating point (Clausewitz)
 
 An attack loses strength as it advances; past its culminating point it should stop. That's the recall
-threshold: below 40% of peak power, and weaker than a fresh wave, a squad turns back.
+rule (`Brain::Army::CheckSquads`): once a squad is below its peak power and what is left, at our trade
+rate, no longer beats the quota a fresh squad is sized against, it turns back. (The 40%-of-peak line this
+section used to describe is not in the code.)
 
 ## 6. Economy is the base of war: efficiency, not imitation
 
 - **Extractors:** a T1 extractor (50 metal, 3 E/s upkeep) pays for itself in about 25 s, so take every
-  safe spot early. Moho/exploiter upgrades add about 6 m/s for 17-20 E/s, so they're gated by energy
-  headroom (`Brain::Eco`). An energy stall slows everything.
-- **Recycling** (`Brain::Recycler`). Obsolete eco gets turned back into metal:
-  - solars and winds once fusion carries the base
-  - fusions once advanced fusions carry the grid
-  - T1 makers once T2 makers carry conversion
-  - idle T1 units late in the game
+  safe spot early. Moho/exploiter upgrades add about 6 m/s for 17-20 E/s, so their upkeep is priced in.
+  In the code: the core ranks every builder job by seconds until payback at shadow prices (§16), and
+  `Brain::Production::MohoConTask` builds an upgrade constructor only when the upgrade pays its upkeep at
+  the converter price and the time it saves beats the constructor's cost (priced up while we're short of
+  army). An energy stall slows everything.
+- **Recycling** (`Brain::Recycler`). Obsolete eco and units get turned back into metal, by value, not by
+  fixed gates:
+  - any energy plant worse per metal than the best plant we can build now, when its metal now beats its
+    energy over the planning horizon and energy stays in surplus without it (`EcoReclaimUpdate`); this
+    covers solars and winds once fusion carries the base, and fusions once advanced fusions do
+  - T1 makers once T2 makers exist and energy still overflows
+  - combat units at home that a higher tier we own outclasses per metal (`Salvage`)
+  - idle caretakers whose metal beats the build power they actually apply (`NanoUpdate`)
+  - a reclaim starts only when its metal fits in storage; otherwise it asks for storage (`Brain::Storage`)
 
 ## 7. Do not repeat yourself (Sun Tzu VI.28)
 
 > "Do not repeat the tactics which have gained you one victory, but let your methods be regulated by
 > the infinite variety of circumstances."
 
-Postures are re-evaluated every update with hysteresis, never on a script timeline. Planned:
-randomized wave timing and attack axes.
+Decisions are re-evaluated every update from the live state, never on a script timeline. (The named
+postures and their hysteresis are gone, §2.) The old plan of randomized wave timing and attack axes is
+dropped: CLAUDE.md §2 forbids dice, so variety has to come from the changing situation.
 
 ## 8. Preparation against what can't be seen
 
-- Anti-nuke the moment a silo is seen, and proactively once rich.
-- Shields over the most valuable infrastructure cluster.
-- Static anti-air over infrastructure, scaled to the air metal we've seen.
+- Anti-nuke before the first missile could exist (`Brain::Strategic::NukeRisk`): its build and stockpile
+  time against the metal the enemy could have put into a silo since T2, times what a nuke would erase in
+  our base, against the anti-nuke's cost. A seen silo makes it certain.
+- Shields over the most valuable uncovered infrastructure, while what one covers is worth more than the
+  shield and our army covers what we need (`ratio >= 1`).
+- Static anti-air over infrastructure, scaled to the air metal we've seen (status unverified: not in
+  `brain.as`; whatever the core's defence planner does is not checked here).
 
 ## 9. Rapidity (Sun Tzu XI.19) and closing the game
 
 > "Rapidity is the essence of war."
 
-At 40 minutes BARb-style play is often far ahead and still hasn't won. A dominant force ratio switches
-to ALLIN, so advantage turns into a decision before the enemy recovers.
+At 40 minutes BARb-style play is often far ahead and still hasn't won. An advantage must turn into a
+decision before the enemy recovers. The earlier build had an ALLIN posture for this. The current code has
+no posture: because the attack quota is the needed power, a dominant army fills it at once and keeps
+launching.
 
 ## 10. Line of sight over radar dots
 
 A radar blip has no type, so it has no real threat, no counter and no good target. Only sight gives those.
 
-- **Implemented:**
-  - We keep sight continuously: air scouts on a timer whenever an air plant exists (every 3 min, every
-    90 s when blind or jammed), and ground scouts from any factory when there's no air plant.
-  - The scout quota is at least 3 (4 when blind).
-  - Dragon's Eyes go where we die.
-  - When blind, the Director hedges instead of scaling (see §1).
-- **Core behaviour:** the core keeps radar-only contacts as unknown types with a generic threat range.
+- **In the code** (`Brain::Scout`, issue #48):
+  - Each cell remembers when we last saw it. Seeing a cell is worth our metal that something hidden there
+    could reach before our army can respond, plus unidentified radar dots there and open enemy-side
+    extractor spots that may have been taken since. Picks are spread by direction.
+  - Scouts take the best cells (core switch `scoutMap`), and the scout quota is the number of cells worth
+    more than a scout (at least 1). No timers, no fixed quota.
+  - Dragon's Eyes go where we die (`Brain::Intel`).
+  - When blind, the enemy is assumed at least as strong as we are (see §1).
+- **Core behaviour:** the core keeps radar-only contacts as unknown types; their threat is the mean
+  identified threat ([AUDIT.md](AUDIT.md)).
 
 ## 11. Inferring the army behind a jammer from its projectiles
 
@@ -122,11 +156,13 @@ You usually judge what's behind a jammer by what is shooting at you from there.
 
 - **Core (BARb, already active):** when a unit is hit by something unseen, the core takes the weapon
   that hit it (its range and the unit types that carry it), projects back along the shot direction,
-  and places a **phantom enemy** of that type at the estimated firing position. Mobile phantoms last 1
-  minute, static ones 20, and they feed the threat map, pathing and attack decisions.
+  and places a **phantom enemy** of that type at the estimated firing position. They feed the threat map,
+  pathing and attack decisions. BARb's fixed lifetimes (1 minute mobile, 20 static) are replaced in the
+  core patch: a phantom is remembered while it could still be there ([AUDIT.md](AUDIT.md)).
 - **Anarvā adds:**
   - Seen jammers make their whole cluster count as defended before the first shot.
-  - The loss heatmap persists after the phantoms expire, and drives Dragon's Eyes and Fortify.
+  - The loss heatmap (decaying over the planning horizon) outlasts the phantoms, and drives Dragon's
+    Eyes, Fortify and extractor turrets (`Brain::MexPorc`).
   - Junos and scouts turn the guess back into sight.
 - **Limit:** the script API has no per-hit damage event, so the projection itself can't be tuned from
   script.
@@ -135,33 +171,40 @@ You usually judge what's behind a jammer by what is shooting at you from there.
 
 Cheap units do two jobs: scouting, and soaking enemy firepower (spam).
 
-- **Implemented** (`Brain::Production::Score`):
-  - Cheap units (under 150 metal) get a screening bonus scaled by the heavy and artillery share of the
-    seen enemy army. Big, slow shots spent on fodder are wasted.
+- **In the code** (`Brain::Production::Score`):
+  - Units with more health per metal than our army's average get a screening bonus scaled by the heavy
+    and artillery share of the seen enemy army. Big, slow shots spent on fodder are wasted. (No fixed
+    150-metal cutoff.)
   - It's computed from stats, never from unit names.
-- **Core behaviour:** once we field T3, BARb marks enemy T1 spam (Pawns, Grunts, Fleas…) as ignored
-  for target choice, so expensive units don't chase fodder. Decoy commanders are detected by the core.
+- **Inherited behaviour:** once we field T3, the factory script (`manager/factory.as`, BARb's list) marks
+  enemy T1 spam (Pawns, Grunts, Fleas…) as ignored for target choice, so expensive units don't chase
+  fodder. Decoy commanders are detected by the core (status unverified).
 
 ## 13. Target priority against a mixed army
 
 Some units exist only to distract: decoys, spam, scouts.
 
 - **What we steer:**
-  - which enemy *group* a wave commits to (strength vs our wave, `thr_mod`, distance)
+  - which enemy *group* a wave commits to (strength vs our wave, value per distance)
   - ignore flags for fodder and decoys
-  - per-unit threat weighting in `behaviour.json`
-- **Limit:** per-shot targeting inside a fight is done by the engine's unit AI; BARb's script API can't
-  set it. True priority (shoot the artillery before the Pawns) needs a game-side gadget.
+  - (the per-unit threat weighting from `behaviour.json` is no longer read by the core patch)
+- **Per-shot targeting** (core patch, switch `focusFire`, set on by `brain.as`): each unit in a squad
+  focuses the visible enemy in its range whose removal cuts the enemy's firepower most per point of
+  damage spent (threat ÷ remaining health), counting what its death blast takes with it (#44). This is
+  the "artillery before the Pawns" order; the earlier limit (script API can't set targets) no longer
+  holds.
 
 ## 14. Projectile and AoE evasion (micro)
 
 Sidestepping slow projectiles, and spreading out against splash, are per-unit micro.
 
-- **Limit:** the script API gives no per-unit move orders, and the BARb core doesn't dodge.
-- **Design for later:** a companion LuaUI widget or gadget that, for units we own, predicts slow
-  projectiles (artillery shells, missiles) heading at them and issues a short perpendicular move. It
-  would also keep a minimum spacing in squads that face enemy AoE (artillery, area weapons). This has
-  to live on the game side and can't be done from the AI scripts.
+- **In the core patch** (switch `strafe`, set on by `brain.as`): a shot is dodgeable when its flight time
+  (distance ÷ shot speed) times our speed exceeds its blast radius plus our size. Against the most
+  threatening dodgeable shooter, a squad unit's spot moves sideways by what it covers in one flight time,
+  switching side every flight time. Beams are not dodged. This uses the shooters' weapon facts, not the
+  projectiles in flight.
+- Squad spacing against splash comes from the splash geometry in the core patch ([AUDIT.md](AUDIT.md)).
+- **Still a limit:** seeing actual projectiles in flight needs a game-side widget or gadget.
 
 ## 15. Data, not imitation
 
@@ -174,8 +217,12 @@ Sidestepping slow projectiles, and spreading out against splash, are per-unit mi
 - **Lesson (b2):** copying that E:M ratio was a mistake. In this engine energy income also *unlocks
   tech*: fusion needs about 840 E/s of income before the core may build it. A lower energy target left
   b2 with zero fusions and 750 E/s at 30 minutes, and it lost every open map. Pros can run 11-16 E:M
-  because their metal income is huge. We keep BARb's energy curve and recover metal efficiency
-  elsewhere: the army share, the moho gate and recycling.
+  because their metal income is huge. (b2 was an early build.) BARb's energy table is no longer read:
+  the core patch builds energy by need and payback, and plans ahead the energy needed to spend our metal
+  income at the energy-per-metal of what our factories make (#86), so the E:M ratio follows from what we
+  build rather than from a copied curve.
+- **Evidence source:** per-minute stats of top-player replays are now in a SQLite database
+  (`runs/replays.db`, built by `tools/replay_db.py`).
 - **Team games are different.** Top team players (≤4v4, 25 player-games rated 35+) boom harder: about 34 m/s at minute 5 and 58 at 10 (duels: 25 and 48). They go T2 about **5-6 minutes earlier** (10.6 vs ~16 min), with eco value near 2× army at minute 10 (duels: ~1.5×). Allies share the front, so the planning horizon is longer, and the horizon formula is what has to capture that, not a copied timing. In 1vN, Anarvā has no allies covering it, which points the other way.
 - **Unit choices** come from capabilities read at runtime (damage against air, surface and underwater,
   health, range, speed, cost), so a balance patch changes the choice automatically.
@@ -187,36 +234,47 @@ value of its alternatives. Only **game facts** (unit costs, upkeep, extraction, 
 build power per constructor) and plain unit conversions may be constants. The shared model lives in
 `Brain::Economist`:
 
-- **Planning horizon H.** The expected remaining game is about the time already played (Lindy),
-  scaled by how safe we are (2P/(P+T)).
-- **Energy priced in metal** at the converter exchange rate.
-- **Investments** are made when their payback is shorter than H. T2 example: (lab + moho upgrades of
-  our *actual* extractor count) ÷ (extra metal − upkeep priced in metal). If the enemy has teched while
-  we're behind, our T1 army is losing value, which forces the move.
-- **Needed power** = known enemy army + the army guessed under seen jammers, divided by our measured
-  trade efficiency. Waves gather to it, and production splits between eco and army on our power ÷ needed.
+- **Planning horizon H** (`Economist::Horizon`). How long what we own keeps paying before the enemy can
+  take it: the time the enemy needs to build a force worth everything we own (our metal ÷ their income;
+  unseen, each enemy earns as fast as we do), plus the time to cross the map. (The earlier "about the time
+  already played" (Lindy) horizon was 0 s at the start, so every future value read 0.)
+- **Energy priced in metal** at the converter exchange rate (`Economist::MetalValue`). The core's builder
+  ranking uses shadow prices on top of that: metal is worth nothing while it overflows, and energy is
+  priced at our spending ratio (metal pull ÷ energy pull) while it binds, or at the metal per energy of
+  what we build when the planned spending will need more energy than we make.
+- **Builder jobs** (core patch, `BuilderManager`) are ranked by seconds until the job pays back at those
+  prices: travel + build + cost ÷ yield for extractors and plants, travel + build + the time our stock and
+  income need to cover the cost for everything else. BARb's 2000/10000-elmo job radii and the "NOW"
+  factory bands are gone.
+- **Investments** are made when their payback is shorter than H. T2 example (`Tech::Allowed`): (lab +
+  moho upgrades of our *actual* extractor count) ÷ (extra metal − upkeep priced in metal), and it must also
+  beat the next T1 extractor we could still claim, unless the lab's cost is already banked. If the enemy
+  has teched while we're behind, our T1 army is losing value, which forces the move.
+- **Needed power** = known enemy army (summed per known enemy unit, the same threat measure as ours; the
+  commander's D-gun adds no sustained damage, so a commander reads about 4.6 Pawns, not 113) + the army
+  guessed under seen jammers, divided by our measured trade efficiency. Waves gather to it, and
+  constructors wait while our power ÷ needed is below 1.
 
-**Tunables that remain** (debt, to be replaced by measured or derived values):
-- the opener window (6 min)
-- Fortify's heat floor and its distance band
-- the Recycler's surplus margins
-- Strategic's income conditions
-- Intel's eyes heat floor
-- the 0.5 wreck fraction
-- the Production score shape (range, speed and screening factors)
+The tunables this section used to list (opener window, Fortify heat floor and distance band, Recycler
+surplus margins, Strategic income conditions, Intel eyes heat floor, the 0.5 wreck fraction) are gone:
+each is now a comparison with a cost or a measured value, e.g. Fortify and Dragon's Eyes fire when the
+metal lost in a cell beats the turret or camera, and the wreck pool is the wreck metal actually on the map.
 
 ### Judgment numbers still in the code (debt, to remove)
 
-Removed so far: the turret tier is now the turret with the most power per metal; far wrecks are weighted
-by our share of the exchange, trade / (1 + trade).
+The full inventory and what replaced each item is [AUDIT.md](AUDIT.md) (the owner closed the constants
+rework on 2026-11-25, #71 and #42). The items this list used to hold are gone: `workers * 0.5`, the silo
+clock, the Juno and tactical-launcher gates (now value tests), the 250-metal `infra` cut (every structure
+counts), the commander `hide` config values (no longer read by the core), `CORE_BUILDER_SHARE` and the
+posture bands.
 
-These are not game facts. They are numbers I chose, so they break the no-thresholds rule until replaced:
+Verified leftovers in the code (2026-11-25):
 
-- Energy plant lead time assumes half our builders work on it (`workers * 0.5`).
-- Our own nuke silo timing (minute 30, 90 metal/s), the Juno and tactical-launcher gates.
-- The `infra` list counts buildings of ≥ 250 metal as infrastructure.
-- Commander safety values in the configs (time 180, threat 5, radius 2000/1200).
-- `CORE_BUILDER_SHARE = 30`, the posture labels' ratio bands (logging only).
+- Turret, camera and wall jobs are queued in the NORMAL band, below income jobs (HIGH): a fixed ordering,
+  not a value (open in [AUDIT.md](AUDIT.md)).
+- A second anti-nuke when an enemy silo is seen waits until our infrastructure is worth more than twice
+  the anti-nukes' cost (`Strategic::Update`).
+- The T1 spam list ignored once we field T3 is BARb's name list (`manager/factory.as`).
 
 Game facts read from unit files (converter rate, 75% conversion level, constructor build rate, build
 times, mine and silo costs) are not on this list: they are what the game *is*, and they get regenerated
@@ -227,16 +285,22 @@ after a balance patch.
 An energy stall slows every constructor and factory at once, and a metal shortfall stalls production.
 Build power must follow metal income.
 
-- Constructor need follows the core's own rule: build power = income × buildpowerRatio. A T1
-  constructor is about 4.25 build-speed units (85 workertime).
-- **Lesson (b3):** cutting constructors whenever we were behind produced a death spiral: income fell
-  from 20 to 8 m/s while BARb grew to 50. Now the economy is only cut while we're *pushed back at home*.
-  A deficit far from home keeps the economy growing.
+- Constructor need (`Brain::EcoPos`): a constructor pays only through work the ones we have can't do,
+  i.e. open extractor spots to claim. Claiming is limited by walking: one constructor takes a spot per
+  (walk from base + build) seconds, so the count needed is the sum of that over the unclaimed spots ÷ the
+  planning horizon. While we have fewer and are not weaker than the enemy army we know of
+  (`ratio >= 1`), the factories make constructors; otherwise the knob holds constructors where they are
+  and the factories make army. A T1 constructor is about 4.25 build-speed units (85 workertime).
+- **Lesson (b3, early build):** cutting constructors whenever we were behind produced a death spiral:
+  income fell from 20 to 8 m/s while BARb grew to 50. The later "cut only while pushed back at home" rule
+  is no longer in the code: `Assess::pushedBack` is only logged.
 - During an energy stall:
-  - Production defers to the core, whose first response is energy.
-  - Redirect stops assisting.
-  - The moho gate blocks new upkeep.
-  - Converters switch off below their storage level.
+  - Production defers to the core (`Production::MakeTask` returns nothing), and energy wins the builder
+    ranking because binding energy is priced at our spending ratio.
+  - Builders stop assisting factories (`isAssistRequired` is false while energy stalls or metal runs dry,
+    `manager/economy.as`).
+  - The Recycler gives cheap plants back to the core if the big plants no longer cover our pull.
+  - Converters switch off below the game's converter level (mmLevel, a game rule).
 
 ## 18. Wrecks are the fastest metal
 
@@ -244,18 +308,23 @@ Rez bots (Lazarus, Necro, Legion rez bot) reclaim wrecks, resurrect them into fr
 trees and plants for energy. They cost 130 metal, move at speed 78 and have 200 build power.
 
 - **BARb's flaw:** its factory weights almost never build them, and Cortex sends its Necros scouting.
-- **Anarvā:** fresh wrecks ≈ half the metal of recent losses and kills (decaying windows). A rez bot
-  is built while that pool is worth more than the rez fleet already harvesting it. The lab-to-rez-bot
-  map comes from unit facts, because the API can't list build options.
+- **Anarvā** (`Brain::Production::RezToBuild`, `Brain::RezLab`, `Brain::ReclaimUpdate`): the pool is
+  the wreck metal actually on the map (C++ bridge `AiGetWrecks`). A rez bot is built while that pool is
+  worth more than the rez fleet plus one more bot. When none of our factories can make rez bots (a
+  vehicle opening), a bot lab is ordered once the pool beats the lab plus one bot. Each wreck field is
+  reclaimed (or resurrected, by a rez bot) by the constructor that reaches it soonest, when its metal
+  minus the walk and the risk beats that constructor's current job. `RezLab` reads build options from unit
+  facts (`facts.as`); `RezToBuild` still maps lab to rez bot by name.
 
 ## 19. Redirecting build power, and priority toggles
 
 - **Redirect:** the share of constructor build power that should serve the army equals the army
-  deficit. Those constructors get guard (assist) tasks on factories. With a surplus they go back to
-  eco work.
-- **Limit:** BAR's build-priority toggles are unit commands handled by a game gadget, and the script
-  API can't send unit commands. The nearest lever is task priority. Real toggles belong in the same
-  game-side widget as dodging (§14).
+  deficit. The script's Redirect rule is no longer in the code. In the core patch, assisting a factory
+  competes with every other builder job on the same payback-time ranking (§16), with BARb's assist caps
+  removed. Threatened builders fall back to assisting the factory they reach soonest
+  (`Brain::BuilderSafeUpdate`).
+- **Limit:** BAR's build-priority toggles are unit commands handled by a game gadget. They are not
+  implemented, neither in the scripts nor in the core patch. The nearest lever is task priority.
 
 ## 19b. Geothermal (gap)
 
@@ -288,22 +357,28 @@ loss heat near the site. The same trade decides where rally points and the next 
 
 ## 21. The script API ceiling, and the path past it
 
-Measured so far:
-- **1v1 vs BARb-hard is met** at ≥2:1 on every map type.
-- **1v2 is 0–11** across every variant tried: Fortify, commander zone, the economy gates.
+History (early builds from before the 2026-11-24 rework, which still mostly ran BARb's own logic; not
+re-measured since):
+- 1v1 vs BARb-hard was met at ≥2:1 on every map type ("M1 met").
+- 1v2 was 0–11 across every variant tried: Fortify, commander zone, the economy gates.
 
-Anarvā out-ecoes each BARb individually but not both combined, gets pushed back, and loses the
-commander. Almost every remaining lever is blocked by the **script API**, not by the reasoning:
+Current state: since the rework no full-length 1v1 against BARb hard has been won yet; that is the
+current work.
+
+The early build out-ecoed each BARb individually but not both combined, got pushed back, and lost the
+commander. Most of the levers it lacked were blocked by the **script API**:
 
 - no unit commands: dodging, explicit commander positioning, focusing one opponent's base or commander
 - no feature or vent queries: wreck fields, geothermal
 - no per-enemy lists: target priority, snipe targets
 
-CircuitAI is open source (GPL-2.0). The next major lever is a **fork of the C++ core** that exposes
-exactly these to the scripts: a unit move/attack command, feature and vent queries, and per-enemy
-iteration with type, position and owner. That's a C++ build against the Recoil AI interface, heavier
-than scripts and configs, but it's what 1v6 most likely needs. A game-side companion gadget covers
-whatever the AI interface can't see (projectiles, burn zones).
+CircuitAI is open source (GPL-2.0). The **fork of the C++ core** now exists (`core/circuitai.patch`,
+applied to `ref/circuitai` branch `anarva129`). Its bridge gives the scripts the enemy list (position,
+velocity, type, cost, ids, LOS/radar flags), enemy groups, wrecks, metal spots, line of sight,
+elevation and threat, and lets them assign, abort and enqueue tasks for our units. In the core itself it
+adds focus fire (§13), dodging (§14), height-aware artillery and squad spots, and the payback ranking of
+builder jobs (§16). Still missing: geothermal vent queries, projectiles in flight and burn zones; a
+game-side companion gadget would cover what the AI interface can't see.
 
 ## 22. How humans beat several hard BARbs (solo replays)
 
@@ -313,7 +388,7 @@ fought each other (MR_Okay and BRICS_PLUS on Greenest Fields, the Oort Cloud gam
 1vN games are Knizek (vs 4 hard-aggressive, Ancient Bastion, a walled base map), NoviceKing99 (vs 3 hard,
 Shore to Shore) and FloBoo (vs 8, Full Metal Plate, a flat all-metal map). Edict (vs 2 on Comet Catcher),
 Gundlach (vs 4, Ring Atoll) and Refrog (vs 2) are queued for playback. The table mixes both kinds; the
-boom pattern holds in the allied games too, but the army ratio is lower in FFA,, played back headless and measured every minute (`tools/fetch_vsbots.py`,
+boom pattern holds in the allied games too, but the army ratio is lower in FFA, played back headless and measured every minute (`tools/fetch_vsbots.py`,
 `tools/analyze_vsbots.py`):
 
 | minute | human income vs ONE bot | human army vs ALL bots combined |
@@ -333,13 +408,13 @@ boom pattern holds in the allied games too, but the army ratio is lower in FFA,,
   economy can afford it (Oort Cloud: 85k at 20 min, 265k at 25 min).
 - **The reasoning:** BARb armies gather at home and don't punish early greed, so an enemy army sitting
   in its own base is no threat. What matters is force **projected at us**.
-- **Anarvā today:** about 1.3× one bot's income, 1–3 points short of what the humans reach. That gap,
-  not the army, is what to close first.
-- **`F_BOOM`** (constructors vs army scale on *pressure*, home losses relative to a minute of income,
-  not on enemy presence) went 0–6 in 1v2. Booming alone isn't enough: the AI booms but its economy
-  doesn't grow like the humans' does. Next: find *what* the humans build to get 2–3× (constructor
-  count, converter and advanced-extractor timing, rez bots) and compare it minute by minute with
-  Anarvā's new `[ANV] eco` log.
+- **Anarvā then** (early build, before the 2026-11-24 rework; not re-measured since): about 1.3× one bot's
+  income, 1–3 points short of what the humans reach. That gap, not the army, is what to close first.
+- **`F_BOOM`** (early build, a flag that no longer exists: constructors vs army scaled on *pressure*,
+  home losses relative to a minute of income, not on enemy presence) went 0–6 in 1v2. Booming alone
+  wasn't enough: the AI boomed but its economy didn't grow like the humans' does. Next: find *what* the
+  humans build to get 2–3× (constructor count, converter and advanced-extractor timing, rez bots) and
+  compare it minute by minute with Anarvā's `[ANV] eco` log and the replay database (`runs/replays.db`).
 
 ## 23. Space, efficiency and the cheapest energy that fits
 
@@ -365,8 +440,10 @@ time at our real build power; until then it *costs* drain. The same goes for fac
 the T2→T3 transition (an experimental gantry plus its first unit is minutes of drain with zero
 output). So every investment's value is `return × (horizon − time to finish)`, with time to finish =
 cost ÷ the build power actually assigned to it. Storage must bridge the drain while it builds, or the
-investment starves everything else (§17). The payback-based tech gate (`F_TECH`) already uses
-time-to-finish; the eco chooser must do the same for power plants.
+investment starves everything else (§17). In the code: the core's builder ranking (travel + build +
+payback, §16) and its energy chooser (build time at our build power + payback) include time to finish,
+and so does the anti-nuke's readiness (`NukeRisk`). The T2 gate (`Tech::Allowed`, using
+`Economist::MohoPayback`) compares payback with the horizon but has no build-time term yet.
 
 ## 25. High ground and chokepoints
 
@@ -381,8 +458,10 @@ half of the route to the farthest enemy (our choke) and the highest passable gro
 it on our side. Glacier Pass: chokes 160–224 wide with high ground 150–190 elmos above them. Colorado: a
 32-wide choke with high ground 275 above.
 
-**`F_TERRAIN` (on):** while we can't win an open fight, or whenever we're outnumbered (1vN), Anarvā
-builds the best turret its economy allows on that high ground and dragon's teeth across the choke mouth.
+**In the code (`Brain::Strategic::TerrainFortify`):** while we can't win an open fight (`ratio < 1`), or
+whenever we're outnumbered (1vN), Anarvā builds the turret with the most power per metal it can build on
+that high ground (if it would survive there), dragon's teeth across the choke mouth, and mines beyond the
+teeth once it has a minelayer. One more turret whenever something has come at us since the last order.
 Attackers stall in the choke under fire from above (Sun Tzu X: "occupy the raised and sunny spots, and
 wait for the enemy").
 
@@ -415,15 +494,18 @@ How Anarvā takes this on:
 
 - **One currency, one arbiter.** Every option (an extractor, a turret on high ground, a converter, a
   wave, a retreat, a raid) is valued as expected metal-equivalent gained over the planning horizon,
-  minus risk. The Director compares the options; no module wins by being earlier in a rule list. This
-  is why there are no static thresholds: a threshold is a frozen priority.
+  minus risk. That is the aim. Today each module compares its own option with its cost in this currency
+  (the Director only supplies the strength ratio and the needed power), and the core ranks builder jobs
+  on one payback-time scale; there is no single arbiter across all modules yet. This is why there are no
+  static thresholds: a threshold is a frozen priority.
 - **Value depends on what comes next.** A target's worth includes what killing it enables. The radar
   that sights for a turret line, the anti-nuke that covers the base, the AA screen over the eco: each is
   worth the follow-up it opens, not its own cost. Sequenced attacks are an argument in several moves
   (issue: attack sequencing).
 - **Refusing a fight can win it.** Giving up extractors to keep the army, when help or a better
-  battlefield is coming, is a present loss for a later gain. The recall and HOLD/TURTLE postures are
-  the start of that; the value of territory has to be weighed against the army that defends it.
+  battlefield is coming, is a present loss for a later gain. The recall (§5) and `Brain::Hold` (which
+  defends an asset only if enough units can be there before the enemy, and otherwise doesn't feed units
+  in) are the start of that; the value of territory has to be weighed against the army that defends it.
 - **Losing trades can be strategic.** Cheap raids that force the enemy to build counters and delay its
   economy succeed even at bad local trades. Raids are judged by the enemy's production response, not
   only by kills.
@@ -447,12 +529,12 @@ what one more of it adds, as long as one more still repays its cost:
 
 | What | Sized against | Rule (status) |
 |---|---|---|
-| Constructors for expansion | free extractor spots on our share of the map, spot spacing, constructor speed | n* = F·√(s·t / 2c) (F_EXPAND; worse in 1v3, off) |
-| Rez bots | wreck metal on the map: everything that died × wreck share, far fights at half | one more while pool > fleet cost + one bot (F_REZ; testing) |
-| Converters | spare energy that would be thrown away | as many as the spare runs, the type with the fastest payback incl. build time (F_CONVERT; off) |
-| Turrets at the choke | enemy force projected at us; the army deficit | one per attack (on); metal deficit (F_DEFSIZE; worse, off) |
-| Nanos | metal overflowing storage | (F_WASTE; off) |
-| Build power overall | metal income × the Director's scale | core rule, scaled by surplus/deficit (on) |
+| Constructors for expansion | unclaimed extractor spots, walk from base, constructor speed and build time | Σ(walk + build) ÷ horizon, only while `ratio >= 1` (`Brain::EcoPos`). The earlier n* = F·√(s·t / 2c) (F_EXPAND) is gone |
+| Rez bots | wreck metal actually on the map (bridge) | one more while pool > fleet cost + one bot (`Production::RezToBuild`); a bot lab when none of our factories can make one (`Brain::RezLab`) |
+| Converters | spare energy that would be thrown away | status unverified: not decided in `brain.as`, so left to the core's economy manager (not checked). The F_CONVERT rule no longer exists |
+| Turrets at the choke | enemy force projected at us | one per attack (`Strategic::TerrainFortify`); the metal-deficit variant (F_DEFSIZE) is gone |
+| Nanos | build power they actually apply | idle ones are reclaimed when their metal beats their use (`Recycler::NanoUpdate`); building them: status unverified (core). F_WASTE is gone |
+| Build power overall | open extractor spots and the army ratio | `EcoPos` sets the core's `buildpowerRatio` (§17) |
 
 Scale changes during the game: map size, number of players, game time, how much has died. So the
 counts are recomputed every update, never fixed at start.
@@ -474,10 +556,12 @@ among several, and the reasoning is what transfers:
 - **A tier up wins the exchange.** T2 against T1 trades several times better per metal, so the lab must
   be ready *before* arrival. The T2 timing follows from the expected contact time.
 - **Over-defending is the same mistake.** Turrets sized to an army that hasn't come yet were measured
-  worse (F_DEFSIZE, off).
-- **Limit:** the script can't list enemy units with positions, so arrival time can only be estimated
-  (path length ÷ speed, radar contact via losses near home). Exact contact timing needs the C++ path
-  (§21).
+  worse (F_DEFSIZE, early build; the flag no longer exists).
+- **In the code:** the C++ bridge now lists enemy units with position and velocity (§21).
+  `Brain::Hold` assigns each armed enemy to the asset of ours it is closing on soonest and defends that
+  asset with the units that can be there before it, nearest first, or not at all. Lead time against
+  arrival for *production* (start the one-tier-up answer when its build time reaches the enemy's arrival
+  time) is not implemented yet.
 
 ## 30. The commander, from 60 replays
 
@@ -500,13 +584,17 @@ What transfers (the reasoning, not the routes):
   doesn't end the game, it stays out there.
 - BARb keeps its commander home and loses it there anyway (many deaths at minutes 5-6, close to home):
   staying back is not safety.
-- Implementation: F_COMMFWD (extractor claims by gain - risk), F_COMMFOG (unseen strength counts as
-  danger), next: the forward post (value = the vision it gives, see issue #48, plus the spots it holds).
+- Implementation: the commander takes a job only when its gain beats P(death) there × everything we own
+  (`Brain::CommanderTask`, `CommGuardUpdate`); unseen enemy strength counts as danger (`CommFog`, was
+  F_COMMFOG). The script's forward extractor claims (`CommForward`, was F_COMMFWD) are no longer called:
+  the core's builder ranking picks the commander's jobs, and the script keeps only the risk decision.
+  Next: the forward post (value = the vision it gives, see issue #48, plus the spots it holds).
 
 ## Planned
 
-- Walls and dragon's teeth at chokes, in front of defence lines (Sun Tzu's terrain chapters; HOLD and
-  TURTLE).
-- Holding chokepoints with static defence in 1vN.
-- Feints: a raid on one flank before the main wave hits another (I.20, "hold out baits").
-- Production that picks the next unit by cost-effectiveness against the scouted composition.
+- Walls and dragon's teeth at chokes, in front of defence lines (Sun Tzu's terrain chapters). Teeth
+  across the analysed choke are in the code (§25); walls in front of other defence lines are not.
+- Holding chokepoints with static defence in 1vN: in the code for the analysed choke (§25).
+- Feints: a raid on one flank before the main wave hits another (I.20, "hold out baits"). Not built.
+- Production that picks the next unit by cost-effectiveness against the scouted composition: in the code
+  (`Brain::Production::Score`, TACTICS.md §1).

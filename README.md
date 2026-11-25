@@ -1,235 +1,193 @@
-# Anarvā — a smarter Skirmish AI for Beyond All Reason
+# Anarvā — a Skirmish AI for Beyond All Reason
 
 ## What "Anarvā" means
 
 *Anarvā* comes from the Sanskrit *anarvan*: unrestrained, boundless, irresistible. In the Bhāgavata
 Purāṇa (6.10), Anarvā is one of the generals who served under Vṛtrāsura, among the asura commanders
 (with Namuci, Śambara, Puloma and others) who led his armies against Indra's devas. The name is the
-design. BARb plays by arbitrary constraints: hand-tuned cutoffs, fixed timers, gathering thresholds it
-can never reach, a factory mix that ignores what it sees. Anarvā removes them. Nothing it does is
-"because the number says so". Every choice is argued from the situation in front of it.
+design. BARb plays by arbitrary constraints: hand-tuned cutoffs, fixed timers, dice rolls, a build order
+from a table. Anarvā removes them. Every choice is argued from the situation in front of it.
 
-## How it works
+## Status (2026-11-25)
 
-Anarvā runs on BARb's C++ core (CircuitAI) and adds its own AngelScript brain and configs. Its rule is
-**no static thresholds**: every choice compares the live marginal value of the alternatives, worked out
-from game facts (unit costs, upkeep, converter rates) and live measurements (force ratio, trade
-efficiency, front movement, income growth, overflow).
+**Anarvā does not beat BARb yet.** It is being rebuilt from BARb's logic into its own decisions, and
+since that rework it has not won a full-length 1v1 against BARb hard. Earlier results ("9–4 vs BARb
+hard") came from a build that still ran BARb's logic underneath. They are history, not the current
+state.
 
-Every module sits behind a feature flag (`F_*` in `script/anarva/misc/brain.as`). A module ships **on**
-only after it has won head-to-head A/B tests, every map from both sides, against the best-measured
-build. Status as of this commit:
+**What changed in the rework:**
+- Every random number and hand-picked constant in the scripts, configs and the C++ core became a computed
+  decision ([AUDIT.md](AUDIT.md) lists each one and what replaced it).
+- The feature flags were folded into the code.
+- The first games after the rework exposed a series of economy and strength-estimation bugs, which have
+  been fixed (issues #81–#88).
 
-| Module | Default | Evidence |
-|---|---|---|
-| Recycling obsolete eco (solar/wind → fusion → advanced fusion, T1 makers) and salvage of idle T1 units | **on** | part of the first build (7–3 vs BARb-hard) |
-| Jammer intel: phantom threat on seen jammers, loss heatmap → Dragon's Eyes, Juno on jammer alert | **on** | first build |
-| Strategic: anti-nuke when an enemy silo appears; EMP/tactical launcher, nuke under anti-nuke cover and shields, only while our army covers what we need | **on** | first build; luxury spending is gated on the force ratio |
-| Broken-squad recall (first-gen rule) | **on** | first build |
-| Constructor-rich opener | **on** | **13–2–1 vs the previous build** |
-| Director scale knob (constructors vs army from scouted surplus/deficit; the economy is cut only when pushed back at home) | **on** | **9–4–3 vs the previous build** |
-| Commander safety (configs: hide earlier, at lower threat, wider danger radius) | **on** | **1.5 → 2.25 vs BARb-hard** |
-| Terrain defence: turrets on the high ground over our choke, dragon's teeth across it (map analysis) | **on** | new; on because chokes and high ground decide 1vN, being measured |
-| Boom on pressure, not presence (the human playbook vs several BARbs) | off | 0–6 in 1v2 so far |
-| Defeat in detail (1vN: size waves against one opponent, not the sum) | off | 1–11 in 1v2 (the first 1v2 win) |
-| Production chooser (Lanchester damage × health, reach, sight, screening, travel time; rez bots) | off | rejected 2–1–8 |
-| Waves and quotas, overflow handling, tech gate, moho gate, assist redirect, scouting timer, static AA, fusion recycling | off | rejected or neutral in A/B |
+**Where it stands against top players.** The yardstick is the best players' replays, not BARb. These
+are the average winners of 61 top-player 1v1 games in the replay database, against Anarvā in its latest
+1v1 tests against BARb hard:
 
-The reasoning behind each module is in [STRATEGY.md](STRATEGY.md) (economy, tech, intel, terrain; sources
-Sun Tzu, Clausewitz, Napoleon and replays of top players and of humans beating several BARbs) and
-[TACTICS.md](TACTICS.md) (composition, engagement, transports, micro limits). Every experiment and its
-result is logged in [PROGRESS.md](PROGRESS.md) and [progress.json](progress.json). Open work is tracked
-in [GitHub issues](https://github.com/hclivess/anarva-bar-ai/issues).
+| Minute | Extractors | Constructors | Factories | Army (metal) | Anarvā (latest tests) |
+|---|---|---|---|---|---|
+| 2 | 3.4 | 3.7 | 1.0 | 102 | 2–3 extractors, 1 constructor |
+| 4 | 9.0 | 7.3 | 1.0 | 593 | 3–4 extractors |
+| 6 | 14.1 | 12.7 | 1.4 | 1185 | 4–9 extractors |
+| 8 | 20.1 | 20.2 | 2.0 | 2756 | 5–12 extractors, 1 factory, army 1300–2900 |
+| 10 | 23.6 | 29.4 | 2.7 | 4460 | |
 
-**Goal:** one Anarvā beats six BARb opponents on every map type.
+The gap is expansion and production capacity: winners keep about one constructor per extractor and add a
+second factory by minutes 6–8. This is the current work.
 
-**Status:**
+**Goal:** first 100% of 1v1 games against BARb hard, then one Anarvā against six BARbs on every map type.
 
-- 1v1: Anarvā beats BARb-hard **9–4 with 3 draws** (2.25), with at least 2:1 on every map type.
-- 1v2: not there yet. **1 win in 12** (Throne). It out-earns each BARb about 1.3×. Humans who beat
-  several BARbs out-earn each bot 2–3× (STRATEGY.md §22), and closing that economic gap is the current
-  work.
+## How it decides
+
+Anarvā runs on its own build of BARb's C++ core (CircuitAI plus [`core/circuitai.patch`](core/circuitai.patch))
+with its own AngelScript brain (`Anarva/stable/script/anarva/misc/brain.as`). The rules (from
+[CLAUDE.md](CLAUDE.md)):
+
+- **No random numbers, no hand-picked constants.** A decision is a live comparison of value
+  (metal-equivalent over the planning horizon, minus risk), from measured game state and unit facts. The
+  only numbers allowed are game facts (frame rate, a unit's cost, range, speed), unit conversions and
+  guards against division by zero.
+- **Copy the reasoning behind what top players do, never their numbers.** Every strategic claim cites the
+  replays it rests on.
+
+Examples of what that means in practice:
+
+| Decision | How it is computed |
+|---|---|
+| Planning horizon | how long what we own keeps paying before the enemy can take it: the time they need to build a force worth all we own, plus the time to cross the map |
+| Which job a constructor takes | seconds until the job pays back at *shadow prices*: metal is worth nothing while it overflows, energy is priced at our own spending ratio while it is the bottleneck, and a job without a yield (lab, turret) is paid from stock and then income |
+| How much energy | the energy needed to spend the metal we earn, at the energy/metal ratio of what our factories build. Converters' draw counts as surplus, not need |
+| How many constructors | enough to claim the unclaimed extractor spots within the horizon (walk + build per spot), and only while we are not weaker than the enemy army we know of |
+| Strength | each known enemy unit counted once, on the same Lanchester measure as ours: sqrt(dps × health). The commander's D-gun is excluded, since it fires only on order |
+| When to tech | the T2 upgrade's payback must beat both the horizon and the next T1 extractor, unless the lab's cost is already banked |
+| Reclaiming our own plants | only when a plant we can build now (not vent-bound) makes more energy per metal, and energy stays in surplus without it |
+| Faction | from the commander that actually spawned: a random side resolves only then |
+
+Every builder choice is logged with its alternatives (`[ANV-PICK]` lines: the job taken and the best job
+of each other type, in seconds), so each economic decision can be read from the log.
+
+## Replay study
+
+500 games of leaderboard players (1v1 to 8v8, FFA) are downloaded to `ref/lib/` (see
+[REPLAYS.md](REPLAYS.md)). `tools/replay_db.py run` plays each one back once, headless, with the analyzer widget, and stores
+everything in SQLite (`runs/replays.db`), so no replay is ever played twice:
+
+- per minute and player: metal and energy income, banked and storage, spending, army, defence and economy
+  value, constructors, build power, extractors and their income, factories
+- every unit built, with time, place and kind
+- the damage and kill matrix by attacker unit and victim unit, for counters
+- the commander's track, what it built and where it died
+
+1v1 is parsed first. Progress: `python tools/replay_db.py status`.
 
 ## The C++ core
 
-Anarvā used to run only as scripts on top of BARb's prebuilt DLL. The scripts could only see the totals the DLL
-chose to share (income, overall enemy threat, enemy cost per role), never "this enemy is here". Anarvā now
-builds its own DLL from BARb's CircuitAI source with a small patch (`core/circuitai.patch`, built by
-`tools/build_dll.sh` under MSYS2 MinGW64), so the scripts can see what the core sees. Strategy stays in script;
-the core only supplies facts and hands-free mechanics, so it rarely needs rebuilding.
+The scripts see the battlefield through a bridge the patch adds:
 
 | Script API | What it gives |
 |---|---|
-| `AiGetEnemies(pos, vel, def, cost, flags)` | every known enemy: position, velocity, type (null for radar blips), metal cost, LOS/radar/being-built/paralyzed flags |
-| `AiGetEnemyGroups(pos, cost, threat)` | the core's clusters of enemy units: centre, metal, threat |
-| `AiGetTeamUnits()` | all our units |
-| `AiGetElevation(x, z)`, `AiMinElevation()`, `AiMaxElevation()` | terrain height |
-| `aiThreat.GetThreatAt(unit or def, pos)` | how much enemy fire a unit (type) would take at a spot |
-| `def.GetRangeAt(heightDiff)`, `def.IsBallistic()` | weapon reach from a given height, using the engine's own rule (cannons reach further downhill, lasers lose a little either way) |
-| `aiMilitaryMgr.EnqueueDefendAt(pos, power)`, `AbortTask(task)` | a defend task anchored at any spot (an expansion, a ridge), held until the script releases it |
+| `AiGetEnemies(...)` | every known enemy: position, velocity, type, metal cost, flags, health, build progress |
+| `AiGetEnemyGroups(...)` | the core's clusters of enemy units: centre, metal, threat |
+| `AiGetTeamUnits()`, `AiGetMetalSpots(...)`, `AiGetWrecks(...)` | our units, extractor spots, wrecks |
+| `AiGetElevation(x, z)` and terrain queries | height, line of sight |
+| `aiThreat.GetThreatAt(unit or def, pos)` | enemy fire a unit would take at a spot |
+| `def.GetRangeAt(heightDiff)`, `def.CanBuild(def)`, `def.GetRadius()` | reach from a height, build options, footprint |
 
-Core behaviour changed in the patch:
-- **Artillery picks its firing spot by height.** For each enemy building it could shell, it searches the ground
-  around the target for spots where the target is in range from that spot's height and the threat map shows no
-  enemy fire, then goes to the one it reaches soonest. High ground widens the set of spots that qualify, so
-  artillery climbs exactly when a hill gives it reach or safety, with no hill bonus to tune.
+Unit facts the bridge can't see (build options, stockpile times, extraction, upkeep, geothermal vents,
+commander metal make) are generated from the game's unit files by `tools/gen_facts.py` into `misc/facts.as`.
 
 ## Install
 
 You need Beyond All Reason installed and started at least once (so it has downloaded an engine).
 
-### From a release (recommended)
+### From a release
 
 1. Download the archive for your OS from the [latest release](https://github.com/hclivess/anarva-bar-ai/releases/latest):
    - Windows: `anarva-<version>-windows-x64.zip`
    - Linux: `anarva-<version>-linux-x64.tar.gz`
 2. Extract it. Don't run the installer from inside the zip.
-3. Run the installer:
-   - Windows: double-click `install.cmd`.
-   - Linux: run `./install.sh` in a terminal.
+3. Run the installer: double-click `install.cmd` on Windows, or run `./install.sh` on Linux.
 
-   It finds your BAR data folder. If it finds several, or none, it asks you for one, and you can also
-   pass the path as an argument. It copies `Anarva/stable` there, including Anarvā's own core library (`SkirmishAI.dll` /
-   `libSkirmishAI.so`: BARb's CircuitAI plus the bridge the scripts need, built for engine 2026.09.03).
-   Every step is printed.
-4. The lobby lists only its built-in AIs by default. To show Anarvā, create an empty `devmode.txt` in
-   the data folder (the installer offers to do it), restart the lobby, then open
-   **Settings → Developer** and untick **simple AI list**. Anarvā appears as **"Anarva stable"**.
+   It finds your BAR data folder. If it finds several or none, it asks you, and you can also pass the
+   path as an argument. It copies `Anarva/stable` there together with Anarvā's own core library
+   (`SkirmishAI.dll` / `libSkirmishAI.so`). The scripts need that core's bridge, so BARb's stock library
+   won't run them.
+4. The lobby lists only its built-in AIs by default. To show Anarvā:
+   - Create an empty `devmode.txt` in the data folder (the installer offers to do it).
+   - Restart the lobby.
+   - Open **Settings → Developer** and untick **simple AI list**.
 
-Remove the AI with `install.cmd -Uninstall` or
-`./install.sh --uninstall`. Add `-DryRun` / `--dry-run` to see what it would do without changing
-anything.
+   Anarvā appears as **"Anarva stable"**.
+
+Remove it with `install.cmd -Uninstall` / `./install.sh --uninstall`; `-DryRun` / `--dry-run` shows what
+would happen without changing anything.
+
+The last release (v0.1.0) predates the rework. A new release follows once Anarvā wins its 1v1s.
 
 ### From source (developers)
 
-`tools/install.ps1 -BarData <data folder>` copies the working tree's `Anarva/stable`; add `-Dll <path>` for a core
-built by `tools/build_dll.sh` or the `core.yml` workflow (the scripts need it). Use `-Name AnarvaDev` for a side-by-side test copy. To build the release archives
-yourself, run `python build.py`. It self-tests the configs, `#include`s and profiles, then writes
-`dist/` (`python build.py --selftest` runs only the checks).
+- Build the core under MSYS2 MinGW64 (`tools/build_dll.sh`, or `ninja -C ref/build BARb`).
+- Deploy with `tools/install.ps1 -Name AnarvaDev -Dll <built SkirmishAI.dll>`, which makes a side-by-side
+  test copy.
+- `python build.py` self-tests the configs and writes the release archives to `dist/`.
 
 ### Windows says the script is not safe
 
 The installer is a plain, unsigned script, so Windows may warn about it.
 
 - **SmartScreen "Windows protected your PC"**: click **More info → Run anyway**.
-- **Downloaded-file block**: the zip carries the mark of the web. Unblock it before extracting, either
-  with Properties → **Unblock**, or in PowerShell:
-  `Unblock-File .\anarva-<version>-windows-x64.zip`
-- **Check the download is ours**: compare
-  `Get-FileHash .\anarva-<version>-windows-x64.zip -Algorithm SHA256` with the `.sha256` file published
-  next to it on the release page. On Linux, run `sha256sum -c anarva-<version>-linux-x64.tar.gz.sha256`.
-- If Defender flags it, please report the false positive at
-  <https://www.microsoft.com/wdsi/filesubmission>. `install.ps1` is plain text, so you can read what it does first.
+- **Downloaded-file block**: unblock the zip before extracting (Properties → **Unblock**, or
+  `Unblock-File .\anarva-<version>-windows-x64.zip`).
+- **Check the download is ours**: compare `Get-FileHash .\anarva-<version>-windows-x64.zip -Algorithm SHA256`
+  with the `.sha256` file on the release page. On Linux, run `sha256sum -c anarva-<version>-linux-x64.tar.gz.sha256`.
+- If Defender flags it, report the false positive at <https://www.microsoft.com/wdsi/filesubmission>.
 
 ### Why there is no macOS build
 
 Beyond All Reason ships only for Windows and Linux, and BARb's native library exists only as
-`SkirmishAI.dll` and `libSkirmishAI.so`. With no macOS game and no macOS library to copy, a macOS
-archive would install nothing that runs.
+`SkirmishAI.dll` and `libSkirmishAI.so`.
 
 ## Questions and answers
 
 **Can one player really beat six BARbs?**
-Yes. Public replays show humans alone beating 3–14 hard and hard-aggressive BARbs, and BAR's own
-scenarios pit one player against up to seven. Those humans boom to 2–3× each bot's income, keep an army
-of about half the bots' combined army, fight it at home, and add static defence once the economy can
-afford it (STRATEGY.md §22).
+Yes. Public replays show humans alone beating 3–14 hard BARbs, and BAR's own scenarios pit one player
+against up to seven ([STRATEGY.md](STRATEGY.md) §22).
 
-**Did you study how the best players progress?**
-Yes, in three sets, played back headless and measured every minute:
+**Why not copy a pro's build order?**
+Balance changes and every game differs. Anarvā takes the *reason* a strong player does something (what
+it buys, what it costs, in which situation) and computes the decision from the live game. Their numbers
+are only the yardstick that Anarvā's results are compared against.
 
-- top-rated 1v1 duels (48 player-games)
-- top team games up to 4v4 (25 player-games)
-- humans alone against several BARbs (6 games)
+**How does it know what each unit is good against?**
+From the damage and kill matrix of the replay database (attacker unit vs victim unit, metal killed per
+metal spent) and from unit facts (range, speed, weapons, targets). This replaces BARb's tables. Building
+the full per-unit table is open (#70).
 
-Each has an income, army, defence and eco curve, and the economy-vs-army ratio over time. 1v1, team
-games and 8v8 are treated separately because they differ: team games boom harder and go T2 earlier.
-The decision rules copy the *reasoning* behind these curves, not the numbers.
+**Does it use transports, nukes, cloak, cameras?**
 
-**What did we gain from the map analysis?**
-
-- **Ready and used:** per start position, Anarvā knows its choke toward the enemy, the high ground
-  overlooking it, and how much higher that ground is. Terrain defence (on) builds there.
-- **Ready and used:** for every installed map, Anarvā knows the base-to-base path length versus the
-  straight line, the narrowest corridor, extractors per side and water share. These drive travel time
-  and constructor value.
-- **Not yet proven:** no map-driven module has won an A/B test yet. The constructor share from free
-  extractors was neutral, and the composition chooser that uses travel time was rejected. Terrain
-  defence is the first map-driven module to ship on, and it's still being measured.
-
-**Is it aware of high-ground advantages?**
-
-- Ballistic weapons gain range firing downhill, elevation extends sight, and crests block fire from
-  below.
-- Anarvā's map analysis finds the highest ground over its choke, and terrain defence puts its turrets
-  there.
-- The core's unit behaviour doesn't seek high ground in open fights; that needs unit commands (see the
-  next question).
-
-**What happens when a map gets updated?**
-Map facts are looked up by full name, then by the map's name without its version. A new version of a
-known map uses the facts of the version that was analysed. A brand-new map has no facts until
-`tools/analyze_maps.py` is re-run, and Anarvā falls back to the core's behaviour there.
-
-**What is "Throne"?**
-A map: Throne_V8, 12288×12288 with lots of water, used in BAR's "King of the Hill" scenario. Test
-results name the map they were played on.
-
-**Does it use transports?**
-Not yet. Transports can carry every unit, including turrets, construction turrets and the commander,
-which makes the commander far faster. Directing them needs unit commands the script layer doesn't have.
-It's planned for the C++ build, with commander airlift first.
-
-**Does it use tactical missiles, nukes, cloaking and cameras?**
-
-- **Tactical missile launcher:** BARb lists it among its defences but limits it to one and rarely builds
-  it. Anarvā builds it forward when its army covers what it needs.
-- **Anti-nuke:** a launch from a silo we never saw lands in seconds, so reacting to a spotted silo is
-  too late. Readiness takes minutes: build time at our build power plus 90 s to stockpile the first
-  interceptor. So Anarvā builds the anti-nuke as soon as an enemy *could* have a missile by the time
-  ours would be ready. That's estimated from the enemy's likely economy since T2, weighted by the base
-  value a nuke would erase and compared with the anti-nuke's cost.
-- **Nuke:** built under anti-nuke cover. Its timing still uses fixed rules, which is open debt.
-- **Not yet:** cloaked infiltration (sniping the anti-nuke, then nuking) and hidden cameras. Both are
-  tracked as issues and need unit commands.
-
-**Why didn't it build converters?**
-Because it still used BARb's fixed "energy income = 20–60× metal income" curve. Energy kept being built
-by the clock, storage sat full, and the core builds converters only as a last resort, at most two at a
-time. The replacement is in test, as profile `anarva_e` with flags `F_ENERGY` and `F_CONVERT`:
-
-- **No curve.** A power plant is ordered only when energy would run out before a new plant could
-  finish (net balance, demand trend, stock, build time). Above 75% storage, where the game's converters
-  already run, none is ordered.
-- **Converters.** Real surplus goes to converters, T1 or T2 by which repays faster, build time included.
-
-**How many rez bots?**
-As many as the wreck metal on the map repays. Everything that died, ours and theirs, leaves about 60%
-of its metal as a wreck; far-off fights count half because the enemy can take those wrecks too. One
-more bot is built while that pool exceeds the fleet's cost plus one bot. Every count follows the same
-rule: size it to the scale it works on (STRATEGY.md §28).
-
-**Why not just copy BARb's or a pro's numbers?**
-Balance changes and every game is different. Anarvā compares the live value of each option
-(cost, build time, upkeep, risk, space, time to finish) and has **no static thresholds**.
+- **Anti-nuke:** built when an enemy *could* have a missile by the time ours would be ready.
+- **Nukes, tactical launchers and shields:** built when their value beats their cost.
+- **Cameras:** placed where the loss heatmap shows unseen losses.
+- **Not yet:** transports and cloaked infiltration (issues #28, #75).
 
 **Does it work online?**
 Yes. Only the player hosting the AI needs it installed (see [Anarva/README.md](Anarva/README.md)).
 
-**Which opponent matters?**
-BARb (BARbarIAn), the strongest built-in AI. Everything is tested against it, at its hard and
-hard-aggressive settings.
-
 ## More
 
-- **What is in the AI right now:** [FEATURES.md](FEATURES.md), every feature with its default and measured result, plus the script API (generated by `tools/gen_features.py`).
-- Ideas and planned work: [GitHub issues](../../issues). Collaborators: work on a branch and open a pull request; new behaviour goes behind a flag that is off by default until it is measured.
-- Players: lobby and online notes are in [Anarva/README.md](Anarva/README.md).
-- Developers: everything is in `tools/`.
-  - `install.ps1` deploys the AI (use `-Name AnarvaDev` for a side-by-side test copy).
-  - `run_match.py` and `batch.py` run headless AI-vs-AI matches, including 1vN, with a scoreboard by
-    map type.
-  - `fetch_replays.py`, `run_replay.py` and `analyze_replays.py` find, play back and analyze
-    high-skill replays, producing per-format development curves.
+- [FEATURES.md](FEATURES.md): what the AI does now, by module.
+- [STRATEGY.md](STRATEGY.md) and [TACTICS.md](TACTICS.md): the reasoning (Sun Tzu, Clausewitz, Lanchester,
+  replays).
+- [AUDIT.md](AUDIT.md): every removed random number and constant, and what replaced it.
+- [PROGRESS.md](PROGRESS.md): test log.
+- [GitHub issues](https://github.com/hclivess/anarva-bar-ai/issues): open work. Every remark from the owner's
+  games becomes an issue.
+- Developer tools in `tools/`:
+  - `batch.py` and `run_match.py`: headless matches, including 1vN.
+  - `replay_db.py`: the replay database.
+  - `gen_facts.py`: unit facts.
+  - `analyze_maps.py`: map analysis.
 
 License: GPL-2.0, the same as CircuitAI and Beyond All Reason, which this is derived from.

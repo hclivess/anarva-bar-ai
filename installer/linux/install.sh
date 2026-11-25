@@ -2,8 +2,8 @@
 # Anarva installer for Linux.
 #
 # Copies Anarva/stable from this folder into <BAR data>/AI/Skirmish/Anarva/stable/ and adds the
-# libSkirmishAI.so from the newest installed engine's BARb (Anarva runs on BARb's C++ core and does not
-# ship its own copy, so the library always matches the engine your game uses).
+# libSkirmishAI.so: Anarva's own core (BARb's CircuitAI plus the bridge Anarva's scripts need). Only when no
+# core is bundled does it fall back to the newest engine's BARb library, which the current scripts can't run on.
 #
 #   ./install.sh                                   find the BAR data folder and install
 #   ./install.sh "/path/to/Beyond All Reason"      install into that data folder

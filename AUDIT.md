@@ -1092,3 +1092,27 @@ The patch is mostly clean: ToFiringSpot ranks spots by trip length, GetRangeAt r
 - **Builder band for defence jobs (brain.as: turret, camera and wall orders at NORMAL, below income at HIGH).** This is a fixed ordering, not a computed value. Among jobs in one band, the core ranks by seconds until payback at shadow prices, but a turret has no yield of its own. The fix is to rank a turret by the income it protects: the queuer knows the metal lost around the spot, so it should pass that value to the core. The task API has no slot for it yet.
 - Removed today: the inherited `energyIncome *= 0.5` under an energy stall (dead `checkWind` code), the pylon `metalIncome < 40` gate, and the forced NOW band for energy when empty (shadow prices handle it).
 - Kept as notation or guards: `1e10` packs (band, seconds) into one sort key; `1e9` means "never/none"; `1e-3`/`1e-9` guard divisions.
+
+## Removed later on 2026-11-25 (found by the first games)
+
+- **Core builder ranking:**
+  - The per-type search radius (2000 elmos for extractors, defence and reclaim; 10000 for energy, storage and factories) is gone. Travel time is part of the job time.
+  - The `band × 1e12 + seconds` float key is gone (it lost the seconds). Now an exact (band, seconds) key.
+  - Jobs are no longer ranked by their cost. They are ranked by seconds until payback at shadow prices.
+- **Priority bands:**
+  - The start factory and "workers ≤ 2 → NOW" are gone, and so is the no-builder factory at NOW. All factories are HIGH.
+  - Energy jobs no longer drop to NORMAL when energy isn't stalling, and energy is no longer forced to NOW when empty.
+- **Gates:**
+  - "Metal storage full → no extractors" is gone.
+  - Energy storage on "energy full" is gone; the script decides it by horizon value.
+  - Metal storage on "full and income > pull" is gone; it now needs income beyond spending capacity.
+- **Script:**
+  - `EcoPos` "behind → buildpowerRatio 1e9" is gone. Constructors are now sized by claim walking time over the horizon.
+  - The "overflow → constructors" reason I added myself the same day is gone.
+  - The commander's forward-claim and best-job overrides are gone.
+- **Threat:** the manual-fire weapon (D-gun) no longer adds to sustained dps, so a commander isn't worth 113 Pawns.
+
+## Open (found 2026-11-25)
+
+- `common.as`: `WALL_THREAT_KERNEL = 0.01` is an inherited hand-picked threat for walls (BARb). It should be a wall's real threat (zero dps) together with its blocking value.
+- The defence band (see above) is still a fixed ordering.

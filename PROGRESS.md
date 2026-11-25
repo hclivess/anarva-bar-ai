@@ -1,82 +1,69 @@
 # Anarvā — progress log
 
-**Goal:** one Anarvā beats **6 BARb (hard)** opponents on **all map types** (open, chokepoint, mixed,
-water). Machine-readable state is in [`progress.json`](progress.json). The reasoning behind each
-module is in [STRATEGY.md](STRATEGY.md) and [TACTICS.md](TACTICS.md).
+**Goal:** first win **100% of 1v1** games against BARb hard, then one Anarvā beats **6 BARb (hard)** on **all
+map types** (open, chokepoint, mixed, water). The yardstick for *how* it plays is the top players' replays
+(`runs/replays.db`, see [REPLAYS.md](REPLAYS.md)), not BARb. The reasoning is in [STRATEGY.md](STRATEGY.md)
+and [TACTICS.md](TACTICS.md).
 
 ## Milestones
 
 | # | Target | Status |
 |---|--------|--------|
-| M1 | 1v1 vs BARb hard, at least a 2:1 win ratio on all map types | **met: 2.25** (9–3–4, 16 games both sides; open 2–1, choke 2–1, mixed 3–1, water 2–1) |
-| M2 | 1v2, winning a majority on all map types | baseline **0–11–1**; working on holding defence + commander safety |
+| M1 | 1v1 vs BARb hard, every game | **not met.** The early "2.25" (2026-11-23) came from a build that still ran BARb's logic. Since the rework (constants → decisions, flags folded) no full 1v1 has been won yet |
+| M2 | 1v2 | not met (lost 2026-11-25, Comet Catcher, dead at minute 11) |
 | M3 | 1v3 | not started |
 | M4 | **1v6 on all map types** | not started; the harness supports it (`batch.py --pool big --n1 6`) |
 
-## Method (learned the hard way)
+## Method
 
-- **One change at a time**, behind a feature flag (`F_*` in `brain.as`, `install.ps1 -Flags`).
-- A variant plays **head-to-head against the best-measured build**, every map from **both sides**
-  (16 games), 30-minute games with a points verdict from minute 20.
-- A module ships **on** only when it wins. Defaults are always the best-measured configuration.
-- **No static thresholds** in new logic. Decisions are live marginal-value comparisons. Remaining
-  tunables are listed as debt in STRATEGY.md §16.
-
-## Current defaults (best measured)
-
-First-gen economy and commander configs, with these modules **on**: eco recycling and T1 salvage,
-jammer intel, strategic structures (luxuries gated on force ratio), and the first-gen recall. Everything
-else is off pending tests (see the status table in [README.md](README.md)).
+- **Reason first, test second** ([CLAUDE.md](CLAUDE.md) §0). Fix what a strong player would call obviously wrong,
+  as computed decisions, in batches; then play a few games to see the batch work. Tests confirm; they
+  don't substitute for reasoning.
+- **Read what the AI did.** Each test reads the build log (`[ANV] built`), the builder pick log
+  (`[ANV-PICK]`: the job taken and the best of each other type), the economy line per minute and the
+  Director's strength ratio, then compares the curves with the replay database's winners.
+- **No hand-picked numbers** ([AUDIT.md](AUDIT.md)). A fix that adds a cutoff, band or gate is a bug.
 
 ## Layout
 
-- `Anarva/stable/`: the AI (`AIInfo.lua`, `AIOptions.lua`, `config/<profile>/`, `script/<profile>/`).
-  Profiles: `anarva` (main), `anarva_fg` (first-gen configs, for bisecting), `anarva_b` (old A/B).
+- `Anarva/stable/`: the AI (`AIInfo.lua`, `config/anarva/`, `script/anarva/`; the brain is `misc/brain.as`).
+- `core/circuitai.patch`: Anarvā's changes to BARb's CircuitAI (branch `anarva129` in `ref/circuitai`).
 - `tools/`:
-  - `install.ps1` (`-Name`, `-Flags`)
-  - `run_match.py`, `batch.py` (`--me`, `--opp`, `--n1`, `--pool big`)
-  - `fetch_replays.py`, `run_replay.py`, `index_replays.py`, `analyze_replays.py`
-- `installer/`, `build.py`, `.github/workflows/build.yml`: per-OS release archives (Windows and Linux).
-- `ref/` (gitignored): extracted BARb configs, CircuitAI source, unit defs, strategy texts, replays.
+  - `install.ps1 -Name AnarvaDev -Dll <core>`: a side-by-side test copy.
+  - `batch.py`, `run_match.py`: headless matches.
+  - `replay_db.py`: the replay database.
+  - `gen_facts.py`: unit facts.
+  - `analyze_maps.py`: map analysis.
+- `installer/`, `build.py`, `.github/workflows/`: per-OS release archives.
+- `ref/` (gitignored): CircuitAI source, unit defs, replays.
 
-## Key findings
+## 2026-11-25: first games after the rework
 
-1. BARb sends about 60% of metal into buildings, so its army stays tiny, and its gathering squads
-   only launch at `max(quota, enemy's 2nd-biggest group)`, which is often unreachable.
-2. Raids continue until their *leader* dies, so survivors trickle in one by one.
-3. BARb never builds Juno, anti-nuke, tactical/EMP launchers, nukes, shields or walls, and treats
-   geothermal as a last resort.
-4. Top duel players (48 player-games rated 38–55) look the same for 8 minutes. Winners then reach
-   53 m/s and keep army value close to eco value by minute 10, go T2 around minute 14, and don't
-   over-build static defence.
-5. **Energy also unlocks tech** in this engine (fusion needs about 840 E/s), so copying the pros'
-   energy:metal ratio starved fusion (b2).
-6. **Starvation is the failure mode.** Every regression so far was economic: a lower energy curve (b2),
-   a scale knob that cut the economy when behind (b3), a production chooser that never built
-   constructors (r6).
-7. With games == maps, each map is played from one side only. Side and map advantage confound the
-   absolute scores, so every map now gets played from both sides.
+1v1 vs BARb hard, mostly Avalanche and Throne, 6–14 minute caps unless noted. Each line is a symptom, its
+cause and the fix (details in issues #81–#88).
 
-## In progress / next
+| Symptom | Cause | Fix |
+|---|---|---|
+| reclaimed its own wind turbines from frame 660 | horizon = time played × share, so 0 s at start | horizon = enemy time to match what we own + map crossing |
+| Cortex Anarvā ordered Armada extractors and turrets | random side: the core learns the faction when the commander spawns | redo side-specific init when the side changes |
+| reclaimed fresh Thuds | "obsolete" = worse than the single best buildable unit | outclassed by a higher factory tier |
+| no extractors at start; energy storage at 0:43; metal storage at 0:32 | "storage full" gates; the game starts full | overflow = income beyond what build power can spend |
+| builders never compared jobs by time | (band × 1e12 + seconds) packed in a float lost the seconds | exact key; job time = travel + build + payback at shadow prices |
+| lab first, then 20 LLTs over extractors | ranked by cost; NOW/NORMAL bands | stock-aware payback; defence below income |
+| far extractor jobs invisible | 2000-elmo radius for extractors vs 10000 for energy | removed |
+| 14 extractors, metal full, energy 30/s | energy priced at the converter rate while it bound; energy queued only once stalled | shadow price; energy queued whenever needed, planned for factory output |
+| lab built only constructors (army 86 for 10 min) or 49 constructors | "behind → unlimited constructors" | claim walk time over the horizon, army first while weaker |
+| bigger army read r=0.3, never attacked | D-gun counted as 111k dps: commander = 113 Pawns | D-gun excluded: commander ≈ 4.6 Pawns |
+| crash in every longer game | scripts moved units across task modules | core refuses cross-module / nil / player moves |
+| commander pulled off every job (40 claims in 5 min) | script forward claims overrode the core | removed; script decides only risk |
 
-- [x] Round 7: production chooser vs base. Even (4–1–4), not yet a gain.
-- [x] Round 8: constructor-rich opener alone: 13–2–1, shipped
-- [ ] Map analysis: offline per-map profile (extractors, base distance, paths and chokes, water, geo vents) loaded at game start
-- [x] Scale knob: 9–4–3, shipped
-- [ ] Round 10: production + map-driven constructor share
-- [ ] Rework waves: launch when the gathered force can win *its* fight, and don't hold units at home
-  while the map is lost.
-- [ ] One-at-a-time tests: scale knob, tech gate, moho gate, waste, redirect, fortify.
-- [ ] Constructor marginal value (replace the core-share placeholder).
-- [ ] Geothermal decision (payback vs exposure and blast cost; needs vent positions).
-- [ ] Team-game reference curves (top 2v2–8v8 replays playing back now).
-- [ ] Legion test pool (Legion is disabled in the current harness).
-- [ ] 1v2 → 1v3 → 1v6 on the big-map pool.
-- [ ] Companion widget: projectile/AoE dodging, build-priority toggles, napalm avoidance.
-- [ ] Front labs and rally points by travel time vs risk.
-- [ ] Final: record the best games in the real client and add GIFs to the README.
+Full-length games (30-minute cap) so far:
+- Avalanche: lost at minutes 12, 10 and 10.
+- Throne: lost at minute 20, and crushed at minute 19 (army 86 vs 12,870) when the run was cut.
 
-## Experiment log
+The latest batch (D-gun and strength fixes) is being played.
+
+## Experiment log (early build, 2026-11-22 to 11-24; not re-measured since the rework)
 
 | id | what | result |
 |----|------|--------|

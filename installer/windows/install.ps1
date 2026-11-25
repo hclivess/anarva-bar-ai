@@ -1,8 +1,8 @@
 # Anarva installer for Windows.
 #
-# Copies Anarva\stable from this folder into <BAR data>\AI\Skirmish\Anarva\stable\ and adds the
-# SkirmishAI.dll from the newest installed engine's BARb (Anarva runs on BARb's C++ core and does not
-# ship its own copy, so the DLL always matches the engine your game uses).
+# Copies Anarva\stable from this folder into <BAR data>\AI\Skirmish\Anarva\stable\, including Anarva's own
+# core (SkirmishAI.dll: BARb's CircuitAI plus the bridge Anarva's scripts need). Only when no core is bundled
+# does it fall back to the newest engine's BARb DLL, which the current scripts can't run on.
 #
 #   install.cmd                                   find the BAR data folder and install
 #   install.cmd "D:\Games\Beyond-All-Reason\data" install into that data folder
