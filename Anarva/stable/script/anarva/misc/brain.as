@@ -3378,7 +3378,14 @@ void Update()
 			}
 		}
 	}
-	if (planned !is null && commander.task is planned) return;  // still on its planned job
+	// One plan at a time: while the planned job exists, the commander goes back to it rather than a new plan being
+	// made (an assignment the core refused left the job orphaned; each re-plan queued another wind, the orphans timed
+	// out half-built and their frames were reclaimed: 4 wind plans, 2 turbines, BarR 2026-11-25). OnTaskRemoved clears
+	// it when the job ends.
+	if (planned !is null) {
+		if (commander.task !is planned) aiBuilderMgr.AssignTask(commander, planned);
+		return;
+	}
 	array<AIFloat3> sp; array<float> si; array<bool> so;
 	AiGetMetalSpots(sp, si, so);
 	Sim s0;
@@ -4587,6 +4594,15 @@ bool CommWorth(const AIFloat3& in p, float gain)
  */
 IUnitTask@ commFightTask = null;
 int commFightTarget = -1, commFights = 0;
+// Seconds until the commander has the target in reach: 0 if it already has, the gap closed at the speed difference if
+// the commander is faster, never (1e9) if the target is as fast or faster (unit facts: range and speed from the defs).
+float CatchTime(const AIFloat3& in c, const CCircuitDef@ cd, const AIFloat3& in p, const CCircuitDef@ d)
+{
+	const float gap = c.distance2D(p) - cd.GetMaxRange();
+	if (gap <= 0.f) return 0.f;
+	const float closing = cd.speed - ((d !is null && d.IsMobile()) ? d.speed : 0.f);
+	return (closing > 0.f) ? gap / closing : 1e9f;
+}
 void CommDefendUpdate()
 {
 	if (commander is null || !Opening::done || !HasBase()) return;
@@ -4594,15 +4610,29 @@ void CommDefendUpdate()
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef, ids;
 	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
 	AiGetEnemyIds(ids);
-	// still on a fight: keep at it while the target lives
+	const AIFloat3 c = commander.GetPos(ai.frame);
+	const CCircuitDef@ cd = commander.circuitDef;
+	// still on a fight: keep at it while the target lives, can still be caught and is on our side (a chase without
+	// those took the commander away after Pawns, faster than it, with no base, no extractors and no units: owner,
+	// 2026-11-25 "WHERE ARE YOU WALKING WITH THE COMMANDER ... YOU GO AWAY WITH THE COMMANDER TO HUNT PAWNS")
 	if (commFightTask !is null && commander.task is commFightTask) {
 		for (uint i = 0; i < n && i < ids.length(); ++i)
-			if (ids[i] == commFightTarget) { commander.CmdAttackEnemy(commFightTarget); return; }
+			if (ids[i] == commFightTarget) {
+				if (ed[i] !is null && Assess::OnOurSide(ep[i]) && CatchTime(c, cd, ep[i], ed[i]) < 1e8f) { commander.CmdAttackEnemy(commFightTarget); return; }
+				break;
+			}
+		AiLog("[ANV] CommDefend: commander stops (target gone, uncatchable or off our side)");
 		commFightTask.Abort(); @commFightTask = null; commFightTarget = -1;
 		return;
 	}
-	const AIFloat3 c = commander.GetPos(ai.frame);
-	const CCircuitDef@ cd = commander.circuitDef;
+	// what a second of the commander's time builds: the extractor it could put up per second of its build power
+	// (as the opener ranks producers per second of commander time)
+	float commRate = 0.f;
+	if (Economist::mexT1 !is null) {
+		CCircuitDef@ m = Economist::mexT1;
+		const float yield = Economist::Extract(m.GetName()) * Command::spotIncome;
+		commRate = (Economist::MetalValue(m) + yield * Economist::Horizon()) * cd.buildSpeed / AiMax(1.f, m.buildTime);
+	}
 	const float V = GameValue();
 	// the same arrays Command reads
 	Command::ePos = ep; Command::eDef = ed; Command::eFlags = ef; Command::eHp = eh; Command::eIds = ids; Command::eCost = ec;
@@ -4611,7 +4641,8 @@ void CommDefendUpdate()
 		const CCircuitDef@ d = ed[i];
 		if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.surfThrDmg <= 0.f || (ef[i] & 2) == 0) continue;
 		if (!Assess::OnOurSide(ep[i])) continue;
-		const float t = c.distance2D(ep[i]) / AiMax(1.f, cd.speed);
+		const float t = CatchTime(c, cd, ep[i], d);
+		if (t >= 1e8f) continue;  // faster than the commander and out of its reach: a chase it can't win
 		const float stake = Command::OursThreatened(i, all, t) + Command::EnemyValue(i, Economist::Horizon());
 		// what fights there while we kill it, against the commander and our armed units within their reach
 		const float tFight = eh[i] * d.health / AiMax(1e-3f, cd.GetSustainedDps());
@@ -4625,11 +4656,11 @@ void CommDefendUpdate()
 		}
 		if (ours <= theirs) continue;
 		const float risk = CommPDeath(ep[i], EscapeTime(ep[i])) * V;
-		const float net = stake - risk;
+		const float net = stake - risk - (t + tFight) * commRate;  // its time is our best builder's time
 		if (net > bestNet) { bestNet = net; best = int(i); }
 	}
 	if (best < 0) return;
-	const float t = c.distance2D(ep[best]) / AiMax(1.f, cd.speed);
+	const float t = CatchTime(c, cd, ep[best], ed[best]);
 	const float tFight = eh[best] * ed[best].health / AiMax(1e-3f, cd.GetSustainedDps());
 	@commFightTask = aiBuilderMgr.Enqueue(TaskB::Wait(int((t + tFight) * SECOND) + SECOND));
 	if (commFightTask is null) return;
