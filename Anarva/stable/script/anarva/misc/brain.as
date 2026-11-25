@@ -1951,7 +1951,10 @@ CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 	{
 		array<AIFloat3> wp; array<float> wm; array<bool> wr;
 		const uint w = AiGetWrecks(wp, wm, wr);
-		for (uint i = 0; i < w; ++i) pool += wm[i];
+		// wrecks of units only (resurrectable): rocks and trees counted too ordered rez bots without end on a rock-rich
+		// map (owner, 2026-11-25: "building nothing but rezbots?!"); winners build 0.56 by minute 5, 1.83 by 10, once
+		// fights have left wrecks (replays.db, 107 1v1 wins) - constructors reclaim rocks themselves
+		for (uint i = 0; i < w; ++i) if (wr[i]) pool += wm[i];
 	}
 	float fleet = 0.f;
 	for (uint i = 0; i < rezBots.length(); ++i)
