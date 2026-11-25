@@ -373,6 +373,30 @@ void Update()
 }  // namespace RezLab
 
 namespace EcoPos {
+// the cheapest mobile constructor any factory we own can build (unit facts via Facts::BuildOptions)
+CCircuitDef@ CheapestConstructor()
+{
+	CCircuitDef@ best = null;
+	const array<CCircuitUnit@>@ facs = Intel::allFactories;
+	for (uint i = 0; i < facs.length(); ++i) {
+		const array<string> opts = Facts::BuildOptions(facs[i].circuitDef.GetName());
+		for (uint k = 0; k < opts.length(); ++k) {
+			CCircuitDef@ d = ai.GetCircuitDef(opts[k]);
+			if (d is null || !d.IsMobile() || !d.IsRoleAny(Unit::Role::BUILDER.mask) || d.buildSpeed <= 0.f) continue;
+			if (best is null || d.costM < best.costM) @best = d;
+		}
+	}
+	return best;
+}
+// a spot is ours when one of our extractors stands within an extractor's radius of it
+bool OwnSpot(const AIFloat3& in p)
+{
+	for (uint i = 0; i < Economist::mexes.length(); ++i) {
+		CCircuitUnit@ m = Economist::mexes[i];
+		if (m !is null && m.GetPos(ai.frame).distance2D(p) <= m.circuitDef.GetRadius() * 2.f) return true;
+	}
+	return false;
+}
 float ours = 0.f, theirs = 0.f;
 bool behind = true;
 void Update()
@@ -409,17 +433,33 @@ void Update()
 	// the core's constructor rule (decide): builds constructors while build power < income x ratio. A constructor
 	// pays only through work the ones we have can't do: open extractor spots on our side to claim. Behind without, more constructors only spend (smoke 2026-11-25: 22 constructors,
 	// 4 extractors, army 403 vs 3170).
-	uint openOurs = 0;
-	{
-		array<AIFloat3> msp2; array<float> msi2; array<bool> mso2;
-		const uint ns2 = AiGetMetalSpots(msp2, msi2, mso2);
-		for (uint i = 0; i < ns2; ++i)
-			if (mso2[i] && Assess::OnOurSide(msp2[i])) ++openOurs;
-	}
+	// Unclaimed income = spots nobody holds (all, minus ours, minus enemy extractors we know of). Top 1v1 winners keep
+	// about one constructor per extractor and expand hard (replays.db, 11 games: 8 extractors / 8 constructors at
+	// minute 4, 22 / 26 at minute 8); "behind and on our side" held Anarva at 5 extractors.
+	array<AIFloat3> msp2; array<float> msi2; array<bool> mso2;
+	const int ns2 = int(AiGetMetalSpots(msp2, msi2, mso2));
+	const int unclaimed = ns2 - int(Economist::mexes.length()) - int(enemyMex);
 	// (Overflowing metal is not constructor work: it is missing spending capacity, i.e. factories. As a reason for
 	// constructors it made 49 of them on Throne while one lab sat on 4600 metal, 1v1 2026-11-25.)
-	const bool work = openOurs > aiBuilderMgr.GetWorkerCount();
-	aiFactoryMgr.buildpowerRatio = (behind && work) ? 1e9f
+	// Claiming is limited by walking: a constructor takes one spot per (walk + build) seconds, so claiming the
+	// unclaimed spots within the planning horizon needs  sum over them of (walk from base + build) / H  constructors.
+	// Neither unlimited (1e9: the lab made only constructors, army 344 vs 1560 at minute 7, Throne) nor income-bound
+	// (build power x income: the commander alone covered it, 2 constructors and 5 extractors in 10 minutes, Avalanche).
+	float claimWork = 0.f;  // constructor-seconds
+	CCircuitDef@ conDef = CheapestConstructor();
+	if (conDef !is null && Economist::mexT1 !is null && HasBase()) {
+		const float conSpeed = AiMax(1.f, conDef.speed);
+		const float conBuild = Economist::mexT1.buildTime / AiMax(1.f, conDef.buildSpeed);
+		for (int i = 0; i < ns2; ++i)
+			if (mso2[i] && !OwnSpot(msp2[i])) claimWork += basePos.distance2D(msp2[i]) / conSpeed + conBuild;
+	}
+	const float H = AiMax(1.f, Economist::Horizon());
+	const int consNeeded = int(claimWork / H) + ((claimWork > 0.f) ? 1 : 0);
+	// Protect what we own before expanding it: while we are weaker than the army we know of (Director ratio < 1),
+	// constructors only feed raids and the factory makes army (Avalanche 2026-11-25: 'constructors first' held the
+	// lab on constructors for 10 minutes, army never above 86 metal, 2500 metal banked).
+	const bool work = unclaimed > 0 && int(aiBuilderMgr.GetWorkerCount()) < consNeeded && Director::ratio >= 1.f;
+	aiFactoryMgr.buildpowerRatio = work ? 1e9f
 		: aiBuilderMgr.GetBuildPower() / AiMax(1e-3f, aiEconomyMgr.metal.income);  // otherwise hold constructors where they are
 }
 string Status() { return "ecoPos " + (behind ? "behind" : "ahead") + " ours=" + int(ours) + " theirs~" + int(theirs); }
@@ -1214,7 +1254,7 @@ float RefInfluence(const array<string>& in names)
 void UpdatePhantomThreat()
 {
 	// nothing visible yet: assume they kept pace with us (the Director's blind prior)
-	const float visible = (aiEnemyMgr.mobileThreat > 0.f) ? aiEnemyMgr.mobileThreat : Brain::Director::OurPower();
+	const float visible = (Brain::Economist::KnownEnemyThreat() > 0.f) ? Brain::Economist::KnownEnemyThreat() : Brain::Director::OurPower();
 	for (uint i = 0; i < jammerDefs.length(); ++i) {
 		CCircuitDef@ d = jammerDefs[i];
 		if (d.defDmg > 0.f)
@@ -2017,7 +2057,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	if (air + sub + surf <= 0.f) surf = 1.f;  // nothing seen yet: everyone starts on land
 	const float total = air + sub + surf;
 	const float wAir = air / total, wSub = sub / total, wSurf = surf / total;
-	const float wStatic = AiMin(1.f, stat / AiMax(1.f, aiEnemyMgr.mobileThreat + stat));
+	const float wStatic = AiMin(1.f, stat / AiMax(1.f, Brain::Economist::KnownEnemyThreat() + stat));
 	const float wHeavy = AiMin(1.f, (aiEnemyMgr.GetEnemyCost(RT::HEAVY) + aiEnemyMgr.GetEnemyCost(RT::ARTY)) / surf);
 
 	MeasureArmy(wAir, wSurf, wSub);
@@ -2138,9 +2178,24 @@ float Horizon()
 }
 
 // Enemy mobile threat; when we see nothing, assume they grew at least as fast as we did.
+int knownThreatFrame = -1; float knownThreat = 0.f;
+float KnownEnemyThreat()
+{
+	if (knownThreatFrame == ai.frame) return knownThreat;
+	knownThreatFrame = ai.frame;
+	knownThreat = 0.f;
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	for (uint i = 0; i < n; ++i)
+		if (ed[i] !is null && ed[i].IsMobile() && ed[i].surfThrDmg > 0.f) knownThreat += ed[i].threat;
+	return knownThreat;
+}
 float EnemyThreat()
 {
-	const float seen = aiEnemyMgr.mobileThreat;
+	// Each known enemy once, same measure as ours (CCircuitDef threat). The core's running mobileThreat grew with
+	// re-identifications and unseen deaths: 173 for 11 known units while our ~60 read 47 (Throne 2026-11-25), so a
+	// bigger army read r=0.3 and never attacked or expanded.
+	const float seen = KnownEnemyThreat();
 	if (seen > 1.f)
 		lastEnemySeen = seen;
 	return Brain::Director::blind ? AiMax(lastEnemySeen, Brain::Director::OurPower()) : seen;
@@ -2414,9 +2469,12 @@ float MeasuredPower()
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	for (uint i = 0; i < all.length(); ++i) {
 		const CCircuitDef@ d = all[i].circuitDef;
-		if (!d.IsMobile() || d.power <= 0.f || d.surfThrDmg <= 0.f || all[i] is commander) continue;
+		// our commander counts like theirs does (aiEnemyMgr.mobileThreat includes the enemy commander, ~4 Pawns of threat)
+		if (!d.IsMobile() || d.power <= 0.f || d.surfThrDmg <= 0.f) continue;
 		if (d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
-		allPower += d.power;
+		// the same measure the enemy side is summed in (defThreat, aiEnemyMgr.mobileThreat): power carried another
+		// config modifier, so a bigger army read r=0.3 and never attacked (1v1 Avalanche 2026-11-25: 1426 vs 1114 metal)
+		allPower += d.threat;
 		allSpeed += d.speed; ++cnt;
 	}
 	if (cnt > 0) allSpeed /= float(cnt);
@@ -2430,7 +2488,7 @@ void Update()
 {
 	const float ours = OurPower();
 	const float enemyStatic = aiEnemyMgr.GetEnemyCost(RT::STATIC);
-	blind = aiEnemyMgr.mobileThreat <= 1.f && enemyStatic <= 0.f;
+	blind = Brain::Economist::KnownEnemyThreat() <= 0.f && enemyStatic <= 0.f;
 
 	// What we must be able to beat: the known (or, when blind, assumed) enemy army plus the army we
 	// guess is hidden under seen jammers, divided by how efficiently we are actually trading.
@@ -2989,7 +3047,7 @@ void Update()  // every 30 frames
 		AiLog("[ANV] t=" + Minute() + "m " + Director::Status() + " | " + Assess::Status() + " | allPow=" + F1(Director::MeasuredPower()) + " units=" + Army::ground.length()
 			+ " raiders=" + Army::raiders.length() + " squads=" + Army::squads.length() + " recalls=" + Army::recalls
 			+ " quota.attack=" + F1(aiMilitaryMgr.quota.attack) + " raidMin=" + F1(aiMilitaryMgr.quota.raid.min)
-			+ " enemyMob=" + F1(aiEnemyMgr.mobileThreat) + " jamCost=" + F1(Intel::jammerCost)
+			+ " enemyMob=" + F1(Brain::Economist::KnownEnemyThreat()) + " coreMob=" + F1(aiEnemyMgr.mobileThreat) + " jamCost=" + F1(Intel::jammerCost)
 			+ " maxHeat=" + F1(Intel::MaxHeat()) + " eyes=" + Intel::eyes.length() + "/" + Intel::eyesOrdered
 			+ " | " + Production::Status() + " | " + Recycler::Status() + " | " + Strategic::Status()
 			+ " | E inc=" + F1(aiEconomyMgr.energy.income) + " pull=" + F1(aiEconomyMgr.energy.pull)
