@@ -3858,7 +3858,7 @@ index 2baf4ae9..641575f7 100644
  
  CEconomyScript::~CEconomyScript()
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..2ee81c3d 100644
+index c3aaefe5..61418ee4 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -3966,7 +3966,7 @@ index c3aaefe5..2ee81c3d 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +776,267 @@ void CInitScript::RegisterCore()
+@@ -735,9 +776,282 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -3981,7 +3981,22 @@ index c3aaefe5..2ee81c3d 100644
 +
 +// ---- Anarva bridge: copies of what the core knows, so scripts can reason instead of guess ----
 +// Values are copied into script arrays, so nothing dangles after the call.
-+static CCircuitAI* bridgeAI = nullptr;
++// Each AI has its own script engine, which carries its CCircuitAI as user data: the bridge resolves the AI from the
++// script context that is running. One static pointer for all made the second Anarva in a game overwrite the first's:
++// the first then read the other's units and crashed on a dead one (owner's Anarva-vs-Anarva game, 2026-11-26, stack
++// in CAllyUnit::GetPos from FactoryScript).
++static const asPWORD ANARVA_UD = 0x414E5641;  // 'ANVA'
++static CCircuitAI* bridgeFallback = nullptr;   // only outside a script call
++static CCircuitAI* BridgeAI()
++{
++	asIScriptContext* ctx = asGetActiveContext();
++	if (ctx != nullptr) {
++		CCircuitAI* ai = static_cast<CCircuitAI*>(ctx->GetEngine()->GetUserData(ANARVA_UD));
++		if (ai != nullptr) return ai;
++	}
++	return bridgeFallback;
++}
++#define bridgeAI (BridgeAI())
 +
 +// Every known enemy (LOS or radar, not hidden). flags: 1 in LOS, 2 radar-or-LOS, 4 being built, 8 paralyzed.
 +// def is null for radar blips of unknown type.
@@ -4234,13 +4249,14 @@ index c3aaefe5..2ee81c3d 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +1066,48 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +1081,49 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
 +
 +	// ---- Anarva bridge ----
-+	bridgeAI = circuit;
++	engine->SetUserData(circuit, ANARVA_UD);
++	bridgeFallback = circuit;
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemies(array<AIFloat3>@+, array<AIFloat3>@+, array<CCircuitDef@>@+, array<float>@+, array<int>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemies), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdMoveTo(const AIFloat3& in)", asFUNCTION(CCircuitUnit_CmdMoveTo), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiMinWind()", asFUNCTION(Bridge_GetMinWind), asCALL_CDECL); ASSERT(r >= 0);
@@ -4283,7 +4299,7 @@ index c3aaefe5..2ee81c3d 100644
  }
  
  bool CInitScript::Init()
-@@ -782,6 +1123,7 @@ bool CInitScript::Init()
+@@ -782,6 +1139,7 @@ bool CInitScript::Init()
  	mainInfo.receiveMessage = script->GetFunc(mod, "void AiMessage(const string& in, int)");
  	mainInfo.unitFinished = script->GetFunc(mod, "void AiUnitFinished(CCircuitUnit@)");
  	mainInfo.unitDestroyed = script->GetFunc(mod, "void AiUnitDestroyed(CCircuitUnit@)");
@@ -4291,7 +4307,7 @@ index c3aaefe5..2ee81c3d 100644
  	asIScriptFunction* main = script->GetFunc(mod, "void AiMain()");
  	if (main == nullptr) {
  		return false;
-@@ -793,6 +1135,19 @@ bool CInitScript::Init()
+@@ -793,6 +1151,19 @@ bool CInitScript::Init()
  	return true;
  }
  
@@ -4311,7 +4327,7 @@ index c3aaefe5..2ee81c3d 100644
  void CInitScript::Update()
  {
  	if (mainInfo.update == nullptr) {
-@@ -859,6 +1214,7 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
+@@ -859,6 +1230,7 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
  	r = engine->RegisterObjectProperty(cls, "CCircuitDef@ const buildDef", asOFFSET(T, buildDef)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "CCircuitUnit@ const target", asOFFSET(T, target)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "bool canAutoAbort", asOFFSET(T, canAutoAbort)); ASSERT(r >= 0);
@@ -4319,7 +4335,7 @@ index c3aaefe5..2ee81c3d 100644
  }
  
  template <class T>
-@@ -920,22 +1276,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1292,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  
