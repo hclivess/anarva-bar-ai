@@ -42,8 +42,17 @@ def play(args, demo):
         cfg.write(f"HostPortDefault = {port}\nHostPort = {port}\nHangTimeout = 0\n")
     env = dict(os.environ, SPRING_DATADIR=BAR_DATA)
     with open(os.path.join(out, "stdout.txt"), "w") as log:
+        # idle priority: a replay skipping at full speed starved the test games 35x (1 s vs 35 s per game minute,
+        # 2026-11-25); it now only gets the CPU time the games leave over
+        flags = getattr(subprocess, "IDLE_PRIORITY_CLASS", 0)
         p = subprocess.Popen([engine, "--write-dir", out, os.path.abspath(demo)], env=env, stdout=log,
-                             stderr=subprocess.STDOUT, cwd=out)
+                             stderr=subprocess.STDOUT, cwd=out, creationflags=flags)
+        # tools/batch.py suspends this engine while test games run (it starved them even at idle priority)
+        pidfile = os.path.join(os.path.dirname(os.path.abspath(args.out)), "replay_engine.pid")
+        try:
+            open(pidfile, "w").write(str(p.pid))
+        except OSError:
+            pass
         try:
             p.wait(timeout=args.minutes * 60)
         except subprocess.TimeoutExpired:

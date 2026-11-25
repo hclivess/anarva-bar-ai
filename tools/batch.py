@@ -59,6 +59,33 @@ def parse(out, tac_team, n1=1):
     return res
 
 
+def _replay_engine(action):
+    """Suspend or resume the replay database's engine (tools/run_replay.py writes runs/replay_engine.pid): skipping
+    through a replay it slowed test games from ~1 s to ~10-35 s per game minute, even at idle priority."""
+    import ctypes
+    pidfile = os.path.join(os.path.dirname(HERE), "runs", "replay_engine.pid")
+    try:
+        pid = int(open(pidfile).read().strip())
+    except (OSError, ValueError):
+        return
+    if os.name != "nt":
+        import signal
+        try:
+            os.kill(pid, signal.SIGSTOP if action == "suspend" else signal.SIGCONT)
+        except OSError:
+            pass
+        return
+    PROCESS_SUSPEND_RESUME = 0x0800
+    h = ctypes.windll.kernel32.OpenProcess(PROCESS_SUSPEND_RESUME, False, pid)
+    if not h:
+        return
+    try:
+        fn = ctypes.windll.ntdll.NtSuspendProcess if action == "suspend" else ctypes.windll.ntdll.NtResumeProcess
+        fn(h)
+    finally:
+        ctypes.windll.kernel32.CloseHandle(h)
+
+
 def run_one(args, i):
     m = args.maps[i % len(args.maps)]
     tac_team = 0 if args.n1 > 1 else ((i // len(args.maps)) % 2 if args.games > len(args.maps) else i % 2)
@@ -96,8 +123,12 @@ def main():
         args.maps = ",".join(BIG_MAPS if args.pool == "big" else DEFAULT_MAPS)
     args.maps = [x.strip() for x in args.maps.split(",") if x.strip()]
     os.makedirs(args.out, exist_ok=True)
-    with ThreadPoolExecutor(args.par) as ex:
-        results = list(ex.map(lambda i: run_one(args, i), range(args.games)))
+    _replay_engine("suspend")  # test games get the machine; the replay database resumes after the batch
+    try:
+        with ThreadPoolExecutor(args.par) as ex:
+            results = list(ex.map(lambda i: run_one(args, i), range(args.games)))
+    finally:
+        _replay_engine("resume")
     json.dump(results, open(os.path.join(args.out, "results.json"), "w"), indent=1)
     c = {}
     for r in results:
