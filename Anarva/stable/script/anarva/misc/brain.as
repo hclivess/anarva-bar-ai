@@ -2081,7 +2081,35 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		}
 	}
 	eSurf = AiMax(eSurf, sSurf + sAir);  // unseen: at least as strong as we are (they earn as we do)
-	const float stake = Strategic::ownedMetal + Assess::EnemyValue();
+	// The ground units a fighter of ours will meet: the enemy's as seen (weighted by strength); none seen yet, the
+	// units this factory offers (they build the same class of units). A unit outranged by them takes their fire while
+	// it closes the gap: its health in the fight is less that damage (range, speed and dps from the unit defs). Without
+	// it, sqrt(dps x health) per metal made the Flea - a scout with a needle gun - our best fighter: 14-16 per game
+	// and the extractors raided away (short test s32, 2026-11-25).
+	array<float> mixDps, mixRange, mixW;
+	{
+		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+		for (uint i = 0; i < ne; ++i) {
+			const CCircuitDef@ d = ed[i];
+			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
+			mixDps.insertLast(d.GetSustainedDps()); mixRange.insertLast(d.GetMaxRange());
+			mixW.insertLast(sqrt(d.GetSustainedDps() * AiMax(1.f, d.health)));
+		}
+		if (mixW.length() == 0) {
+			for (uint i = 0; i < opts.length(); ++i) {
+				CCircuitDef@ d = ai.GetCircuitDef(opts[i]);
+				if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
+				mixDps.insertLast(d.GetSustainedDps()); mixRange.insertLast(d.GetMaxRange()); mixW.insertLast(1.f);
+			}
+		}
+	}
+	// An army holds the flow, not only the stock: our income over the horizon is what a raid takes and what holding
+	// the map keeps (the constructor's value counts the yield it claims over the horizon; against a stake of owned
+	// metal alone the lab made 19 constructors and 86 army by minute 8 vs the winners' 10.8 and 2036, Feast 2026-11-25)
+	const float H0 = AiMax(1.f, Economist::Horizon());
+	const float flow = (aiEconomyMgr.metal.income + aiEconomyMgr.energy.income / AiMax(1e-3f, Economist::energyPerMetal)) * H0;
+	const float stake = Strategic::ownedMetal + Assess::EnemyValue() + flow;
 	const float eAll = AiMax(1e-3f, eAir + eSurf);
 	const float stakeAir = stake * eAir / eAll, stakeSurf = stake * eSurf / eAll;
 	const float H = AiMax(1.f, Economist::Horizon());
@@ -2109,7 +2137,14 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			if (Economist::mexT1 !is null && d.CanBuild(Economist::mexT1)) vBuild = EcoPos::constructorValue;
 		} else if (d.GetSustainedDps() > 0.f) {
 			const float hp = AiMax(1.f, d.health);
-			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp), us = sqrt(AiMax(0.f, d.surfThrDmg) * hp);
+			float gapDmg = 0.f, wSum = 0.f;
+			for (uint k = 0; k < mixW.length(); ++k) {
+				gapDmg += mixW[k] * mixDps[k] * AiMax(0.f, mixRange[k] - d.GetMaxRange()) / AiMax(1.f, d.speed);
+				wSum += mixW[k];
+			}
+			if (wSum > 0.f) gapDmg /= wSum;
+			const float hpSurf = AiMax(1.f, hp - gapDmg);
+			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp), us = sqrt(AiMax(0.f, d.surfThrDmg) * hpSurf);
 			vFight = stakeAir * (WinShare(sAir + ua, eAir) - WinShare(sAir, eAir))
 				+ stakeSurf * (WinShare(sSurf + us, eSurf) - WinShare(sSurf, eSurf));
 			vFight *= AiMax(0.f, 1.f - dist / AiMax(1.f, d.speed) / H);
