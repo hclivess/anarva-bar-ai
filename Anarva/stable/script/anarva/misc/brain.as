@@ -476,6 +476,34 @@ void Update()
 		const float h = Intel::heat[Intel::CellOf(mx[i].GetPos(ai.frame))];
 		if (h > bestHeat) { bestHeat = h; @best = mx[i]; }
 	}
+	/*
+	 * Before the raid, not after it (95 of 106 winners build turrets early: median 4 armed buildings by minute 6, the
+	 * first at ~217 s - when the first raids arrive; replays.db): from when the earliest enemy raid can arrive
+	 * (less the tower's build time), a raid goes where our value is, so the loss expected at an unguarded spot is its
+	 * value in the tower's reach x its share of all our exposed producer value. A tower pays when that beats it.
+	 */
+	const float now = float(ai.frame) / SECOND;
+	const float tBuild = tur.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower());
+	if (best is null && now + tBuild >= Opening::raidArrive) {
+		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+		float total = 0.f;
+		array<float> val(mx.length(), 0.f);
+		for (uint i = 0; i < mine.length(); ++i)
+			if (Economist::IsProducer(mine[i].circuitDef)) total += Economist::AssetValue(mine[i].circuitDef);
+		const float r = tur.GetMaxRange();
+		for (uint i = 0; i < mx.length(); ++i) {
+			if (guarded.exists("" + mx[i].id)) continue;
+			const AIFloat3 q = mx[i].GetPos(ai.frame);
+			bool covered = false;
+			for (uint k = 0; k < mine.length() && !covered; ++k)
+				covered = !mine[k].circuitDef.IsMobile() && mine[k].circuitDef.surfThrDmg > 0.f && mine[k].GetPos(ai.frame).distance2D(q) <= mine[k].circuitDef.GetMaxRange();
+			if (covered) continue;
+			for (uint k = 0; k < mine.length(); ++k)
+				if (Economist::IsProducer(mine[k].circuitDef) && mine[k].GetPos(ai.frame).distance2D(q) <= r) val[i] += Economist::AssetValue(mine[k].circuitDef);
+			const float expected = val[i] * val[i] / AiMax(1.f, total);
+			if (expected > bestHeat) { bestHeat = expected; @best = mx[i]; }
+		}
+	}
 	if (best is null) return;
 	const AIFloat3 p = best.GetPos(ai.frame);
 	if (!TurretSurvives(tur, p)) return;
@@ -489,7 +517,7 @@ void Update()
 	// extractor's own position with radius 0 the job could never be placed: 8 orders, 1 tower, Gasbag Grabens)
 	const float around = tur.GetRadius() * 2.f + best.circuitDef.GetRadius() * 2.f;
 	aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, Task::Priority::NOW, tur, p, around, true, OrderLife(tur, p)));
-	AiLog("[ANV] MexPorc: " + tur.GetName() + " at raided extractor (lost " + int(bestHeat) + " metal around it > turret " + int(cost) + ")");
+	AiLog("[ANV] MexPorc: " + tur.GetName() + " at extractor (loss there, seen or expected from the raid, " + int(bestHeat) + " > turret " + int(cost) + ")");
 }
 }  // namespace MexPorc
 
