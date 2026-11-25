@@ -2775,9 +2775,9 @@ void Update()
 			}
 		}
 	}
-	// free units wait at home
+	// free units wait at home, fighting what they meet on the way (an attack-move; a retreating squad uses plain moves)
 	for (uint i = 0; i < freeUnits.length(); ++i)
-		if (freeUnits[i].GetPos(ai.frame).distance2D(basePos) > freeUnits[i].circuitDef.GetMaxRange()) Order(freeUnits[i], "home", 0, basePos, -1);
+		if (freeUnits[i].GetPos(ai.frame).distance2D(basePos) > freeUnits[i].circuitDef.GetMaxRange()) Order(freeUnits[i], "homeF", 1, basePos, -1);
 }
 string Status() { return "ops=" + ops.length() + " created=" + created + " pulledBack=" + retreats; }
 // a dead unit leaves its squad at once (a handle kept until the next update crashed the game when read: GetPos)
@@ -2908,7 +2908,8 @@ void Micro()
 			if (ed[k] !is null && ep[k].distance2D(p) <= reach) inReach = true;
 		if (!hit && !inReach) continue;
 		++contact;
-		const bool didFire = u.LastShotFrame() > since;
+		// fired within its own reload time (a weapon that reloads in more than a second can't fire every second)
+		const bool didFire = u.LastShotFrame() > AiMin(since, ai.frame - d.GetReloadTime());
 		const AIFloat3 v = u.GetVel();
 		const bool still = v.x * v.x + v.z * v.z <= 0.f;
 		if (didFire) ++fired;

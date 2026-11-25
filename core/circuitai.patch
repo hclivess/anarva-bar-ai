@@ -866,7 +866,7 @@ index 559a0abf..90335c82 100644
  	CCircuitDef* terraDef = nullptr;
  	std::unordered_map<IBuilderTask::BT, std::unordered_map<CCircuitDef*, SBuildChain*>> buildChains;  // owner
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..c5eb4883 100644
+index 6e5da8b6..0ff233b9 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,8 @@
@@ -1136,16 +1136,21 @@ index 6e5da8b6..c5eb4883 100644
  		&& ((mexTaskSize == 0) || (builderMgr->GetWorkerCount() > circuit->GetMilitaryManager()->GetGuardTaskNum() + 1)))
  	{
  		const AIFloat3& pos = circuit->GetSetupManager()->GetMetalBase();
-@@ -1201,7 +1142,7 @@ IBuilderTask* CEconomyManager::UpdateReclaimTasks(const AIFloat3& position, CCir
+@@ -1200,8 +1141,11 @@ IBuilderTask* CEconomyManager::UpdateReclaimTasks(const AIFloat3& position, CCir
+ 		return nullptr;
  	}
  
- 	bool isResurrect = unit->GetCircuitDef()->IsAbleToResurrect();  // false;
+-	bool isResurrect = unit->GetCircuitDef()->IsAbleToResurrect();  // false;
 -	if (IsMetalFull() || (builderMgr->GetTasks(IBuilderTask::BuildType::RECLAIM).size() >= builderMgr->GetWorkerCount() / 2)) {
++	// Anarva: resurrecting costs about the unit's energy; while energy binds (stalling, or demand above income) the wreck
++	// is reclaimed for its metal instead (Avalanche 2026-11-25: rez bots resurrecting, energy ~800/s short for minutes)
++	const bool energyBinds = IsEnergyStalling() || (GetEnergyPullReal() > GetAvgEnergyIncome());
++	bool isResurrect = unit->GetCircuitDef()->IsAbleToResurrect() && !energyBinds;
 +	if (IsMetalFull() || (builderMgr->GetTasks(IBuilderTask::BuildType::RECLAIM).size() >= builderMgr->GetWorkerCount())) {
  //		isResurrect = unit->GetCircuitDef()->IsAbleToResurrect();
  		if (!isResurrect) {
  			return nullptr;
-@@ -1210,7 +1151,11 @@ IBuilderTask* CEconomyManager::UpdateReclaimTasks(const AIFloat3& position, CCir
+@@ -1210,7 +1154,11 @@ IBuilderTask* CEconomyManager::UpdateReclaimTasks(const AIFloat3& position, CCir
  
  	std::vector<Feature*> features;
  	if (isNear) {
@@ -1158,7 +1163,7 @@ index 6e5da8b6..c5eb4883 100644
  		features = std::move(circuit->GetCallback()->GetFeaturesIn(position, distance));
  	} else {
  		features = std::move(circuit->GetCallback()->GetFeatures());
-@@ -1266,11 +1211,11 @@ IBuilderTask* CEconomyManager::UpdateReclaimTasks(const AIFloat3& position, CCir
+@@ -1266,11 +1214,11 @@ IBuilderTask* CEconomyManager::UpdateReclaimTasks(const AIFloat3& position, CCir
  		task = builderMgr->GetResurrectTask(pos, 8.0f/*unit->GetCircuitDef()->GetBuildDistance()*/);
  		if (isResurrect) {
  			if (task == nullptr) {
@@ -1172,7 +1177,7 @@ index 6e5da8b6..c5eb4883 100644
  									   8.0f/*unit->GetCircuitDef()->GetBuildDistance()*/));
  		} else {
  			task = nullptr;
-@@ -1299,13 +1244,10 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1299,13 +1247,10 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  	CCircuitDef* bestDef = nullptr;
  	CCircuitDef* hopeDef = nullptr;
@@ -1187,7 +1192,7 @@ index 6e5da8b6..c5eb4883 100644
  
  	std::map<CCircuitDef::Id, int> defCounts;
  	for (IBuilderTask* task : builderMgr->GetTasks(IBuilderTask::BuildType::ENERGY)) {
-@@ -1313,59 +1255,96 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1313,59 +1258,96 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  	}
  
  	const auto& infos = energyDefs.GetInfos();
@@ -1328,7 +1333,7 @@ index 6e5da8b6..c5eb4883 100644
  	}
  
  	if (isLastHope) {
-@@ -1384,9 +1363,46 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1384,9 +1366,46 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  	CSetupManager* setupMgr = circuit->GetSetupManager();
  	AIFloat3 buildPos = -RgtVector;
  	if (bestDef->IsAttrBase()) {
@@ -1377,7 +1382,7 @@ index 6e5da8b6..c5eb4883 100644
  	} else {
  		if (terrainMgr->IsZoneAlly(position)
  			|| ((circuit->GetFactoryManager()->GetFactoryCount() > 0) && (position.SqDistance2D(setupMgr->GetSmallEnergyPos()) < SQUARE(600.f))
-@@ -1402,9 +1418,10 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
+@@ -1402,9 +1421,10 @@ IBuilderTask* CEconomyManager::UpdateEnergyTasks(const AIFloat3& position, CCirc
  	if (geom::is_valid(buildPos) && terrainMgr->CanBeBuiltAtSafe(bestDef, buildPos) &&
  		((unit == nullptr) || terrainMgr->CanReachAtSafe(unit, buildPos, unit->GetCircuitDef()->GetBuildDistance())))
  	{
@@ -1391,7 +1396,7 @@ index 6e5da8b6..c5eb4883 100644
  		IBuilderTask* task = builderMgr->Enqueue(TaskB::Common(IBuilderTask::BuildType::ENERGY,
  												 priority, bestDef, buildPos, 0.f, true));
  		if ((unit == nullptr) || unit->GetCircuitDef()->CanBuild(bestDef)) {
-@@ -1446,7 +1463,7 @@ IBuilderTask* CEconomyManager::UpdateGeoTasks(const AIFloat3& position, CCircuit
+@@ -1446,7 +1466,7 @@ IBuilderTask* CEconomyManager::UpdateGeoTasks(const AIFloat3& position, CCircuit
  
  	float metalIncome = GetAvgMetalIncome();
  	const float energyIncome = GetAvgEnergyIncome();
@@ -1400,7 +1405,7 @@ index 6e5da8b6..c5eb4883 100644
  	const float maxCostM = metalIncome * builderMgr->GetGoalExecTime();
  	const float maxCostE = energyIncome * builderMgr->GetGoalExecTime();
  
-@@ -1468,7 +1485,12 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1468,7 +1488,12 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	ZoneScoped;
  
  	CBuilderManager* builderMgr = circuit->GetBuilderManager();
@@ -1413,7 +1418,7 @@ index 6e5da8b6..c5eb4883 100644
  		return nullptr;
  	}
  
-@@ -1498,11 +1520,13 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1498,11 +1523,13 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	 * check factory
  	 */
  	if (!builderMgr->GetTasks(IBuilderTask::BuildType::FACTORY).empty()) {
@@ -1427,7 +1432,7 @@ index 6e5da8b6..c5eb4883 100644
  		return nullptr;
  	}
  	CCircuitDef* facDef = factoryTask->GetBuildDef();
-@@ -1516,8 +1540,9 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1516,8 +1543,9 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	float eiRequire;
  	if (isStart && (unit != nullptr)) {
  		const float startBuildTime = facDef->GetBuildTime() / unit->GetCircuitDef()->GetWorkerTime();
@@ -1439,7 +1444,7 @@ index 6e5da8b6..c5eb4883 100644
  	} else {
  		const float buildTime = reprDef->GetBuildTime() / facDef->GetWorkerTime();
  		miRequire = reprDef->GetCostM() / buildTime * factoryMgr->GetNewFacModM();
-@@ -1529,15 +1554,19 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1529,15 +1557,19 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	const int nanoQueued = builderMgr->GetTasks(IBuilderTask::BuildType::NANO).size();
  	const float factoryPower = factoryMgr->GetMetalRequire() * factoryMgr->GetFacModM() + nanoQueued * factoryMgr->GetAssistSpeed();
  	const float energyPower = factoryMgr->GetEnergyRequire() * factoryMgr->GetFacModE() * GetEcoEM() + nanoQueued * factoryMgr->GetAssistSpeed();
@@ -1459,7 +1464,7 @@ index 6e5da8b6..c5eb4883 100644
  		return nullptr;
  	}
  
-@@ -1549,13 +1578,15 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1549,13 +1581,15 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	} else {
  		const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
  		const AIFloat3& enemyPos = circuit->GetEnemyManager()->GetEnemyPos();
@@ -1477,7 +1482,7 @@ index 6e5da8b6..c5eb4883 100644
  			} else {
  				int facing;
  				buildPos = terrainMgr->GetBusPos(facDef, basePos, facing);
-@@ -1591,7 +1622,7 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+@@ -1591,7 +1625,7 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  
  			const float sqStartDist = enemyPos.SqDistance2D(basePos);
  			const float sqBuildDist = enemyPos.SqDistance2D(buildPos);
@@ -1486,7 +1491,7 @@ index 6e5da8b6..c5eb4883 100644
  		}
  
  		if (factoryTask->GetFacing() != UNIT_NO_FACING) {
-@@ -1654,18 +1685,25 @@ IBuilderTask* CEconomyManager::UpdateStorageTasks()
+@@ -1654,18 +1688,25 @@ IBuilderTask* CEconomyManager::UpdateStorageTasks()
  
  		if (!storeDef->IsAvailable(circuit->GetLastFrame())
  //			|| (GetMetalStore() > 60 * GetAvgMetalIncome())
@@ -1516,7 +1521,7 @@ index 6e5da8b6..c5eb4883 100644
  		{
  			storeDef = nullptr;
  		}
-@@ -1711,7 +1749,7 @@ IBuilderTask* CEconomyManager::UpdatePylonTasks()
+@@ -1711,7 +1752,7 @@ IBuilderTask* CEconomyManager::UpdatePylonTasks()
  	}
  
  	if (geom::is_valid(buildPos)) {
@@ -1525,7 +1530,7 @@ index 6e5da8b6..c5eb4883 100644
  		return builderMgr->Enqueue(TaskB::Pylon(priority, buildDef, buildPos, link, buildDef->GetCostM()));
  	} else {
  		link->SetValid(false);
-@@ -1820,13 +1858,13 @@ CBFactoryTask* CEconomyManager::PickNextFactory(const AIFloat3& position, bool i
+@@ -1820,13 +1861,13 @@ CBFactoryTask* CEconomyManager::PickNextFactory(const AIFloat3& position, bool i
  		return nullptr;
  	}
  	CBuilderManager* builderMgr = circuit->GetBuilderManager();
@@ -1543,7 +1548,7 @@ index 6e5da8b6..c5eb4883 100644
  	return factoryTask;
  }
  
-@@ -1838,7 +1876,7 @@ void CEconomyManager::AddMorphee(CCircuitUnit* unit)
+@@ -1838,7 +1879,7 @@ void CEconomyManager::AddMorphee(CCircuitUnit* unit)
  	morphees.insert(unit);
  	if (morph == nullptr) {
  		morph = CScheduler::GameJob(&CEconomyManager::UpdateMorph, this);
@@ -1552,7 +1557,7 @@ index 6e5da8b6..c5eb4883 100644
  	}
  }
  
-@@ -1854,7 +1892,7 @@ void CEconomyManager::UpdateMorph()
+@@ -1854,7 +1895,7 @@ void CEconomyManager::UpdateMorph()
  
  	const float energyIncome = GetAvgEnergyIncome();
  	const float metalIncome = std::min(GetAvgMetalIncome(), energyIncome);
@@ -1561,7 +1566,7 @@ index 6e5da8b6..c5eb4883 100644
  		return;
  	}
  
-@@ -1862,7 +1900,8 @@ void CEconomyManager::UpdateMorph()
+@@ -1862,7 +1903,8 @@ void CEconomyManager::UpdateMorph()
  	while (it != morphees.end()) {
  		CCircuitUnit* unit = *it;
  		if ((unit->GetTask()->GetType() == IUnitTask::Type::PLAYER) ||
@@ -1571,7 +1576,7 @@ index 6e5da8b6..c5eb4883 100644
  		{
  			++it;
  		} else {
-@@ -1892,57 +1931,9 @@ void CEconomyManager::DelFactoryInfo(CCircuitUnit* unit)
+@@ -1892,57 +1934,9 @@ void CEconomyManager::DelFactoryInfo(CCircuitUnit* unit)
  
  bool CEconomyManager::CheckAirpadRequired(const AIFloat3& position, CCircuitUnit* unit, IBuilderTask*& outTask)
  {
@@ -1631,7 +1636,7 @@ index 6e5da8b6..c5eb4883 100644
  	return false;
  }
  
-@@ -2000,19 +1991,21 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -2000,19 +1994,21 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  		return true;
  	}
  
@@ -1657,7 +1662,7 @@ index 6e5da8b6..c5eb4883 100644
  			break;
  	}
  	CTerrainManager::CorrectPosition(buildPos);
-@@ -2029,6 +2022,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -2029,6 +2025,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  	return false;
  }
  
@@ -1675,7 +1680,7 @@ index 6e5da8b6..c5eb4883 100644
  float CEconomyManager::GetStorage(Resource* res)
  {
  	return economy->GetStorage(res) - HIDDEN_STORAGE;
-@@ -2096,15 +2100,6 @@ void CEconomyManager::UpdateEconomy()
+@@ -2096,15 +2103,6 @@ void CEconomyManager::UpdateEconomy()
  		buildDelay = int(bdInfo.fraction * (ecoFrame - bdInfo.startFrame)) + bdInfo.startDelay;
  	}
  
@@ -1691,7 +1696,7 @@ index 6e5da8b6..c5eb4883 100644
  	pullMtoS *= circuit->GetMilitaryManager()->ClampMobileCostRatio();
  }
  
-@@ -2133,78 +2128,14 @@ bool CEconomyManager::HasNoPurpose(const CCircuitDef::Id defId) const
+@@ -2133,78 +2131,14 @@ bool CEconomyManager::HasNoPurpose(const CCircuitDef::Id defId) const
  
  void CEconomyManager::ReclaimOldConvert(const SConvertExt* convertExt)
  {
@@ -3059,7 +3064,7 @@ index 0be6a835..50601754 100644
  }
  
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..d9c82e56 100644
+index c3aaefe5..7a04808a 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -3167,11 +3172,12 @@ index c3aaefe5..d9c82e56 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +776,195 @@ void CInitScript::RegisterCore()
+@@ -735,9 +776,196 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetHealth()", asFUNCTION(CCircuitUnit_GetHealth), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);  // Anarva #92
++	r = engine->RegisterObjectMethod("CCircuitDef", "int GetReloadTime() const", asMETHOD(CCircuitDef, GetReloadTime), asCALL_THISCALL); ASSERT(r >= 0);  // Anarva: frames
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "AIFloat3 GetVel()", asFUNCTION(CCircuitUnit_GetVel), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "int LastShotFrame()", asFUNCTION(CCircuitUnit_LastShotFrame), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CCircuitUnit", "string GetRulesParam(const string& in, const string& in) const", asFUNCTION(CCircuitUnit_GetRulesParamString), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -3363,7 +3369,7 @@ index c3aaefe5..d9c82e56 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +994,36 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +995,36 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -3400,7 +3406,7 @@ index c3aaefe5..d9c82e56 100644
  }
  
  bool CInitScript::Init()
-@@ -920,22 +1177,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1178,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  
