@@ -2775,6 +2775,33 @@ void FillMix(Mix@ m, const array<string>@ opts)
 //  - dodging: a shell fired at range R with speed v lands R/v later; a target of radius r moving at u has moved u*R/v,
 //    so it is hit with chance ~ r / max(r, u*R/v) (instant weapons always hit) - for our shots and theirs.
 // (Without these, sqrt(dps x health) per metal made the Flea our best fighter: 14-16 per game, short test s32.)
+// metal fielded per our army type (all built), for the live efficiency: damage dealt per metal invested in the type
+dictionary builtMetal;
+void OnBuilt(CCircuitUnit@ u)
+{
+	if (!IsArmy(u.circuitDef) || u.circuitDef.GetSustainedDps() <= 0.f) return;
+	double m = 0; if (!builtMetal.get(u.circuitDef.GetName(), m)) m = 0;
+	builtMetal.set(u.circuitDef.GetName(), m + double(u.circuitDef.costM));
+}
+// A type's measured efficiency against the mean of our fielded types: (its damage dealt per metal fielded) / (all
+// types' dealt per metal). The trade ratio (dealt / received) missed that a cheap unit dies cheaply and a heavy one keeps
+// shooting: rc2, 6 Centurions ~10.6 damage per metal, 62 Pawns ~2.3 - 4.5x - while the sqrt-of-trade correction gave
+// the Centurion x1.28 and the lab kept making Pawns (#116). 1 until the type has fought (taken a unit's health).
+float LiveEfficiency(const CCircuitDef@ d)
+{
+	double mine = 0; if (!builtMetal.get(d.GetName(), mine)) mine = 0;
+	if (mine <= 0.0 || AiDamageReceived(d.GetName()) < d.health) return 1.f;
+	float dealtAll = 0.f, metalAll = 0.f;
+	const array<string>@ ks = builtMetal.getKeys();
+	for (uint q = 0; q < ks.length(); ++q) {
+		double mm = 0; if (!builtMetal.get(ks[q], mm)) mm = 0;
+		CCircuitDef@ kd = ai.GetCircuitDef(ks[q]);
+		if (kd is null || AiDamageReceived(ks[q]) < kd.health) continue;  // only types that have fought
+		dealtAll += AiDamageDealt(ks[q]); metalAll += float(mm);
+	}
+	if (dealtAll <= 0.f || metalAll <= 0.f) return 1.f;
+	return (AiDamageDealt(d.GetName()) / float(mine)) / (dealtAll / metalAll);
+}
 int armyCountFrame = -1; float armyCount = 0.f;
 float OurArmyCount()
 {
@@ -2843,7 +2870,9 @@ float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 		// ~0.004, the correction multiplied the Pawn ~10x and 93 Pawns died to Levelers, cmd_m88)
 		const float model = AiMax(0.f, d.GetSustainedDps()) * land / AiMax(1e-3f, mixDps * hits * taken);
 		const float meas = dealt / rec;
-		if (model > 0.f) { power *= sqrt(meas / model); live = " live " + F2(meas) + "/" + F2(model) + " x" + F2(sqrt(meas / model)); }
+		const float eff = LiveEfficiency(d);
+		power *= eff;
+		live = " live " + F2(meas) + "/" + F2(model) + " eff x" + F2(eff);
 	}
 	terms = "(hits " + F2(land) + " taken " + F2(taken) + " splash " + F2(hits) + " gapDmg " + int(gapDmg) + live + (reachShare < 1.f ? " reach " + F2(reachShare) : "") + ")";
 	return power * reachShare;
@@ -3556,6 +3585,7 @@ void OnUnitFinished(CCircuitUnit@ unit)
 	Economist::OnFinished(unit);
 	Production::OnFinished(unit);
 	Scout::OnFinished(unit);
+	Production::OnBuilt(unit);
 }
 
 /*
