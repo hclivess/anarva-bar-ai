@@ -5787,16 +5787,35 @@ void Micro()
 				const float dk = ep[k].distance2D(p);
 				if (dk < nd) { nd = dk; nk = int(k); }
 			}
-			if (nk >= 0 && Facts::FiresMoving(d.GetName()) > 0.f) {
-				const float re = ed[nk].GetMaxRange();
-				if (reach > re && nd < reach && nd < re + ed[nk].speed) {  // they close within a second of their reach
-					AIFloat3 away = p - ep[nk];
-					const float len = AiMax(1.f, away.Length2D());
-					AIFloat3 to(ep[nk].x + away.x / len * reach, 0.f, ep[nk].z + away.z / len * reach);
-					to.y = AiGetElevation(to.x, to.z);
-					u.CmdMoveTo(to);
-					++kited;
+			// Formation (#117, owner: short-range units guard long-range ones; "rocketeers must stand in a line because they
+			// don't shoot over each other - unlike plasma bots or blitz"): in contact - the nearest armed enemy within our
+			// reach plus theirs - each unit takes its place at its OWN range from it: short range in front, long range behind
+			// by its range edge (winners' squads in contact, REPLAYS.md). Direct-fire units of a squad (Facts::DirectFire)
+			// spread sideways on the line facing the enemy, a footprint apart, each with a clear shot; arcing ones fire over.
+			// A unit that outranges the nearest enemy keeps that distance (it fires while moving - Facts::FiresMoving).
+			if (nk >= 0 && Facts::FiresMoving(d.GetName()) > 0.f && nd < reach + ed[nk].GetMaxRange()) {
+				AIFloat3 away = p - ep[nk];
+				const float len = AiMax(1.f, away.Length2D());
+				const float ux = away.x / len, uz = away.z / len;
+				float side = 0.f;
+				if (Facts::DirectFire(d.GetName()) > 0.f) {
+					// its slot among the squad's direct-fire units
+					for (uint q = 0; q < Command::ops.length(); ++q) {
+						const int at = Command::ops[q].units.findByRef(u);
+						if (at < 0) continue;
+						int idx = 0, nd2 = 0;
+						for (uint r = 0; r < Command::ops[q].units.length(); ++r) {
+							if (Facts::DirectFire(Command::ops[q].units[r].circuitDef.GetName()) <= 0.f) continue;
+							if (int(r) < at) ++idx;
+							++nd2;
+						}
+						side = (float(idx) - float(nd2 - 1) * 0.5f) * 2.f * d.GetRadius();
+						break;
+					}
 				}
+				AIFloat3 to(ep[nk].x + ux * reach - uz * side, 0.f, ep[nk].z + uz * reach + ux * side);
+				to.y = AiGetElevation(to.x, to.z);
+				if (to.distance2D(p) > d.GetRadius()) { u.CmdMoveTo(to); ++kited; }
 			}
 		}
 		// fired within its own reload time (a weapon that reloads in more than a second can't fire every second)

@@ -108,6 +108,14 @@ def scan(units_dir):
                 tur = [w.get("turret") is True for w in wd.values() if isinstance(w, dict)]
                 if tur:
                     d["turret"] = sum(tur) / len(tur)
+            # weapons that fire in a straight line and hit friendlies in the way (owner #117: "rocketeers must stand in a
+            # line because they don't shoot over each other - unlike plasma bots or blitz"): beam/laser/missile/
+            # lightning/flame types; ballistic cannons (plasma) arc over. Share of the unit's weapon defs.
+            if wd:
+                direct = ("beamlaser", "lasercannon", "missilelauncher", "lightningcannon", "flame", "emgcannon")
+                kinds = [str(w.get("weapontype", "")).lower() for w in wd.values() if isinstance(w, dict)]
+                if kinds:
+                    d["directfire"] = sum(1 for k in kinds if k in direct) / len(kinds)
             bo = u.get("buildoptions")
             d["buildoptions"] = [x for x in bo if isinstance(x, str)] if isinstance(bo, list) else []
             defs[name] = d
@@ -191,7 +199,7 @@ def main():
                     ("extractsmetal", "ExtractsMetal"), ("energyupkeep", "EnergyUpkeep"), ("factorytier", "FactoryTier"),
                     ("needgeo", "NeedsGeo"), ("metalmake", "MetalMake"), ("energymake", "EnergyMake"),
                     ("radardistance", "RadarRange"), ("cloakcost", "CloakCost"), ("cloakcostmoving", "CloakCostMoving"), ("mincloakdistance", "DecloakDistance"),
-                    ("turret", "FiresMoving")):
+                    ("turret", "FiresMoving"), ("directfire", "DirectFire")):
         items = sorted((n, d[key]) for n, d in defs.items() if key in d)
         lines.append("dictionary %s_ = {" % key)
         lines.append(",\n".join('\t{"%s", %g}' % (n, v) for n, v in items))
