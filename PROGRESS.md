@@ -269,3 +269,8 @@ The latest batch (D-gun and strength fixes) is being played.
   reclaimed 1352 times in minutes 10-16 while extractors stalled at 11-12. Now its metal x build progress, its build
   time x progress at our reclaim speed. Extractor picks 193 -> 890, extractors 22-23 at 10-12 min (winners 26.6),
   metal income 44-46 (was 27). Lost: the commander died at 14:08, 1116 out, a Gator beside it.
+- **Commander at base (cmd_m102):** with the redirect's safe job held, the commander still died at base (17:52, a Pyro):
+  its safe job was guarding a factory 303 from base, inside the base fight. Cause in the scoring of safe places:
+  a spot's risk uses EscapeTime = the walk to the nearest factory, so a factory in the fight reads as the best
+  escape and a quiet structure far from it reads dangerous. Next: escape = leaving the reaching enemies' range
+  (their longest range over our speed, from where they are), not reaching a factory.
