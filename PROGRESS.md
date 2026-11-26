@@ -779,3 +779,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   bot lab at 708 s from another path. All lost (12:00-19:00). Record on the latest builds: 2 wins in 27. Open: which
   path still orders bot labs; scoring factories against the remembered enemy mix (Production's memory), not the mix in
   sight.
+- **Vehicle plant built (vp7):** the factory re-decision no longer aborts a job a builder is on (it flipped vp/advanced lab). vp7: vehicle plant at 402 s (winners' second factory median 7:29), but it made 27 Rovers (scouts) and 20 Blitzes; vp8 none. Both lost (17:00, 19:00). Record: 2 wins in 29. Next: why Production values the Rover so high from the vehicle plant.
