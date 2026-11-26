@@ -334,7 +334,7 @@ float SpotLife(const AIFloat3& in q)
 	return AiMax(floorH, tFirst + cycle * (1.f / P - 1.f));
 }
 bool wantConstructor = false;  // (kept for the status line)
-float constructorValue = 0.f; int conLogFrame = -100000;  // metal-eq one more constructor saves (Production compares it with every other unit)
+float constructorValue = 0.f; int conLogFrame = -100000; float spendLog = 0.f;  // metal-eq one more constructor saves (Production compares it with every other unit)
 array<AIFloat3> raidPos; array<float> raidVal;  // expected enemy economy (Command objectives)
 // the cheapest mobile constructor any factory we own can build (unit facts via Facts::BuildOptions)
 CCircuitDef@ CheapestConstructor()
@@ -517,7 +517,20 @@ void Update()
 		vN += spYield[j] * AiMax(0.f, Lj - cum / N);
 		vN1 += spYield[j] * AiMax(0.f, Lj - cum / (N + 1.f));
 	}
-	const float saved = (vN1 - vN) * Economist::MetalShare();
+	float saved = (vN1 - vN) * Economist::MetalShare();
+	// ...and it is build power: it spends metal that otherwise sits unspent (income + bank over a producer's life, less
+	// what we draw), at most its build power x the metal a job takes per build-second (extractor facts) - valued as the
+	// core values a construction turret. Discounted by the unspent share alone, a floating bank made constructors worth
+	// less (share 0.56-0.59): the plant built Blitzes, we had 2-4 constructors and 4 extractors at 4:00 against BARb's 5
+	// and 7, metal income 11.2 vs 18.1 (swe44-45). A player floating metal makes constructors.
+	if (conDef !is null && Economist::mexT1 !is null) {
+		const float bankRate = aiEconomyMgr.metal.current / AiMax(1.f, Economist::ProducerLife());
+		const float unspent = AiMax(0.f, aiEconomyMgr.metal.income + bankRate - AiSmoothMetalPull());
+		const float perBp = Economist::mexT1.costM / AiMax(1.f, Economist::mexT1.buildTime);
+		const float spend = AiMin(unspent, conDef.buildSpeed * perBp);
+		saved += spend * Hc;
+		spendLog = spend;
+	}
 	// A constructor without a building job proves the work we can claim now is covered: one more saves nothing (25
 	// constructors, 12 idle and 3 extractors at minute 8 while the raiders made every free spot unsafe: Eye of Horus
 	// 1v1, 2026-11-25). The lab builds the army that makes spots claimable instead.
@@ -544,7 +557,7 @@ void Update()
 		conLogFrame = ai.frame;
 		AiLog("[ANV-CONVAL] spots " + spWork.length() + " unclaimed " + unclaimed + " unemployed " + unemployed + " N " + int(N) + " H " + int(Hc)
 			+ " Lm " + (Lm > 1e20f ? "-" : ("" + int(Lm))) + " vN " + int(vN) + " vN1 " + int(vN1) + " share " + F2(Economist::MetalShare())
-			+ " first work " + (spWork.length() > 0 ? int(spWork[0]) : -1) + " life " + (spLife.length() > 0 ? int(spLife[0]) : -1) + " yield " + (spYield.length() > 0 ? F2(spYield[0]) : "-") + " -> " + int(constructorValue));
+			+ " first work " + (spWork.length() > 0 ? int(spWork[0]) : -1) + " life " + (spLife.length() > 0 ? int(spLife[0]) : -1) + " yield " + (spYield.length() > 0 ? F2(spYield[0]) : "-") + " spend " + F1(spendLog) + " -> " + int(constructorValue));
 	}
 	wantConstructor = work;
 	aiFactoryMgr.buildpowerRatio = 0.f;  // the core never asks for constructors itself: Production weighs constructorValue (#96)
