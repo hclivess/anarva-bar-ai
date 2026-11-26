@@ -1679,6 +1679,15 @@ float NukeRisk()
 	if (aiEnemyMgr.GetEnemyCost(RT::NUKE) <= 0.f) {
 		if (ourT2Frame < 0)
 			return 0.f;  // nobody near T2 yet (parity): a silo is out of reach
+		// A silo takes long and stands in their base: seen without one, the earliest missile is that sighting + the silo's
+		// build (at our build power, parity) + its stockpile. Our anti-nuke waits while it would still stand before then.
+		// (On affordability alone the T2 constructors took anti-nuke jobs at 13 min against no nuke, t2g; #100.)
+		const int cell = Intel::CellOf(AiEnemyBasePos());
+		if (cell >= 0 && cell < int(Scout::lastSeen.length()) && Scout::lastSeen[cell] > 0) {
+			const float tSilo = float(Scout::lastSeen[cell]) / SECOND + siloDef.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower())
+				+ Facts::StockpileTime(siloDef.GetName());
+			if (float(ai.frame) / SECOND + L < tSilo) return 0.f;
+		}
 		const float since = float(ai.frame - ourT2Frame) / SECOND + L;
 		// each enemy earns about what we do (parity prior; scouted BARbs out-earn us, so it's a floor)
 		const float enemyMetal = float(AiMax(1, ai.GetEnemyTeamSize())) * aiEconomyMgr.metal.income * since;
@@ -2262,7 +2271,17 @@ IUnitTask@ MohoConTask(CCircuitUnit@ fac)
 		- (Brain::Economist::MexUpkeep(Brain::Economist::mexT2) - Brain::Economist::MexUpkeep(Brain::Economist::mexT1)) / AiMax(1e-3f, Brain::Economist::energyPerMetal);
 	if (extra <= 0.f) { mohoWhy = "upgrade doesn't pay its upkeep"; return null; }
 	const float tau = t2.buildTime / AiMax(1.f, con.buildSpeed);
-	const float saving = (C == 0) ? 1e9f : extra * tau * float(U * U) / (2.f * float(C) * float(C + 1));
+	// What one more constructor saves, within the extractors' life: with C constructors the k-th upgrade stands at
+	// ceil(k/C) x tau and earns extra until the life is out. (Counting every upgrade forever - U^2 / 2C(C+1) - bought 7-11
+	// constructors per game and the advanced lab made no fighters; the first upgrade came at 13:15 and the game was
+	// lost at 15:00, t2g; #100.)
+	const float L = AiMax(1.f, Brain::Economist::ProducerLife());
+	float vC = 0.f, vC1 = 0.f;
+	for (uint k = 1; k <= U; ++k) {
+		if (C > 0) vC += extra * AiMax(0.f, L - ceil(float(k) / float(C)) * tau);
+		vC1 += extra * AiMax(0.f, L - ceil(float(k) / float(C + 1)) * tau);
+	}
+	const float saving = vC1 - vC;
 	// Metal has a shadow price: while we are short of the army we need, a metal not spent on army costs
 	// needed/ours of it (the Director's ratio). Upgrades must beat army at that price.
 	const float shadow = AiMax(1.f, 1.f / AiMax(1e-2f, Brain::Director::ratio));
@@ -2362,6 +2381,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// won, so more Pawns add nothing against Gators they already beat and a unit that outranges the Levelers we lose to
 	// adds most (square law).
 	array<string> kName; array<float> kE, kS; array<Mix@> kMix;
+	float mE = 0.f, nOurs = 0.f;  // armed units on each side (granularity, #101)
 	{
 		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
@@ -2376,11 +2396,12 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				kMix.insertLast(mk);
 			}
 			kE[k] += sqrt(d.GetSustainedDps() * AiMax(1.f, eh[i] * d.health));
+			mE += 1.f;
 		}
 		float seen = 0.f;
 		for (uint k = 0; k < kE.length(); ++k) seen += kE[k];
 		const float scale = (seen > 0.f) ? AiMax(1.f, eSurf / seen) : 1.f;
-		for (uint k = 0; k < kE.length(); ++k) kE[k] *= scale;
+		for (uint k = 0; k < kE.length(); ++k) kE[k] *= Gran(mE * scale) * scale;  // their unseen units count too
 		// ours against each: per our type, its power x how many (one SurfPower per type pair)
 		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
 		dictionary cnt; array<string> ours;
@@ -2389,6 +2410,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			if ((!IsArmy(d) && mine[i] !is commander) || Scout::IsScout(mine[i]) || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
 			int c = 0; cnt.get(d.GetName(), c); cnt.set(d.GetName(), c + 1);
 			if (c == 0) ours.insertLast(d.GetName());
+			nOurs += 1.f;
 		}
 		for (uint j = 0; j < ours.length(); ++j) {
 			int c = 0; cnt.get(ours[j], c);
@@ -2425,7 +2447,8 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				for (uint k = 0; k < kE.length(); ++k) {
 					string tm;
 					const float uk = SurfPower(d, kMix[k], tm);
-					vSurf += stakeSurf * kE[k] / kESum * (WinShare(kS[k] + uk, kE[k]) - WinShare(kS[k], kE[k]));
+					// with one unit more our force is split one way further (#101): Gran(n+1) on the new total
+					vSurf += stakeSurf * kE[k] / kESum * (WinShare((kS[k] + uk) * Gran(nOurs + 1.f), kE[k]) - WinShare(kS[k] * Gran(nOurs), kE[k]));
 				}
 				terms += " per-type " + int(vSurf);
 			}
@@ -2561,6 +2584,11 @@ float HitChance(float shotSpeed, float range, float targetSpeed, float targetRad
 	return AiMin(1.f, AiMax(1.f, targetRadius) / AiMax(AiMax(1.f, targetRadius), drift));
 }
 float WinShare(float S, float E) { return (S + E > 0.f) ? S / (S + E) : 0.f; }
+// Granularity (#101, owner: "2 units that each have 500 hp are worse than one unit with 1000 hp because the latter's
+// damage output doesn't drop"): under focus fire n equal units die one after another and deliver dps x time
+// (n+1)/(2n) of one undivided unit with their total dps and health; strength (sqrt of dps x health delivered) scales by
+// the square root of that. n = 1: 1; 2: 0.87; many: 0.71.
+float Gran(float n) { const float m = AiMax(1.f, n); return sqrt((m + 1.f) / (2.f * m)); }
 
 float lastBestRatio = 0.f;  // production's best value per metal at its last fighter pick (what army metal buys now)
 string Status() { return "moho=" + mohoCons + "(" + mohoWhy + ") prod=" + choices + "/b" + builders + " rez=" + rezBots.length() + "/" + rezOrders + " last=" + last; }
@@ -5388,7 +5416,10 @@ bool CommWorth(const AIFloat3& in p, float gain, float tJob = 0.f)
 	// walked to an extractor 2651 out and died to an attacker nobody saw (cs2). Where we can't watch, the risk can't
 	// be known, so it doesn't go (a constructor does). 1v1 winners keep it home: from start, median 276 at 3-6 min,
 	// 501 at 6-9, ~1000 at 12-15 (replays.db, 107 winners); the 2000-3000 forward commander is the team-game cluster.
-	if (commander !is null && !Watched(p) && p.distance2D(commander.GetPos(ai.frame)) > commander.circuitDef.GetBuildDistance()) {
+	// Before the earliest enemy raid can arrive nothing of theirs can be there, watched or not (refusing unwatched ground
+	// from the start left 4 extractors at 8:00 in two of three games, ck2/ck3: no radar yet, spots out of sight).
+	const bool knownEmpty = float(ai.frame) / SECOND + tJob < Opening::raidArrive;
+	if (commander !is null && !knownEmpty && !Watched(p) && p.distance2D(commander.GetPos(ai.frame)) > commander.circuitDef.GetBuildDistance()) {
 		lastV = GameValue(); lastRisk = lastV; lastGain = gain;
 		return false;
 	}

@@ -427,3 +427,16 @@ The latest batch (D-gun and strength fixes) is being played.
   first at 1:22 / 2:16 / 1:42 (1v1 winners: median 3.3 min, 5 by 12:00). Trades 0.56 / 0.55 / 0.60; rd3 the closest
   game yet (pts loss, army 5600 vs 6900 at 20:00, commander alive); rd1/rd2 commander dead at 202-415 from base.
   Facts gained: RadarRange, CloakCost, CloakCostMoving, DecloakDistance (gen_facts.py); CmdCloak bridged.
+- **Commander home + cloak (ck1-3, #65/#99):** deaths at 13:56 / 19:30 / 18:00 (was 12-15), two at 194-226 from base
+  (base overrun), trades 0.46 / 0.77 / 0.76; cloak used (risk 2-54 vs energy ~1 metal-eq/s). But unwatched-ground refusals
+  (43-206) kept the commander off early extractors: 4 at 8:00 in ck2/ck3. Fixed: ground is known empty before the
+  earliest enemy raid can arrive (Opening::raidArrive). Granularity (#101) added in the per-type fight value.
+- **Batch bt1-3** (commander known-empty ground before raids, upgrade constructors within life, anti-nuke after a
+  silo could exist, granularity #101): trades 0.45 / 0.94 / 0.49; bt2 the closest yet (pts loss, army 7203 vs 7641 at
+  20:00, commander alive); bt1/bt3 lost at 12:00 (commander at 1247 and 168). No anti-nuke built (was 14 picks at 13 min).
+  No T2 lab in any of the three. 4 extractors at 4:00 in all three: the opener now takes a third extractor first (spot 49,
+  ~20 s path detour on Canis) and the lab stands at 86-101 s.
+- **Upgrade assists (#102, owner):** the core refused extra builders on any job its current build power finishes within
+  BARb's goal build time (config constant) - no T1 constructor ever joined a T2 extractor upgrade. Removed; the join value
+  (W/B - W/(B+b) at the job's yield) decides. An upgrade's yield is now the extra over the extractor it replaces (was its
+  whole output, ~4/3 too much).
