@@ -613,3 +613,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   still win (ratio 1.9-4.8 vs Pawn 1.4-3.0) because the fighter's value is the marginal WinShare of one global battle:
   behind (12 vs 236), one Pawn adds ~0.009 of the stake. Raids are local fights against single raiders; the fighter is
   worth the raid losses it stops - next. Swing at 4:00 both runs: metal 6.6-8.9 vs 18.1, damage share 0.13-0.22.
+- **Fighter value per enemy group (sw7):** each seen enemy group (single linkage within weapon range) is a fight with
+  stake dps x H x our producers' metal/hp; the larger of that and the global fight stands. sw7: BARb's seen units were
+  one group, so no change (groups 73-93 vs per-type 113-144). Swing moved to 3:00 on buildings (820 vs 1430) with metal
+  income equal (11.2): we bank 808 vs 580 at 1:00 and 507 vs 142 at 3:00 - BARb's commander spends ~600 in the first
+  minute (2 extractors + 3 solars), ours ~370 (2 + 2).

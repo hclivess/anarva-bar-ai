@@ -2485,6 +2485,46 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			for (uint k = 0; k < kE.length(); ++k) { string tm; kS[k] += float(c) * SurfPower(od, kMix[k], tm); }
 		}
 	}
+	// The fights a fighter takes are with the enemy's groups, not its whole army at once: raiders come one or two at a
+	// time and kill producers until something beats them there. Each seen group (linked when within the longer of their
+	// weapon ranges, as the replay analyzer groups squads) is one fight; its stake is what it can destroy over the
+	// horizon (its dps x H at our producers' metal per health, at most the stake); a fighter is worth what it adds to
+	// our win share in each. As one global battle, behind 12 vs 236 a Pawn added ~0.04 of the stake and the lab made
+	// constructors while 1-2 Grunts killed the extractors (metal 6.6-8.9 vs 18.1 at 4:00, swing.py sw5-6).
+	array<float> gE, gD;  // per group: strength, dps
+	{
+		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+		array<int> gi; array<AIFloat3> gp; array<float> gr, gs, gd;
+		for (uint i = 0; i < ne; ++i) {
+			const CCircuitDef@ d = ed[i];
+			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
+			gp.insertLast(ep[i]); gr.insertLast(d.GetMaxRange()); gd.insertLast(d.GetSustainedDps());
+			gs.insertLast(sqrt(d.GetSustainedDps() * AiMax(1.f, eh[i] * d.health)));
+			gi.insertLast(int(gi.length()));
+		}
+		// single linkage: union by relabelling
+		for (uint a = 0; a < gp.length(); ++a)
+			for (uint b = a + 1; b < gp.length(); ++b)
+				if (gi[a] != gi[b] && gp[a].distance2D(gp[b]) <= AiMax(gr[a], gr[b])) {
+					const int from = gi[b], to = gi[a];
+					for (uint c = 0; c < gi.length(); ++c) if (gi[c] == from) gi[c] = to;
+				}
+		array<int> lab;
+		for (uint a = 0; a < gi.length(); ++a) {
+			int g = lab.find(gi[a]);
+			if (g < 0) { g = int(lab.length()); lab.insertLast(gi[a]); gE.insertLast(0.f); gD.insertLast(0.f); }
+			gE[g] += gs[a]; gD[g] += gd[a];
+		}
+	}
+	float mPerHp = 0.f;
+	{
+		float pc = 0.f, ph = 0.f;
+		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+		for (uint i = 0; i < mine.length(); ++i)
+			if (Economist::IsProducer(mine[i].circuitDef)) { pc += Economist::MetalValue(mine[i].circuitDef); ph += AiMax(1.f, mine[i].circuitDef.health); }
+		mPerHp = (ph > 0.f) ? pc / ph : 0.f;
+	}
 	float kESum = 0.f;
 	for (uint k = 0; k < kE.length(); ++k) kESum += kE[k];
 	string kLog = "";
@@ -2518,6 +2558,15 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 					vSurf += stakeSurf * kE[k] / kESum * (WinShare((kS[k] + uk) * Gran(nOurs + 1.f), kE[k]) - WinShare(kS[k] * Gran(nOurs), kE[k]));
 				}
 				terms += " per-type " + int(vSurf);
+			}
+			if (gE.length() > 0) {
+				float vG = 0.f;
+				for (uint g = 0; g < gE.length(); ++g) {
+					const float stakeG = AiMin(stakeSurf, gD[g] * H * mPerHp);
+					vG += stakeG * (WinShare((sSurf + us) * Gran(nOurs + 1.f), gE[g]) - WinShare(sSurf * Gran(nOurs), gE[g]));
+				}
+				terms += " groups " + gE.length() + ":" + int(vG);
+				vSurf = AiMax(vSurf, vG);  // the global fight and the group fights are the same army: the larger stands
 			}
 			vFight = stakeAir * (WinShare(sAir + ua, eAir) - WinShare(sAir, eAir)) + vSurf;
 			vFight *= AiMax(0.f, 1.f - dist / AiMax(1.f, d.speed) / H);
