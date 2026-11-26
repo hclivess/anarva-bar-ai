@@ -98,3 +98,19 @@ The latest batch (D-gun and strength fixes) is being played.
 | m2-commsafe | 1v2 + commander works only in the protected zone | 0W 3L: the base itself gets overrun; root cause is the economy |
 | r12 | 1v1 vs BARb: + waste handling (converters, nanos) | 6W 7L 3D (0.86) vs 2.25: rejected |
 | r13 | 1v1 vs BARb: + moho gate + payback tech gate | running |
+
+## 2026-11-26 night: findings to carry forward
+
+- Single-game tests on Canis River, one at a time (owner rule). All lost; best mid-game so far: 19 extractors,
+  3 factories, army 3004 at minute 12 (then lost the big fight to Pounders vs massed Pawns).
+- Fixed tonight (each from a traced cause): raid churn (launch on the same test a raid must keep passing),
+  evacuation flip-flop (escape jobs carry value), energy price cap, extractor metal discounted only while energy
+  binds, splash and dodging in unit strength, a factory's raid loss = its lost production (the last one: the game).
+- Win-probability model (replays, relative to the opponent, AUC up to 0.87): energy-income lead and extractor lead
+  decide 1v1s. Against BARb our biggest costs are energy at minute 3, metal income at minute 4 (8 vs 16/s) and the
+  army from minute 6 (BARb 1866 vs our 129).
+- **Next (the opener/start model):** winners take 3 extractors by 60 s from a start next to a 3-spot cluster because
+  the commander then boosts the lab: a boosted lab (150 + 300 build power) draws ~3x a lone lab's metal. Our opener
+  and start choice plan for an unboosted lab, so after one extractor and a solar they build the lab and every later
+  extractor is a 500-1300 elmo walk (Canis, round 35). Model the commander's boost in the opener's draw and the
+  start choice, then re-test.
