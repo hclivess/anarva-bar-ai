@@ -301,3 +301,7 @@ The latest batch (D-gun and strength fixes) is being played.
   without an early bleed; points loss (their buildings 28429). Note for testing: `--games 2` swaps seats - g01 had
   Anarva as Cortex (a different matchup: 139 raids, 125 pulled back). Compare like with like by repeating
   `--games 1` runs.
+- **The real trade (cmd_m116, 35-minute cap, ended 19:11 with the commander):** damage taken 133978 vs dealt 59937
+  (0.45), units killed 29 vs lost 208. The Director's ratio (2-17 in strong games) compares our army with the enemy
+  army in sight, so it flatters us whenever theirs is unseen; the harness dmg_out/dmg_in is the honest yardstick.
+  The gap to close is the trade itself (how and where our army fights), before conversion or scoring.
