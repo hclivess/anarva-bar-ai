@@ -4382,14 +4382,20 @@ void Order(CCircuitUnit@ u, const string& in key, int kind, const AIFloat3& in p
 // all. A fixed "S x trade > D" gate skipped a Pawn raid at our base 7 times at 11.0 vs 11.4 while it killed 1880
 // metal of economy (Theta, round 30): an even fight for that much is taken by any player.
 array<AIFloat3> shownPos; array<float> shownDef; array<float> shownReach;  // defences fights revealed (pulled back)
+// Lanchester square law, as the fights play out: the stronger side wins and loses metal x (D/S)^2; the weaker loses all
+// it sent and kills (S/D)^2 of what it faces. (WinShare S/(S+D) read as a probability of winning gave a squad 5.5x the
+// defence a 15% chance of losing everything: 31 units pulled back from undefended raid spots within a second, and an
+// army 2x BARb's sat idle from 12:00 to 20:00 while their buildings stood at 28810 vs our 5085 - pl3.)
 float FightGain(float value, float S, float D, float metal)
 {
 	const float st = S * AiMax(1e-3f, Assess::trade);
 	if (D <= 0.f) return value;
-	const float p = Production::WinShare(st, D);
-	const float r = D / AiMax(1e-6f, st);
-	const float loss = p * metal * AiMin(1.f, r * r) + (1.f - p) * metal;
-	return value * p - loss;
+	if (st > D) {
+		const float r = D / st;
+		return value - metal * r * r;
+	}
+	const float k = st / AiMax(1e-6f, D);
+	return value * k * k - metal;
 }
 // A unit's threat in a fight against the enemies we've seen: its generic threat x its fighting power against them
 // (Production::SurfPower: range gap, splash on a massed squad, hit chance) over its plain sqrt(dps x health). Summed

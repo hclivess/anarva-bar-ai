@@ -464,3 +464,11 @@ The latest batch (D-gun and strength fixes) is being played.
   tower orders at raided extractors stood untaken (up to 139 s) and were replaced unbuilt. Lifted for defence jobs (the
   builder's risk is weighed by builder safety). Towers by 8/12 min: 4/7, 2/3, 3/4 (was 1/4, sd3; winners 6.2 by 8:00).
   Trades 0.64 / 0.42 / 0.62, all lost; extractors still fall (lost 14-23 per game).
+- **Path-length opener (pl1-3):** the commander's walks are priced by the engine's path length (bridged AiPathLength);
+  the lab at 60-61 s (winners ~61) in two of three. pl3: 25 extractors and 50.8 M/s at 12:00, army 2x BARb's at 20:00
+  (17186 vs 8315) yet lost on points (buildings 5085 vs 28810): "army idle while stronger" minutes 12-20.
+- **Fight gain by the square law (sq1-3):** FightGain read WinShare S/(S+D) as a win probability - a squad 5.5x the
+  defence carried a 15% chance of losing everything and pulled back from undefended raid spots. Now the stronger side
+  wins losing metal x (D/S)^2, the weaker loses all and kills (S/D)^2. Army idle while stronger: 1 minute per game (was 9).
+  sq2 the closest yet: trade 0.99, 97 M/s at 16:00, buildings 15820 vs 29276, army 7314 vs 8200 (pts loss). Pull-backs
+  still 54-103 per game.
