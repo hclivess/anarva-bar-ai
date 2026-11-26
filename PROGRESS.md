@@ -221,6 +221,8 @@ The latest batch (D-gun and strength fixes) is being played.
   - Commander risk: escape is getting out of the enemies' reach (at home the factory was 0 s away, risk 0 in a base
     fight); the commander draws all the fire in reach (the enemy shoots the game); no fights while it escapes.
     Deaths moved but remain (14:45, 14:05, 15:44): the last one walked 1194 out to a build job - the core picks the
-    commander's jobs without risk; builder safety acts only once danger is there. Next: the commander's job pick must
-    weigh the risk at the job site (P(death there) x the game) before it walks, as players keep it within reach of
-    the army and away from enemies (enemy within 600 only 4-9% of the time, replays.db comm).
+    commander's jobs without risk; builder safety acts only once danger is there. Correction: the job pick already weighs
+    the site (CommanderTask -> CommWorth: P(death there) x the game); the risk is low where the danger is out of
+    sight - a Mist outranges our sight, so a far site reads safe until it is seen. Next: the unseen part of the risk
+    (CommFog) for the commander - players keep it within reach of the army and away from enemies (an enemy within 600
+    only 4-9% of the time, replays.db comm), i.e. they treat unseen ground near the front as dangerous.
