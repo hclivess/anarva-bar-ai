@@ -142,3 +142,20 @@ claim the spots. Ours did the reverse (rc1: commander picks 155 extractor, 87 so
 One short-range type in one ball against a mixed squad that fights from range: BARb's rockets and artillery outrange the
 Pawns four times over and shell them without entering their reach (owner: "1 unit type bulked in one ball").
 
+## What kills BARb's unit types in Armada wins vs Cortex (2026-11-26)
+
+replays.db `dmg` (attacker type -> victim type, metal killed), 28 1v1 games an Armada player won against Cortex. For
+understanding why players pick units (CLAUDE.md: the AI never reads such a table; it decides from unit facts live).
+
+| Cortex unit | Killed most by (metal killed) |
+|---|---|
+| Pounder (corlevlr) | Bulldog 12320, Stumpy 9900, Annihilator 5720, Beamer 5280 |
+| Brute (corraid) | Bulldog 32195, Stumpy 24205, Janus 14805, Thor 11515 |
+| Incisor (corgator) | Blitz 17040, light laser tower 14160, Stumpy 7440 |
+| Mist (cormist) | Annihilator 930, Bulldog 620, Stumpy 465 |
+| Wolverine (corwolv) | Spider 850, Fido 510, Beamer 340 |
+
+Winners answer Cortex with vehicles (Stumpy, Blitz; Bulldog at T2) and towers (light laser vs Incisors, Beamer vs
+Pounders) - not Pawns. Our Pawn/Tick army traded 0.65 / 0.28 (tr1, [ANV-TRADE]). The reason to transpose: armour and
+health that soak a range gap (Stumpy) and speed that closes it (Blitz), judged from unit facts against the mix seen.
+
