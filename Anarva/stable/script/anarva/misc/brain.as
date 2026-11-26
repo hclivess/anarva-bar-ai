@@ -4746,11 +4746,14 @@ IUnitTask@ commFightTask = null;
 int commFightTarget = -1, commFights = 0;
 // Seconds until the commander has the target in reach: 0 if it already has, the gap closed at the speed difference if
 // the commander is faster, never (1e9) if the target is as fast or faster (unit facts: range and speed from the defs).
-float CatchTime(const AIFloat3& in c, const CCircuitDef@ cd, const AIFloat3& in p, const CCircuitDef@ d)
+float CatchTime(const AIFloat3& in c, const CCircuitDef@ cd, const AIFloat3& in p, const CCircuitDef@ d, float curSpeed = -1.f)
 {
 	const float gap = c.distance2D(p) - cd.GetMaxRange();
 	if (gap <= 0.f) return 0.f;
-	const float closing = cd.speed - ((d !is null && d.IsMobile()) ? d.speed : 0.f);
+	// how fast it is moving now (a raider shooting our buildings stands still: two Grunts dismantled our base - lab
+	// twice - while the commander, which beats them, judged them by top speed and stayed away; Canis 2026-11-26)
+	const float theirs = (curSpeed >= 0.f) ? curSpeed : ((d !is null && d.IsMobile()) ? d.speed : 0.f);
+	const float closing = cd.speed - theirs;
 	return (closing > 0.f) ? gap / closing : 1e9f;
 }
 void CommDefendUpdate()
@@ -4768,7 +4771,7 @@ void CommDefendUpdate()
 	if (commFightTask !is null && commander.task is commFightTask) {
 		for (uint i = 0; i < n && i < ids.length(); ++i)
 			if (ids[i] == commFightTarget) {
-				if (ed[i] !is null && Assess::OnOurSide(ep[i]) && CatchTime(c, cd, ep[i], ed[i]) < 1e8f) { commander.CmdAttackEnemy(commFightTarget); return; }
+				if (ed[i] !is null && Assess::OnOurSide(ep[i]) && CatchTime(c, cd, ep[i], ed[i], ev[i].Length2D() * SECOND) < 1e8f) { commander.CmdAttackEnemy(commFightTarget); return; }
 				break;
 			}
 		AiLog("[ANV] CommDefend: commander stops (target gone, uncatchable or off our side)");
@@ -4791,7 +4794,7 @@ void CommDefendUpdate()
 		const CCircuitDef@ d = ed[i];
 		if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.surfThrDmg <= 0.f || (ef[i] & 2) == 0) continue;
 		if (!Assess::OnOurSide(ep[i])) continue;
-		const float t = CatchTime(c, cd, ep[i], d);
+		const float t = CatchTime(c, cd, ep[i], d, ev[i].Length2D() * SECOND);
 		if (t >= 1e8f) continue;  // faster than the commander and out of its reach: a chase it can't win
 		const float stake = Command::OursThreatened(i, all, t) + Command::EnemyValue(i, Economist::Horizon());
 		// what fights there while we kill it, against the commander and our armed units within their reach
@@ -4810,7 +4813,7 @@ void CommDefendUpdate()
 		if (net > bestNet) { bestNet = net; best = int(i); }
 	}
 	if (best < 0) return;
-	const float t = CatchTime(c, cd, ep[best], ed[best]);
+	const float t = CatchTime(c, cd, ep[best], ed[best], ev[best].Length2D() * SECOND);
 	const float tFight = eh[best] * ed[best].health / AiMax(1e-3f, cd.GetSustainedDps());
 	@commFightTask = aiBuilderMgr.Enqueue(TaskB::Wait(int((t + tFight) * SECOND) + SECOND));
 	if (commFightTask is null) return;
