@@ -737,3 +737,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   weapons); Micro steps a unit that outranges the nearest enemy back to its own reach. kt1: 11 kite orders (Pawns rarely
   outrange what they meet), but ops with kills 38/72 and 5335 metal killed (ft1: 7/71, 925), kills 52 vs 223; ahead at
   4:00 (metal 27.3 vs 15.8); army behind from 8:00 (1317 vs 4230 at 12:00). Points loss.
+- **FIRST WIN vs BARb hard (pk3, pts_win at 20:00, Comet Catcher, Armada vs Cortex):** producer losses recorded at
+  their full cost (metal + yield until rebuilt, MexPorc::RaidLoss) instead of their price, so pickets are worth what
+  they save: 351 picket assignments, 4 of 27 extractors lost 4-12 min (kt1: 15 of 22). Metal 59.4 vs 36.1 at 12:00,
+  116 vs 50 at 16:00, 199 vs 94 at 20:00; buildings 81015 vs 25579. Armies close at 20:00 (5476 vs 6135) and kills
+  40 vs 261 - the fighting gap (#116) stays. A points win, not a kill. Next: repeat it, other maps.

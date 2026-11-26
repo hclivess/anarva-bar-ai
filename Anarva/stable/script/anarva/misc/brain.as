@@ -2997,7 +2997,10 @@ void OnProducerLost(CCircuitUnit@ u)
 			if (d is null || !d.IsMobile() || d.GetSustainedDps() <= 0.f || ep[i].distance2D(p) > d.GetMaxRange() + d.GetRadius() + u.circuitDef.GetRadius()) continue;
 			E += sqrt(d.GetSustainedDps() * AiMax(1.f, eh[i] * d.health)); D += d.GetSustainedDps();
 		}
-		lossPos.insertLast(p); lossM.insertLast(MetalValue(u.circuitDef)); lossE.insertLast(E); lossD.insertLast(D);
+		// what the loss cost: its metal and its yield until it stands again (MexPorc::RaidLoss), not its price alone -
+		// at 50 a lost extractor, pickets rarely beat a unit's place in the army: 0-2 pickets while 15 of 22 extractors
+		// built from 4 to 12 min died (kt1)
+		lossPos.insertLast(p); lossM.insertLast(AiMax(MetalValue(u.circuitDef), MexPorc::RaidLoss(u, EcoPos::CheapestConstructor()))); lossE.insertLast(E); lossD.insertLast(D);
 	}
 	if (Covered(u.GetPos(ai.frame), AiGetTeamUnits())) ++coveredLosses; else ++uncoveredLosses;
 }
