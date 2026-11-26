@@ -330,3 +330,9 @@ The latest batch (D-gun and strength fixes) is being played.
   and the two games traded 0.63 / 0.51 (vs 0.85 / 0.95) - reverted. The core's factory job ranks the lab by
   build-power value only (negative), so even an approved T2 lab loses every builder pick: the core needs the same
   upgrade value the script computes.
+- **Tech 2, second try (cmd_m133-m135) - reverted:** upgrade value shared by the factory choice, the tech gate
+  (affordability over the build) and the factory job (AiTaskAdded sets its value). The gate approved the advanced lab
+  once, but no tier-2 factory job was ever created, so nothing carried the value and no lab was built: the step from
+  "allowed" to an enqueued factory job (core FactoryManager / AiIsSwitchTime) is where T2 stops. Next: trace that step.
+  Also learned: cmd_m131/m132 (no lab built either) traded 0.51-0.63 vs 0.85-0.95 for the same effective behaviour -
+  single-game variance is that wide.
