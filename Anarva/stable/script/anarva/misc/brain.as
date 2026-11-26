@@ -604,6 +604,13 @@ void Update()
 				const float kills = AiMin(AiMax(1.f, raiders), tur.GetSustainedDps() * exposure / Opening::raidHp);
 				expected += raids * kills * Opening::raidCostM * pHit;
 			}
+			// measured, once uncovered producers have died: over the tower's life (the covered life) each producer in
+			// its reach is lost Lc/Lu - 1 fewer times, each loss its RaidLoss
+			if (Economist::uncoveredLosses > 0) {
+				const float Lc = Economist::CoveredLife(), Lu = AiMax(1.f, Economist::UncoveredLife());
+				const float avoided = val[i] * AiMax(0.f, Lc / Lu - 1.f);
+				expected = AiMax(expected, avoided + (expected - val[i] * pHit * raids));  // measured loss term, kills kept
+			}
 			if (expected > bestHeat) { bestHeat = expected; @best = mx[i]; }
 		}
 	}
@@ -2524,17 +2531,44 @@ bool IsProducer(const CCircuitDef@ d)
 	const string nm = d.GetName();
 	return Facts::ExtractsMetal(nm) > 0.f || Facts::EnergyMake(nm) > 0.f || Facts::EnergyUpkeep(nm) < 0.f;
 }
+// ...split by cover: a producer one of our armed buildings has in range, or not. What a tower adds is the difference
+// (measured in this game, not assumed): with one life for all, raids made every extractor look break-even and towers
+// never paid (1-4 by 8:00 vs the winners' 6.2; cmd_m42).
+float coveredExposure = 0.f, uncoveredExposure = 0.f;
+int coveredLosses = 0, uncoveredLosses = 0;
+bool Covered(const AIFloat3& in p, const array<CCircuitUnit@>@ mine)
+{
+	for (uint k = 0; k < mine.length(); ++k) {
+		const CCircuitDef@ d = mine[k].circuitDef;
+		if (!d.IsMobile() && d.surfThrDmg > 0.f && mine[k].GetPos(ai.frame).distance2D(p) <= d.GetMaxRange()) return true;
+	}
+	return false;
+}
 void UpdateProducerLife()
 {
 	const int f = ai.frame;
 	if (producerFrame >= 0) {
-		int n = 0;
+		int n = 0, nc = 0;
 		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
-		for (uint i = 0; i < mine.length(); ++i) if (IsProducer(mine[i].circuitDef)) ++n;
-		producerExposure += float(n) * float(f - producerFrame) / SECOND;
+		for (uint i = 0; i < mine.length(); ++i) {
+			if (!IsProducer(mine[i].circuitDef)) continue;
+			++n;
+			if (Covered(mine[i].GetPos(f), mine)) ++nc;
+		}
+		const float dt = float(f - producerFrame) / SECOND;
+		producerExposure += float(n) * dt;
+		coveredExposure += float(nc) * dt;
+		uncoveredExposure += float(n - nc) * dt;
 	}
 	producerFrame = f;
 }
+void OnProducerLost(CCircuitUnit@ u)
+{
+	++producerLosses;
+	if (Covered(u.GetPos(ai.frame), AiGetTeamUnits())) ++coveredLosses; else ++uncoveredLosses;
+}
+float CoveredLife() { return (coveredLosses > 0) ? coveredExposure / float(coveredLosses) : AiMax(coveredExposure, ProducerLife()); }
+float UncoveredLife() { return (uncoveredLosses > 0) ? uncoveredExposure / float(uncoveredLosses) : AiMax(uncoveredExposure, ProducerLife()); }
 // The share of the metal we have to spend (income, plus the bank over the value horizon once a factory has produced)
 // that we actually spend (smoothed pull) - the builders' metal price (core pM). More metal is worth only that share.
 float MetalShare()
@@ -4454,7 +4488,8 @@ void Update()
 		}
 		AiLog("[ANV-JOBS] t=" + Minute() + "m" + line + " | metal income " + F1(aiEconomyMgr.metal.income) + " pull " + F1(aiEconomyMgr.metal.pull)
 			+ " bank " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage) + " | producer life " + int(Economist::ProducerLife()) + " s (threat floor " + int(Economist::Horizon())
-			+ ", lost " + Economist::producerLosses + ")");
+			+ ", lost " + Economist::producerLosses + "; covered " + int(Economist::CoveredLife()) + " s / " + Economist::coveredLosses
+			+ " lost, uncovered " + int(Economist::UncoveredLife()) + " s / " + Economist::uncoveredLosses + " lost)");
 	}
 	AiLog("[ANV-CHECK] t=" + Minute() + "m metal=" + Res(aiEconomyMgr.metal, aiEconomyMgr.metal.pull)
 		+ " energy=" + Res(aiEconomyMgr.energy, Economist::RealPull())
@@ -5090,7 +5125,7 @@ void OnUnitDestroyed(CCircuitUnit@ unit)
 {
 	Command::OnDestroyed(unit);
 	Scout::OnDestroyed(unit);
-	if (Economist::IsProducer(unit.circuitDef)) ++Economist::producerLosses;
+	if (Economist::IsProducer(unit.circuitDef)) Economist::OnProducerLost(unit);
 	{  // every loss, for the checklist: what, where, on which job
 		const AIFloat3 p = unit.GetPos(ai.frame);
 		IBuilderTask@ bt = cast<IBuilderTask>(unit.task);
