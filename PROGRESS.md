@@ -347,3 +347,8 @@ The latest batch (D-gun and strength fixes) is being played.
   Hades lost at 17:52 (trade 0.51, commander dead) with the winners' economy (26 extractors, 53 M/s at 12:00) and an
   army of 15456 at 16:00. The gaps are not Canis's: the fights lose ~2:1 and the commander dies when the fighting
   reaches it. Those two decide every game; economy and army size are no longer the gap.
+- **Trade from live damage (cmd_m138/m139) - reverted:** Assess::trade = (killed + owned metal) / (lost + owned metal)
+  reads ~0.8-1.0 while the damage exchange runs 0.45-0.89 - the prior (all we own) swamps the evidence. Replaced by
+  damage dealt / taken from the per-type tallies shrunk by our army's health: two weak games (lost at 16:00; economy
+  to 0 extractors by 16:00). The tallies are biased: damage from unseen attackers ('?') isn't counted, so the AI read
+  1.6 while the real exchange was 0.67. A trade input needs all damage taken (the harness's dmg_in counts it).
