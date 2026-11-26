@@ -110,6 +110,12 @@ is a decision nobody made.
   (owner, 2026-11-25: "you can start playing in moderation") and reading what the AI did: the build log,
   the builder pick log (`[ANV-PICK]`), the economy line and the Director's ratio, compared with the
   top players' curves in `runs/replays.db`.
+- **Only one game at any given time** (owner, 2026-11-26: "only run 1 game at any given time"). `tools/batch.py ...
+  --games 1 --par 1`, one map per run; report each result as soon as it is in, then start the next. Never four in
+  parallel (it lags the owner's machine and delays every result).
+- **One install only: `Anarva`.** No side-by-side copies in the owner's BAR (owner: "why do you keep multiple
+  copies"). Install only while the owner is not playing (the installer refuses while BAR holds the DLL), then verify
+  with a short headless game before saying it is ready.
 - **Every game is assessed with [CHECKLIST.md](CHECKLIST.md)** (owner, 2026-11-25, #92: "Why don't you have a basic
   checklist?"): `python tools/check_game.py runs/<batch>/gNN`. Overflow, stalls, army value, whether the army moves
   and fights come before the score. A failure there is fixed before anything else.
