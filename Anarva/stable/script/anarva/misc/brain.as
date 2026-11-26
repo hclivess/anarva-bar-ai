@@ -4667,6 +4667,10 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 	if (sbt !is null) sbt.value = GameValue();
 	safeTasks.insertLast(safe);
 	leftAt.set("" + comm.id, bt.GetBuildPos());
+	// held at least for the window it refused (the job's time + the escape), the same window the refusal was judged
+	// over: builder safety's return test (escape time only) read the site safe at once and the commander was redirected
+	// 200 times, about once a second, 1116 out until it died at 14:08 (cmd_m100)
+	commSafeUntil = ai.frame + int((JobTime(bt) + EscapeTime(bt.GetBuildPos())) * SECOND);
 	return safe;
 }
 
@@ -4866,6 +4870,7 @@ float JobPDeath(CCircuitUnit@ builder, const CCircuitDef@ job, const AIFloat3& i
  * job). It leaves only when staying is worth less. P is the same fight-and-escape estimate as the commander's.
  */
 int builderEvacs = 0;
+int commSafeUntil = 0;  // frame until which the commander's redirect safe job holds
 array<IUnitTask@> safeTasks;
 dictionary leftAt;  // unit id -> the place an evacuated builder left
 void BuilderSafeUpdate()
@@ -4888,6 +4893,7 @@ void BuilderSafeUpdate()
 		// on its safe job: back to work once the place it left is safe - not its own position, which is safe the moment
 		// it arrives (rez bots fled and returned 618 times in one game, Canis 2026-11-26)
 		if (u.task !is null && safeTasks.findByRef(u.task) >= 0) {
+			if (u is commander && ai.frame < commSafeUntil) continue;  // its refusal's window isn't over
 			AIFloat3 left;
 			const bool known = leftAt.get("" + u.id, left);
 			const float Pleft = known ? UnitPDeath(u, left, MoveTime(d, left.distance2D(c))) : P;
