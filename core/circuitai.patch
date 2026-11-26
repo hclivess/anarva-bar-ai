@@ -4918,7 +4918,7 @@ index fcc4c984..71fead41 100644
  
  	float prevCost = query->GetCostAt(endPos, range);
 diff --git a/src/circuit/task/builder/BuilderTask.cpp b/src/circuit/task/builder/BuilderTask.cpp
-index 172d4c26..c0947d40 100644
+index 172d4c26..ab1e7de4 100644
 --- a/src/circuit/task/builder/BuilderTask.cpp
 +++ b/src/circuit/task/builder/BuilderTask.cpp
 @@ -6,6 +6,8 @@
@@ -5008,7 +5008,7 @@ index 172d4c26..c0947d40 100644
  		)
  	} else {
  		if (geom::is_in_range(circuit->GetSetupManager()->GetBasePos(), position, searchRadius)) {  // base must be full
-@@ -312,6 +323,40 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+@@ -312,6 +323,47 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
  
  void IBuilderTask::OnUnitIdle(CCircuitUnit* unit)
  {
@@ -5046,10 +5046,17 @@ index 172d4c26..c0947d40 100644
 +			}
 +		}
 +	}
++	{  // Anarva: every failed build order, any job type (towers vanished unbuilt with nothing in the log)
++		CCircuitAI* c = manager->GetCircuit();
++		const bool canPlace = (buildDef != nullptr) && c->GetMap()->IsPossibleToBuildAt(buildDef->GetDef(), GetPosition(), facing);
++		c->LOG("[ANV-BUILDFAIL] f=%i %s job %d %s fails=%i dist=%.0f canPlace=%i", c->GetLastFrame(), unit->GetCircuitDef()->GetDef()->GetName(),
++			(int)buildType, (buildDef != nullptr) ? buildDef->GetDef()->GetName() : "-", buildFails + 1,
++			unit->GetPos(c->GetLastFrame()).distance2D(GetPosition()), canPlace ? 1 : 0);
++	}
  	if (++buildFails <= 2) {  // Workaround due to engine's ability randomly disregard orders
  		Execute(unit);
  	} else if (buildFails <= TASK_RETRIES) {
-@@ -328,7 +373,7 @@ void IBuilderTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+@@ -328,7 +380,7 @@ void IBuilderTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
  	const int frame = circuit->GetLastFrame();
  	CCircuitDef* cdef = unit->GetCircuitDef();
  	const float healthPerc = unit->GetHealthPercent();
@@ -5058,7 +5065,7 @@ index 172d4c26..c0947d40 100644
  		if (healthPerc < cdef->GetSelfDHP()) {
  			unit->CmdSelfD(true);
  		}
-@@ -407,7 +452,7 @@ void IBuilderTask::UpdateTarget(CCircuitUnit* unit)
+@@ -407,7 +459,7 @@ void IBuilderTask::UpdateTarget(CCircuitUnit* unit)
  	SetTarget(unit);
  
  	CCircuitAI* circuit = manager->GetCircuit();
@@ -5067,7 +5074,7 @@ index 172d4c26..c0947d40 100644
  	for (CCircuitUnit* ass : units) {
  		TRY_UNIT(circuit, ass,
  			ass->CmdRepair(unit, UNIT_CMD_OPTION, frame);
-@@ -437,9 +482,13 @@ CCircuitUnit* IBuilderTask::GetNextAssignee()
+@@ -437,9 +489,13 @@ CCircuitUnit* IBuilderTask::GetNextAssignee()
  	return unit;
  }
  
@@ -5082,7 +5089,7 @@ index 172d4c26..c0947d40 100644
  		UpdatePath(unit);  // Execute(unit) within OnTravelEnd
  	}
  }
-@@ -448,14 +497,13 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -448,14 +504,13 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  {
  	CCircuitAI* circuit = manager->GetCircuit();
  
@@ -5101,7 +5108,7 @@ index 172d4c26..c0947d40 100644
  	{
  		manager->AbortTask(this);
  		return false;
-@@ -482,12 +530,12 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -482,12 +537,12 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  		// NOTE: helps with obstructed factory, but not with blocked building plan.
  		//       @see CTerrainManager::CheckObstruct and its issues.
  		if ((cdef->GetMobileId() >= 0) && circuit->GetTerrainManager()->IsObstruct(pos)) {
@@ -5116,7 +5123,7 @@ index 172d4c26..c0947d40 100644
  				)
  			}
  			return true;
-@@ -530,13 +578,42 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -530,13 +585,44 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  	if (unit->IsAttrNoDisrupt()) {
  		return true;
  	}
@@ -5133,8 +5140,10 @@ index 172d4c26..c0947d40 100644
 +	// Any job yields to energy when energy binds and the re-pick is an energy plant: the commander walked on to an
 +	// extractor while energy went 124/s short at minute 2 and the lab took 51 s per unit (Gasbag, 2026-11-25).
 +	// Only toward energy and only while it binds, so it doesn't flap.
++	// (not a job its decision gave a value - a tower against repeated raids was dropped for a turbine each time energy
++	// dipped and expired unbuilt: 9 tower orders, 1 tower by minute 11, Armada vs Cortex 2026-11-26)
 +	const bool toEnergy = (buildType != BuildType::ENERGY) && (buildType != BuildType::GEO) && (priority != IBuilderTask::Priority::NOW)
-+		&& AnarvaEnergyBindsNow(manager->GetCircuit());
++		&& (GetAnarvaValue() <= 0.f) && AnarvaEnergyBindsNow(manager->GetCircuit());
  	HideAssignee(unit);
  	IUnitTask* task = manager->MakeTask(unit);
  	ShowAssignee(unit);
@@ -5162,7 +5171,7 @@ index 172d4c26..c0947d40 100644
  		manager->AssignTask(unit, task);
  		return false;
  	}
-@@ -577,7 +654,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
+@@ -577,7 +663,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
  	CPathFinder* pathfinder = circuit->GetPathfinder();
  	std::shared_ptr<IPathQuery> query = pathfinder->CreatePathSingleQuery(
  			unit, circuit->GetThreatMap(),
@@ -5171,7 +5180,7 @@ index 172d4c26..c0947d40 100644
  	pathQueries[unit] = query;
  
  	pathfinder->RunQuery(circuit->GetScheduler().get(), query, [this](const IPathQuery* query) {
-@@ -828,7 +905,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
+@@ -828,7 +914,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
  						}
  					} break;
  					case SBuildInfo::Condition::CHANCE: {

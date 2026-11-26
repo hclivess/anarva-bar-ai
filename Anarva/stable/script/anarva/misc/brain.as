@@ -550,7 +550,12 @@ void Update()
 			if (covered) continue;
 			for (uint k = 0; k < mine.length(); ++k)
 				if (Economist::IsProducer(mine[k].circuitDef) && mine[k].GetPos(ai.frame).distance2D(q) <= r) val[i] += RaidLoss(mine[k], con);
-			const float expected = val[i] * val[i] / AiMax(1.f, total);
+			// raids come back: about once per raider round trip from their base to the spot, so over the horizon the
+			// tower saves the per-raid loss that many times (valued at one raid, no tower was built by minute 8 against
+			// Cortex, where Armada winners build 6.2 light lasers - replays.db, 28 games)
+			const float cycle = 2.f * AiEnemyBasePos().distance2D(q) / AiMax(1.f, Opening::raidSpeed);
+			const float raids = AiMax(1.f, Economist::Horizon() / AiMax(1.f, cycle));
+			const float expected = val[i] * val[i] / AiMax(1.f, total) * raids;
 			if (expected > bestHeat) { bestHeat = expected; @best = mx[i]; }
 		}
 	}
@@ -2919,6 +2924,7 @@ float raidArrive = 1e9f;      // game seconds
 float raidRate = 0.f;         // raiders per second it adds (lab rate; capped by income in Value)
 float raidStrength = 0.f;     // sqrt(dps x health) of one raider
 float raidDps = 0.f;
+float raidSpeed = 0.f;  // the earliest raider's speed (elmos/s), for how often raids come back
 float raidCostM = 1.f;
 float raidUnitTime = 1.f;
 
@@ -3036,7 +3042,7 @@ void Init()
 			const float tUnit = AiMax(ut, AiMax((r.costM - mLeft) / mI, (r.costE - eLeft) / eI));
 			const float arrive = tLab + tUnit + path / AiMax(1.f, r.speed);
 			if (arrive < raidArrive) {
-				raidArrive = arrive; raidRate = 1.f / AiMax(1e-3f, ut); raidStrength = Strength(r); raidDps = r.GetSustainedDps();
+				raidArrive = arrive; raidRate = 1.f / AiMax(1e-3f, ut); raidStrength = Strength(r); raidDps = r.GetSustainedDps(); raidSpeed = r.speed;
 				raidCostM = AiMax(1.f, r.costM); raidUnitTime = ut;
 				AiLog("[ANV-OPEN] earliest raid: " + r.GetName() + " from " + F.GetName() + " at " + int(arrive) + " s");
 			}

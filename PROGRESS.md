@@ -141,3 +141,8 @@ The latest batch (D-gun and strength fixes) is being played.
   every raid over the horizon (loss rate at the spot x horizon), so valued tower orders never beat an extractor;
   (2) the second factory is always another bot lab (BestLab); players add the vehicle plant for fast raiders;
   (3) scout overbuild.
+- **Towers vs Cortex:** valued over repeated raids now (raids per horizon = horizon / raider round trip), and the
+  energy switch no longer takes builders off valued jobs. Still 1 tower by 8:00 from 10 orders: no tower order fails
+  ([ANV-BUILDFAIL]); they expire untaken - a job's lifetime is the minimum walk + build, so a tower that loses a few
+  job comparisons expires before a builder is free. Next: a valued tower keeps its claim for as long as the danger it
+  answers lasts.
