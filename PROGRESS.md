@@ -562,3 +562,8 @@ at raided extractors, tier 2 by measured return with assisted upgrades, the comm
 granularity and per-type unit value, path-length walks in the opener, triangle start candidates. No 1v1 win yet:
 the first four minutes are at half the winners' income and army, and extractors are lost from minute 6. What helped
 and what didn't is consolidated at the top of CLAUDE.md; the opening design is on issue #105.
+- **Constructors on non-extractor jobs counted as spare, reverted (cv1-5):** the lab made 4 constructors instead of 7
+  and 11-15 Pawns by 5:00 (army 324-648 at 4:00, was 54-270), extractors lost 10-13 (was 14-23); but with 2-4
+  constructors by 8:00 that still don't claim extractors, extractors stayed 2-11 and income 6-37; trades 0.80 / 0.63 /
+  0.78, all lost at 18-19 min with the commander dead. Fewer constructors pay only if each claims extractors: the
+  constructors' job choice has to change with it (#105).
