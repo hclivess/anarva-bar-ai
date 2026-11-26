@@ -722,3 +722,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   counted a whole raid target's value (~600, assumed killed) while raids killed almost nothing (4 kills by 12:00): 143
   Ticks, 7 Pawns, 6 constructors, lost at 14:00. The value must be what raids actually kill: enemy metal killed during raid
   ops per raider-second, times the raider's measured life - 0 until a raid has killed something.
+- **Raider worth from measured raid kills (tk3):** enemy metal killed within a raider's reach on raid ops, per raider-second, x the raiders' measured life, at the unit's dps against theirs; 0 until a raid has killed. tk3: no runaway (19 Ticks, 124 Pawns, 7 constructors; raid values 19-110); even at 4:00 (army 354 vs 344), metal 40.5 vs 43.3 at 12:00; then collapse 12-16 min (metal 2.0, army 617 vs 6228). Points loss.

@@ -2614,6 +2614,12 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				vSurf = AiMax(vSurf, vG);  // the global fight and the group fights are the same army: the larger stands
 			}
 			vFight = stakeAir * (WinShare(sAir + ua, eAir) - WinShare(sAir, eAir)) + vSurf;
+			// a raider is also worth what our raids actually kill per raider over its measured life (Command::RaiderWorth;
+			// 0 until a raid has killed) - winners' labs make mostly Ticks early (replays.db, 24 wins)
+			{
+				const float vR = Command::RaiderWorth(d);
+				if (vR > vFight) { vFight = vR; terms += " raid " + int(vR); }
+			}
 			vFight *= AiMax(0.f, 1.f - dist / AiMax(1.f, d.speed) / H);
 		}
 		// information is worth what we can do with it: the share of a fight our forces could contest (a warning saves
@@ -3220,6 +3226,7 @@ void TrackKills()
 	const uint nk = AiDrainKills(kp, km);
 	for (uint k = 0; k < nk; ++k) {
 		if (OnOurSide(kp[k])) killedHome += km[k]; else killedAway += km[k];
+		Command::CreditRaid(kp[k], km[k]);
 	}
 }
 
@@ -5299,11 +5306,46 @@ AIFloat3 HoldPoint(const array<CCircuitUnit@>@ units)
 }
 string Status() { return "ops=" + ops.length() + " created=" + created + " pulledBack=" + retreats; }
 // a dead unit leaves its squad at once (a handle kept until the next update crashed the game when read: GetPos)
+// Raids measured: raider-seconds on raid ops (no enemy id: their economy), raiders lost there, and the enemy metal killed
+// within a raider's reach. A raider's worth is what raids actually kill per raider-second over its measured life - 0
+// until a raid has killed (valued on its target's worth and an assumed life, the lab made 143 Ticks while raids killed 4
+// units by 12:00, tk1-2).
+float raidExposure = 0.f, raidKilled = 0.f, raidDps = 0.f; int raidDeaths = 0, raidFrame = -1, raidN = 0;
+void RaidTick()
+{
+	int r = 0; float dps = 0.f;
+	for (uint o = 0; o < ops.length(); ++o) if (ops[o].enemyId < 0)
+		for (uint k = 0; k < ops[o].units.length(); ++k) { ++r; dps += ops[o].units[k].circuitDef.GetSustainedDps(); }
+	if (raidFrame >= 0) raidExposure += float(r) * float(ai.frame - raidFrame) / SECOND;
+	raidFrame = ai.frame;
+	if (r > 0) { raidDps = dps / float(r); raidN = r; }
+}
+void CreditRaid(const AIFloat3& in p, float metal)
+{
+	for (uint o = 0; o < ops.length(); ++o) {
+		if (ops[o].enemyId >= 0) continue;
+		for (uint k = 0; k < ops[o].units.length(); ++k)
+			if (ops[o].units[k].GetPos(ai.frame).distance2D(p) <= ops[o].units[k].circuitDef.GetMaxRange() + ops[o].units[k].circuitDef.GetRadius()) {
+				raidKilled += metal; return;
+			}
+	}
+}
+float RaiderLife()
+{
+	if (raidDeaths > 0) return raidExposure / float(raidDeaths);
+	return (raidN > 0) ? raidExposure / float(raidN) : 0.f;
+}
+// metal a raider of this def kills over its life: measured kill rate x measured life, at its dps against the raiders'
+float RaiderWorth(const CCircuitDef@ d)
+{
+	if (raidExposure <= 0.f || raidKilled <= 0.f || raidDps <= 0.f) return 0.f;
+	return raidKilled / raidExposure * RaiderLife() * d.GetSustainedDps() / raidDps;
+}
 void OnDestroyed(CCircuitUnit@ unit)
 {
 	for (uint o = 0; o < ops.length(); ++o) {
 		const int k = ops[o].units.findByRef(unit);
-		if (k >= 0) ops[o].units.removeAt(k);
+		if (k >= 0) { ops[o].units.removeAt(k); if (ops[o].enemyId < 0) ++raidDeaths; }
 	}
 	lastOrder.delete("" + unit.id);
 	lastTarget.delete("" + unit.id);
@@ -6329,6 +6371,7 @@ void Update()  // every 30 frames
 	CheckSide();
 	Check::Update();
 	Awareness::Update();
+	Command::RaidTick();
 	Check::Micro();
 	aiSwitchHighGroundArty = true;
 	aiSwitchHeightSquads = true;
