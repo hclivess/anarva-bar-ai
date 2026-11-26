@@ -4111,8 +4111,21 @@ void Update()
 		for (int k = int(op.units.length()) - 1; k >= 0; --k)
 			if (force.findByRef(op.units[k]) < 0) op.units.removeAt(k);
 		bool alive = op.enemyId < 0;
+		int ti = -1;
 		for (uint i = 0; i < n && !alive; ++i)
-			if (eIds[i] == op.enemyId) { alive = true; op.pos = ePos[i]; }
+			if (eIds[i] == op.enemyId) { alive = true; op.pos = ePos[i]; ti = int(i); }
+		// still catchable, the launch test: a mobile target moving away at least as fast as the squad is gone. Kept on it,
+		// the whole army (48-51) followed a fleeing unit to their base while their push took ours and the commander at
+		// 17:17 (cmd_m104)
+		if (alive && ti >= 0 && eDef[ti] !is null && eDef[ti].IsMobile() && op.units.length() > 0) {
+			AIFloat3 sc(0.f, 0.f, 0.f); float slow = 1e9f, rng = 0.f;
+			for (uint k = 0; k < op.units.length(); ++k) { sc = sc + op.units[k].GetPos(ai.frame); slow = AiMin(slow, op.units[k].circuitDef.speed); rng = AiMax(rng, op.units[k].circuitDef.GetMaxRange()); }
+			sc = sc / float(op.units.length());
+			const AIFloat3 away = ePos[ti] - sc;
+			const float dist = away.Length2D();
+			const float vAway = (dist > 0.f) ? (eVel[ti].x * away.x + eVel[ti].z * away.z) / dist * SECOND : 0.f;
+			if (dist > rng && vAway >= slow) alive = false;  // ends below as "target gone"
+		}
 		if (op.enemyId < 0 && AiIsInLOS(op.pos)) {
 			bool there = false;
 			for (uint i = 0; i < n && !there; ++i)

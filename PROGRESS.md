@@ -274,3 +274,8 @@ The latest batch (D-gun and strength fixes) is being played.
   a spot's risk uses EscapeTime = the walk to the nearest factory, so a factory in the fight reads as the best
   escape and a quiet structure far from it reads dangerous. Next: escape = leaving the reaching enemies' range
   (their longest range over our speed, from where they are), not reaching a factory.
+- **Ops keep the launch's catch test (cmd_m104/m106):** the army (48-51) followed one fleeing unit to their base while
+  their push took ours and the commander; a running op now ends when its target is out of reach and moving away at
+  least as fast as the squad. cmd_m106: commander alive at 20:00, army 8046 at 12:00 and 11669 at 18:00 (ratio up
+  to 11.5) - lost on points: extractors 22 -> 7 from minute 12 to 18 (raids), their buildings 33231 vs ours 2255.
+  Open: the late extractor erosion and the army that never ends the game.
