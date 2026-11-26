@@ -367,3 +367,7 @@ The latest batch (D-gun and strength fixes) is being played.
 - **Against BARb as Armada (cmd_aa1, Canis):** lost at 13:13, trade 0.68, commander dead - the same failure as against
   Cortex and on the other maps. Across three maps and both BARb factions the two decisive gaps are the same: fights
   trade ~0.5-0.95 against us, and the commander dies when fighting reaches it (13-19 min).
+- **Experiment - the commander never fights (cmd_nf1/nf2):** CommDefend off; the commander still died (17:10 at base,
+  15:34 1228 out) with 0 fights. Its deaths aren't caused by its fight decisions: it is killed where it works when
+  their army arrives. The answer is the army's: meet the push before it reaches the commander, or keep the commander
+  where the army is between it and them.
