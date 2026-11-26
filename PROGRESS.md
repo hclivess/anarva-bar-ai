@@ -506,3 +506,8 @@ The latest batch (D-gun and strength fixes) is being played.
   winners use ((1627,5323), (2528,5877)). The re-applied plan search still chose four extractors and the lab at ~108 s
   (these spots are within reach, so the term charges nothing): planner dropped again, the term kept. What stops
   players at three extractors is the army needed by the first raid, not losses beyond reach.
+- **Lab only once energy covers its draw, reverted (en1-5):** 4-minute checks looked better (13.9-15.7 M/s, 6-8
+  extractors, 82-84 E/s at 2:00), but in full games the lab stood at 75-87 s and extractors at 4:00 were 2-4; trades
+  0.72 / 0.59 / 0.56, 17-22 extractors lost, all lost; the checklist's first gap became "no factory at minute 1". Winners
+  have both by minute 1 (the lab and 79 E/s): with 2-3 extractors and two solars before the lab, which our single-step
+  opener can't reach without the army-by-raid term (#103/#41).
