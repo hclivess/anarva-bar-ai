@@ -416,3 +416,9 @@ The latest batch (D-gun and strength fixes) is being played.
   income 12-20 at 8:00, both lost: units left out of ops get no defending orders, so the army only fought in smaller
   pieces. The gap is that idle units at home don't hold a position or gather; that needs a defence posture, not
   smaller ops. #60 (retreat at 50% health) checked: already live in the core (ShouldRetreat), config ignored.
+- **Grouped reinforcements and commander walk-out, reverted (rf1-3, cs1-3).** Free units joined a running fight only as a
+  group stronger than what can reach their path (waits 8-24 per game): trades 0.66 / 0.79 / 0.50 / 0.35 / 0.52 / 0.49,
+  all lost - no change from ~0.55-0.6. The commander's "walk out of their reach" safe job fired 0 times in 3 games: its
+  deaths came where it stood outside every known enemy's reach (Reaper at 823, an unseen attacker 2651 out, a
+  Leveler at 318), i.e. from enemies not seen in time, not from a missing escape. Six games of the same code ranged
+  0.35-0.79: single-game differences of this size are noise.
