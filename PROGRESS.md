@@ -718,3 +718,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   scout dies, so a Tick read 17-980 visits (value up to 4571): the lab built only Ticks, no constructors, metal 6.6 vs
   48.6 at 12:00. The raider's value needs its measured life (raiders lost per raider-second), not a floor; without a
   measurement it has no basis yet.
+- **Reverted again: raider value with measured raider life (tk2).** Life measured right (13-28 s early), but one visit
+  counted a whole raid target's value (~600, assumed killed) while raids killed almost nothing (4 kills by 12:00): 143
+  Ticks, 7 Pawns, 6 constructors, lost at 14:00. The value must be what raids actually kill: enemy metal killed during raid
+  ops per raider-second, times the raider's measured life - 0 until a raid has killed something.
