@@ -194,6 +194,53 @@ local function logSquads(n)
 		local fp = {}
 		for name, f in pairs(form) do fp[#fp + 1] = string.format("%s:%d:r%d:d%d", name, f.n, f.r, f.d / f.n) end
 		Spring.Echo(string.format("[REPLAY] FORM f=%d team=%d %s", n, team, table.concat(fp, ",")))
+		-- shape of the biggest squad (owner's 8v8 screenshot, #119: lines/arcs across the enemy's approach, not balls):
+		-- principal axes of its positions (aspect = long / short spread), the angle between the long axis and the
+		-- direction to the nearest enemy armed unit from the squad centre (90 = a line across their approach), and
+		-- concavity: the flanks' (outer thirds along the long axis) mean distance to that enemy minus the centre third's
+		-- (negative = flanks forward, a concave)
+		local px, pz, m = {}, {}, 0
+		for i = 1, #us do if cl[i] == big then m = m + 1; px[m] = us[i].x; pz[m] = us[i].z end end
+		if m >= 3 then
+			local cx, cz = 0, 0
+			for i = 1, m do cx = cx + px[i]; cz = cz + pz[i] end
+			cx, cz = cx / m, cz / m
+			local sxx, szz, sxz = 0, 0, 0
+			for i = 1, m do local dx, dz = px[i] - cx, pz[i] - cz; sxx = sxx + dx * dx; szz = szz + dz * dz; sxz = sxz + dx * dz end
+			sxx, szz, sxz = sxx / m, szz / m, sxz / m
+			local tr, det = sxx + szz, sxx * szz - sxz * sxz
+			local disc = math.sqrt(math.max(0, tr * tr / 4 - det))
+			local l1, l2 = tr / 2 + disc, math.max(0, tr / 2 - disc)
+			local ax, az = (math.abs(sxz) > 1e-6) and (l1 - szz) or 1, (math.abs(sxz) > 1e-6) and sxz or 0
+			if sxx < szz and math.abs(sxz) <= 1e-6 then ax, az = 0, 1 end
+			local al = math.sqrt(ax * ax + az * az); ax, az = ax / al, az / al
+			local ex, ez, nd = nil, nil, math.huge
+			for t2, us2 in pairs(byTeam) do
+				if Spring.GetTeamAllyTeamID(t2) ~= ally then
+					for j = 1, #us2 do
+						local dx, dz = us2[j].x - cx, us2[j].z - cz
+						local d = math.sqrt(dx * dx + dz * dz)
+						if d < nd then nd, ex, ez = d, us2[j].x, us2[j].z end
+					end
+				end
+			end
+			if ex then
+				local vx, vz = (ex - cx) / math.max(1, nd), (ez - cz) / math.max(1, nd)
+				local ang = math.deg(math.acos(math.min(1, math.abs(ax * vx + az * vz))))
+				local proj, lo, hi = {}, math.huge, -math.huge
+				for i = 1, m do proj[i] = (px[i] - cx) * ax + (pz[i] - cz) * az; lo = math.min(lo, proj[i]); hi = math.max(hi, proj[i]) end
+				local third = (hi - lo) / 3
+				local fs, fn, cs, cn = 0, 0, 0, 0
+				for i = 1, m do
+					local dx, dz = px[i] - ex, pz[i] - ez
+					local d = math.sqrt(dx * dx + dz * dz)
+					if proj[i] < lo + third or proj[i] > hi - third then fs = fs + d; fn = fn + 1 else cs = cs + d; cn = cn + 1 end
+				end
+				local conc = (fn > 0 and cn > 0) and (fs / fn - cs / cn) or 0
+				Spring.Echo(string.format("[REPLAY] SHAPE f=%d team=%d units=%d aspect=%.2f long=%d facing=%d concave=%d enemy=%d",
+					n, team, m, math.sqrt(l1 / math.max(1, l2)), 2 * math.sqrt(l1), ang, conc, nd))
+			end
+		end
 	end
 	-- the alive army: per team, every armed mobile unit type alive now, its count, mean health share, how many are
 	-- moving, and their orders (the first command of each unit), plus where the army's centre is relative to its start
