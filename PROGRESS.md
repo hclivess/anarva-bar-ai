@@ -450,3 +450,9 @@ The latest batch (D-gun and strength fixes) is being played.
   losses, or mean age), not floored by Horizon(): it opens at 3.8-5.1 min, labs at 9:34-12:39, first upgrades 13:31 and
   15:23 (mu2/mu3) - replays.db 1v1 winners: lab median 12.7 min, first upgrade median 14.8. Upgrade-spot rejections are
   logged ([ANV-MEXUP]). All games still lost (trades 0.38-0.64): T2 timing now matches the winners; the army's fights don't.
+- **Units fight what is in reach (fr1-3):** Command moved squads with plain moves; units with an enemy in reach didn't
+  fire in 20-35% of contact samples (mostly Pawns beside Gators on group moves: forward-arc weapons can't shoot what
+  they walk past; [ANV-IDLE], id1). Now a unit with a visible enemy it can hit attacks the one with the most damage per
+  remaining health (retreats excepted). Trades **1.23** / 0.92 / 0.75 - the first above 1; fr1 army 10685 vs 4590 and
+  fr2 6909 vs 6341 at 20:00, commander alive in both, but both lost on points: their buildings 37785 / 28174 vs ours
+  3968 / 2990. The stronger army never pressed their economy. Next: attack when ahead.

@@ -4236,6 +4236,7 @@ bool MoveGroup(Op@ op, uint o, const AIFloat3& in dest)
 	if (atWp && op.leg + 1 < op.route.length()) { ++op.leg; atWp = false; }
 	if (atWp && op.leg + 1 >= op.route.length()) return true;
 	for (uint k = 0; k < op.units.length(); ++k) {
+		if (FightInReach(op.units[k])) continue;  // what it meets on the way, it fights
 		string prevKey;
 		const string key = "grp" + o + ":" + op.leg + ":" + int(op.routeTo.x) + "," + int(op.routeTo.z);
 		if (lastOrder.get("" + op.units[k].id, prevKey) && prevKey == key) continue;
@@ -4319,13 +4320,54 @@ float OursThreatened(uint i, const array<CCircuitUnit@>@ mine, float tAnswer)
 	}
 	return v;
 }
+// An enemy this unit can shoot now: visible (not a radar blip), ground or air as its weapon allows, within its reach;
+// the one with the most damage per remaining health (the squads' fire order, Lanchester). -1 if none.
+// (Moving on with an enemy in reach, units didn't fire 20-35% of contact samples: most were Pawns beside Gators on group
+// moves - a forward-arc weapon can't shoot what it walks away from; mu2/mu3/ml3/bt2, [ANV-IDLE] id1.)
+array<AIFloat3> rePos; array<CCircuitDef@> reDef; array<float> reHp; array<int> reFlags, reIds; int reFrame = -1;
+int InReachTarget(CCircuitUnit@ u)
+{
+	if (reFrame != ai.frame) {
+		reFrame = ai.frame;
+		array<AIFloat3> ev; array<float> ec, eb;
+		AiGetEnemies(rePos, ev, reDef, ec, reFlags, reHp, eb);
+		AiGetEnemyIds(reIds);
+	}
+	const CCircuitDef@ d = u.circuitDef;
+	if (d.GetSustainedDps() <= 0.f) return -1;
+	const AIFloat3 p = u.GetPos(ai.frame);
+	const float reach = d.GetMaxRange();
+	int best = -1; float bv = -1.f;
+	for (uint k = 0; k < rePos.length() && k < reIds.length(); ++k) {
+		const CCircuitDef@ e = reDef[k];
+		if (e is null || (reFlags[k] & 2) == 0) continue;  // a blip has no known type
+		if (e.IsAbleToFly() ? d.airThrDmg <= 0.f : d.surfThrDmg <= 0.f) continue;  // our weapon can't hit it
+		if (rePos[k].distance2D(p) > reach) continue;
+		const float v = e.GetSustainedDps() / AiMax(1.f, reHp[k] * e.health) + 1e-6f / AiMax(1.f, reHp[k] * e.health);  // unarmed last, weakest first
+		if (v > bv) { bv = v; best = reIds[k]; }
+	}
+	return best;
+}
+// a unit with an enemy in reach fights it; otherwise it takes the order (re-issued only when the key changes)
+bool FightInReach(CCircuitUnit@ u)
+{
+	const int t = InReachTarget(u);
+	if (t < 0) return false;
+	const string key = "hit" + t;
+	string prev;
+	if (lastOrder.get("" + u.id, prev) && prev == key) return true;
+	lastOrder.set("" + u.id, key);
+	u.CmdAttackEnemy(t);
+	return true;
+}
 void Order(CCircuitUnit@ u, const string& in key, int kind, const AIFloat3& in p, int target)
 {
+	if (key.findFirst("home") != 0 && FightInReach(u)) return;  // pulling back means leaving: no stopping to fight
 	string prev;
 	if (lastOrder.get("" + u.id, prev) && prev == key) return;
 	lastOrder.set("" + u.id, key);
 
-	u.CmdMoveTo(p);  // plain moves only: units fire at what is in reach while moving and can dodge
+	u.CmdMoveTo(p);
 }
 // A fight is worth taking when what it keeps beats what it risks: p = our share at strength S x trade against defence
 // D (the win share production uses); winning keeps the value at a square-law share of our metal lost, losing costs it
@@ -4905,6 +4947,7 @@ void Update()
  */
 dictionary microHp;  // unit id -> health last second
 int microFrame = NEVER;
+dictionary idleWhy; int idleLogFrame = 0;
 uint minContact = 0, minNoReply = 0, minOutranged = 0, minIdleInRange = 0, minStillHit = 0, minFired = 0;
 void Micro()
 {
@@ -4926,9 +4969,9 @@ void Micro()
 		const bool hit = known && hp < float(prev);
 		const AIFloat3 p = u.GetPos(ai.frame);
 		const float reach = d.GetMaxRange();
-		bool inReach = false;
+		bool inReach = false; int rk = -1;
 		for (uint k = 0; k < n && !inReach; ++k)
-			if (ed[k] !is null && ep[k].distance2D(p) <= reach) inReach = true;
+			if (ed[k] !is null && ep[k].distance2D(p) <= reach) { inReach = true; rk = int(k); }
 		if (!hit && !inReach) continue;
 		++contact;
 		// fired within its own reload time (a weapon that reloads in more than a second can't fire every second)
@@ -4938,10 +4981,24 @@ void Micro()
 		if (didFire) ++fired;
 		if (hit && !didFire) ++noReply;
 		if (hit && !inReach) ++outranged;
-		if (inReach && !didFire) ++idleInRange;
+		if (inReach && !didFire) {
+			++idleInRange;
+			// who, against what, on which order (why does a unit with an enemy in reach not fire?)
+			string ord = "-"; Command::lastOrder.get("" + u.id, ord);
+			const string key = d.GetName() + ">" + ed[rk].GetName() + (ed[rk].IsAbleToFly() ? "(air)" : "") + ((ef[rk] & 2) == 0 ? "(radar)" : "") + " " + (still ? "still" : "moving") + " " + ord.split(":")[0];
+			int c = 0; idleWhy.get(key, c); idleWhy.set(key, c + 1);
+		}
 		if (hit && still) ++stillHit;
 	}
 	microHp = hpNow;
+	if (ai.frame - idleLogFrame >= 2 * MINUTE) {
+		idleLogFrame = ai.frame;
+		const array<string>@ ks = idleWhy.getKeys();
+		string idleOut = "";
+		for (uint q = 0; q < ks.length(); ++q) { int c = 0; idleWhy.get(ks[q], c); if (c >= 3) idleOut += " | " + ks[q] + " x" + c; }
+		if (idleOut.length() > 0) AiLog("[ANV-IDLE]" + idleOut);
+		idleWhy.deleteAll();
+	}
 	if (contact == 0) return;
 	minContact += contact; minFired += fired; minNoReply += noReply; minOutranged += outranged;
 	minIdleInRange += idleInRange; minStillHit += stillHit;
