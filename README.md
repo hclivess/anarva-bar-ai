@@ -23,38 +23,27 @@ from a table. Anarvā removes them. Every choice is argued from the situation in
 *1v1 winners from top-player replays (blue: median, band: middle half) against one Anarvā game versus BARb hard
 (orange). Regenerate with `python tools/viz_replays.py --game runs/<batch>/gNN`.*
 
-**Anarvā does not beat BARb yet.** It has not won a full-length 1v1 against BARb hard since it was rebuilt from
-BARb's logic into its own decisions. The closest round so far (round 32) went to the 20-minute limit in three of
-four games and lost them on points.
+**Anarvā does not beat BARb yet.** It has not won a full-length 1v1 against BARb hard. The best three-game set so far
+(Canis River, Armada against Cortex, 2026-11-26) traded 1.04 / 0.89 / 0.91 damage dealt per damage taken and kept the
+commander alive in two, but lost on points: BARb's buildings stood at ~30k against ours at ~1.5k.
 
-**What the chart shows:** Anarvā keeps pace with the winners for the first seven minutes:
-- extractors, energy and its first lab come on the winners' curve;
-- it builds a second factory before they do.
+**Where it stands against the 1v1 winners:**
+- **Fights:** about even now (trade 0.6–1.2, from 0.3–0.85). Units fire at what is in reach, fights are priced by the
+  square law, and the army holds a position between fights (see *Armies* below).
+- **The first six minutes:** about half the winners' income (~10 against 19 metal/s at 4:00) and a fraction of their
+  army (5–17 combat units at 6:00 against 14–22).
+- **Extractors:** 12–19 lost per game against the winners' ~2 by minute 12. Enemy buildings were never valued as ours
+  are, so the army rarely hits BARb's economy (issue #107).
 
-Then BARb's raiders take its extractors and its army never grows past a fraction of theirs. Holding the map and
-building production capacity, starting with the first construction turret that winners build at 4.7 minutes, is
-the current work.
-
-**Recent changes, most from watching games against BARb** (each is a computed decision, see below):
-- **Energy before the lab:** the opener builds whichever of metal and energy limits the lab's production.
-  It used to build three extractors and the lab before any energy.
-- **Pricing:**
-  - an extractor is worth what it extracts minus its upkeep;
-  - energy is priced by what it lets us spend;
-  - wind is valued as it blows, lulls included.
-- **Commander:** it no longer chases raiders it can't catch, and its build time counts as a cost.
-- **Builders:**
-  - they finish their jobs;
-  - they leave a job when energy runs short and switch to energy, boosting the factory included;
-  - they reclaim what blocks their way.
-- **Towers:**
-  - they compete with other jobs on the loss they prevent;
-  - a choke tower is built only where its fire covers the whole choke.
-- **Rez bots** are built only for actual wrecks.
-- **Fights:** taken on expected value: what the fight keeps against what it risks.
-- **Engine and lobby:**
-  - it reports ready at the start screen and says which team it is in chat;
-  - two Anarvās in one game no longer crash.
+**Recent changes** (each a computed decision; what helped and what didn't is in [CLAUDE.md](CLAUDE.md)):
+- **Army:** units fight what is in reach; fights are priced by the square law; revealed defences are inverted from the
+  square law and forgotten once seen again; free units hold the median point of our extractors (*Hold*, #106).
+- **Commander:** stays on ground it can watch and cloaks when standing is worth the energy (1v1 winners keep it near base).
+- **Radar:** built from when the earliest enemy raid can arrive (it was never built before).
+- **Tier 2:** taken when the upgrades' measured return beats the army's value per metal; every builder can assist an
+  extractor upgrade.
+- **Towers:** builders now take tower jobs at raided extractors (a BARb safety rule kept them away).
+- **Opening:** walks priced by path length; start positions include the centre of each triangle of spots.
 
 **Goal:** first 100% of 1v1 games against BARb hard, then one Anarvā against six BARbs on every map type.
 
@@ -80,7 +69,7 @@ Examples of what that means in practice:
 | How much energy | the energy needed to spend the metal we earn, at the energy/metal ratio of what our factories build. Converters' draw counts as surplus, not need |
 | How many constructors | enough to claim the unclaimed extractor spots within the horizon (walk + build per spot), and only while we are not weaker than the enemy army we know of |
 | Strength | each known enemy unit counted once, on the same Lanchester measure as ours: sqrt(dps × health). The commander's D-gun is excluded, since it fires only on order |
-| When to tech | the T2 upgrade's payback must beat both the horizon and the next T1 extractor, unless the lab's cost is already banked |
+| When to tech | the upgrades' return over the producer life measured in this game (each upgrade earns from when it stands, at all our build power) must beat what the same metal buys as army |
 | Reclaiming our own plants | only when a plant we can build now (not vent-bound) makes more energy per metal, and energy stays in surplus without it |
 | Faction | from the commander that actually spawned: a random side resolves only then |
 
@@ -185,6 +174,45 @@ says so instead of showing a number.
 Most 1v1 games are decided at T1: only 41 of 107 winners build a T2 factory. Expansion, the first construction
 turret by about five minutes, and the T1 army decide them. By 3:00 the winners average 8.4 wind turbines,
 5 extractors, about 6 fighters and 0.2 towers.
+
+## Armies: Anarvā against the 1v1 winners
+
+The replay analyzer logs every player's army every 15 s: the alive armed units by type, their health, how many move,
+their orders, the army's centre, and **squads** (units within the longer of two weapon ranges of each other are one
+squad). Anarvā logs its own squads the same way (`[ANV-SQUAD]`). Six top-player 1v1 replays where Armada beat
+Cortex (two on Canis River), against an Anarvā game on Canis River:
+
+| | Winners | Anarvā |
+|---|---|---|
+| Combat units at 6:00 | 14–22 | 5 (8–17 with the latest changes) |
+| Minutes 2–4 | single units spread over the map: scouting and raiding | 1–3 single units |
+| Minutes 6–8 | one main squad of 9–18, groups of 2–7, singles | main squad 8, a second of 7 |
+| Minutes 10–16 | main squad 20–33, a second of 10–19, small groups | main squad 9–14 |
+| Army centre, minutes 6–8 | 1450–2300 from their start: in their own half, forward only when ahead | held at the median of our extractors since #106 |
+| Orders, minute 8 | mostly standing (10 of 22, 21 of 27, 26 of 40 idle): holding | — |
+| Losing players | keep moving and fragment (30 of 31 units moving at minute 6, in 13 pieces by minute 8) | |
+
+**What the winners' main squad is made of** (share of its units):
+
+| Window | Winners (Armada) | Losers (Cortex) | Anarvā |
+|---|---|---|---|
+| 0–6 min | Rover 55%, Pawn 24%, Tick 9%, Flash 9% | Grunt 46%, Rover 34%, Incisor 20% | a few Pawns |
+| 6–10 min | **Flash 48%, Pawn 36%**, Mace 8% | Grunt 54%, Incisor 37% | Pawns, then Centurions |
+| 10–16 min | Pawn 43%, Flash 21%, Mace 17%, Stumpy 14% | Incisor 56%, Thud 19%, Raider 15% | Centurion-led, Maces, Pawns |
+
+**By metal spent on army** (28 Armada-beat-Cortex 1v1s, faction read from the commander):
+
+| Window | Winners' army metal per game | Winners' mix | Anarvā |
+|---|---|---|---|
+| 0–4 min | 559 | Pawn 45%, Rover 25%, Flash 18%, Tick 9% | 233: Pawn 73%, Centurion 19% |
+| 4–8 min | 2251 | Flash 42%, Pawn 29%, Mace 8%, Stumpy 5% | 1180: Centurion 61%, Pawn 37% |
+| 8–12 min | 4590 | Flash 28%, Stumpy 25%, Pawn 10%, air ~9% | 3949: Centurion 72% |
+| 12–16 min | 6478 | Stumpy 32%, Mace 13%, Flash 13%, air ~16% | 4841: Centurion 62%, Mace 25% |
+
+What this says, as reasons (the AI never reads these tables): winners field a large army of cheap, fast units early,
+from both a bot lab and a vehicle plant; they spread it to scout and raid, then concentrate one main squad that holds
+their own half and pushes only when ahead; their core units are fast enough to reach where raids come. Squad and army
+lines: `[REPLAY] SQUAD`, `[REPLAY] ARMY` (analyzer), `[ANV-SQUAD]` (Anarvā).
 
 ## The C++ core
 
