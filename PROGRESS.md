@@ -511,3 +511,5 @@ The latest batch (D-gun and strength fixes) is being played.
   0.72 / 0.59 / 0.56, 17-22 extractors lost, all lost; the checklist's first gap became "no factory at minute 1". Winners
   have both by minute 1 (the lab and 79 E/s): with 2-3 extractors and two solars before the lab, which our single-step
   opener can't reach without the army-by-raid term (#103/#41).
+- **Constructor queue in the extractor-first gain, reverted (cq1-2):** charging each spot the wait for every open spot
+  nearer the lab made far spots look most valuable: the commander walked off, no lab by 4:00 (2-3 extractors, 5 M/s).
