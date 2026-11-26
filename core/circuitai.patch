@@ -7661,7 +7661,7 @@ index c89d4a41..f65c8587 100644
  			auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
  			if ((cand == nullptr)  // no self-check
 diff --git a/src/circuit/task/static/RecruitTask.cpp b/src/circuit/task/static/RecruitTask.cpp
-index a4ef0f95..2d5402bb 100644
+index a4ef0f95..f3d75455 100644
 --- a/src/circuit/task/static/RecruitTask.cpp
 +++ b/src/circuit/task/static/RecruitTask.cpp
 @@ -5,6 +5,7 @@
@@ -7695,7 +7695,25 @@ index a4ef0f95..2d5402bb 100644
  	if (State::DISENGAGE == state) {
  		if (hasMetal) {
  			state = State::ROAM;  // Not wait
-@@ -107,6 +107,7 @@ void CRecruitTask::Update()
+@@ -93,20 +93,16 @@ void CRecruitTask::Update()
+ 			}
+ 		}
+ 	} else {
+-		if (!hasMetal) {
+-			state = State::DISENGAGE;  // Wait
+-			for (CCircuitUnit* unit : units) {
+-				TRY_UNIT(circuit, unit,
+-					unit->CmdPriority(0);
+-					unit->CmdBARPriority(0);
+-				)
+-			}
+-		}
++		// Anarva: no dropping the lab to low priority when metal is short (BARb rule): with the bank spent (as it should
++		// be) metal is always "short", the lab sat at low priority and builders took the metal - army 756 vs 1940 at
++		// 8:00 with equal income (cr1); winners put 36% of their first 8 minutes into army (replays.db)
++		(void)hasMetal;
+ 	}
+ }
  
  void CRecruitTask::Finish()
  {
@@ -7703,7 +7721,7 @@ index a4ef0f95..2d5402bb 100644
  	Cancel();
  
  	CCircuitAI* circuit = manager->GetCircuit();
-@@ -140,6 +141,8 @@ void CRecruitTask::Cancel()
+@@ -140,6 +136,8 @@ void CRecruitTask::Cancel()
  				params.push_back(cmdId);
  			}
  		}
@@ -7712,7 +7730,7 @@ index a4ef0f95..2d5402bb 100644
  		TRY_UNIT(circuit, unit,
  			unit->CmdRemove(std::move(params), UNIT_COMMAND_OPTION_ALT_KEY | UNIT_COMMAND_OPTION_CONTROL_KEY);
  		)
-@@ -183,8 +186,25 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -183,8 +181,25 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  	}
  
  	if (geom::is_valid(buildPos)) {
@@ -7739,7 +7757,7 @@ index a4ef0f95..2d5402bb 100644
  		)
  	} else {
  		manager->AbortTask(this);
-@@ -195,6 +215,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -195,6 +210,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  
  void CRecruitTask::OnUnitIdle(CCircuitUnit* unit)
  {
