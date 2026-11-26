@@ -757,3 +757,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   BARb 22.7 / 41.7) and goes to energy: 21-28 E per M with 1700-2600 energy banked, against the winners' 12-15 E per M
   (replays.db medians). Extractors 3-4 at 4-6 min (winners 9). Next: the builders' plant picks while energy is banked -
   the planner's need test counts the bank now (en4), the builders' payback pick does not.
+- **Energy need vs the next plant (en7):** the bank against one plant's online time, not the whole gap's (quadratic). en7: energy still 405 E/s with 2167 banked at 8:00 (~20 E per M): the builders' own plant picks (payback at the energy price) are the remaining source. Army 594 vs 2036 at 8:00; points loss.
