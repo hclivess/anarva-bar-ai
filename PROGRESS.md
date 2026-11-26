@@ -632,3 +632,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   buildings at our static per extractor read 60-113k strength against BARb's real 5-12k army metal: unscouted spots
   count as possibly theirs and integrate into an army that doesn't exist; fighters looked useless against it, the
   bank sat at 1030-1403. The unseen army needs sight (scouting), not a prior.
+- **Scouting was zeroed by a dictionary read (sc1-3):** a missing key leaves the out value undefined - CellSurvival read
+  sent = died = the cell's z (2800, 560), survival 0, so no scout ever had value (0 scouts all game, fb3; we saw 50-56% of
+  BARb's army). Every unguarded `get` (20, incl. Production's per-type unit counts, caretaker use, unit facts) now checks
+  the return. sc3: cellSurv 1.00, 4 scouts out by 3:00. Rule added to CLAUDE.md: end a game at the swing (tools/swing.py).

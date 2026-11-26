@@ -281,7 +281,7 @@ dictionary stockpiletime_ = {
 	{"raptor_turret_antinuke_t2_v1", 80},
 	{"raptor_turret_antinuke_t3_v1", 40}
 };
-float StockpileTime(const string& in name) { double v = 0; stockpiletime_.get(name, v); return float(v); }
+float StockpileTime(const string& in name) { double v = 0; if (!stockpiletime_.get(name, v)) v = 0; return float(v); }
 
 dictionary metalpershot_ = {
 	{"armamd", 150},
@@ -324,7 +324,7 @@ dictionary metalpershot_ = {
 	{"legspcarrier", 15},
 	{"legvcarry", 15}
 };
-float ShotMetal(const string& in name) { double v = 0; metalpershot_.get(name, v); return float(v); }
+float ShotMetal(const string& in name) { double v = 0; if (!metalpershot_.get(name, v)) v = 0; return float(v); }
 
 dictionary shieldradius_ = {
 	{"armfgate", 600},
@@ -346,7 +346,7 @@ dictionary shieldradius_ = {
 	{"legdeflector", 550},
 	{"leggatet3", 710}
 };
-float ShieldRadius(const string& in name) { double v = 0; shieldradius_.get(name, v); return float(v); }
+float ShieldRadius(const string& in name) { double v = 0; if (!shieldradius_.get(name, v)) v = 0; return float(v); }
 
 dictionary extractsmetal_ = {
 	{"armamex", 0.001},
@@ -367,7 +367,7 @@ dictionary extractsmetal_ = {
 	{"legmohocon", 0.004},
 	{"legmohoconin", 0.004}
 };
-float ExtractsMetal(const string& in name) { double v = 0; extractsmetal_.get(name, v); return float(v); }
+float ExtractsMetal(const string& in name) { double v = 0; if (!extractsmetal_.get(name, v)) v = 0; return float(v); }
 
 dictionary energyupkeep_ = {
 	{"armamex", 3},
@@ -426,7 +426,7 @@ dictionary energyupkeep_ = {
 	{"legvision", 0},
 	{"mission_command_tower", 0}
 };
-float EnergyUpkeep(const string& in name) { double v = 0; energyupkeep_.get(name, v); return float(v); }
+float EnergyUpkeep(const string& in name) { double v = 0; if (!energyupkeep_.get(name, v)) v = 0; return float(v); }
 
 dictionary factorytier_ = {
 	{"armaap", 2},
@@ -472,7 +472,7 @@ dictionary factorytier_ = {
 	{"legsy", 1},
 	{"legvp", 1}
 };
-float FactoryTier(const string& in name) { double v = 0; factorytier_.get(name, v); return float(v); }
+float FactoryTier(const string& in name) { double v = 0; if (!factorytier_.get(name, v)) v = 0; return float(v); }
 
 dictionary needgeo_ = {
 	{"armageo", 1},
@@ -491,7 +491,7 @@ dictionary needgeo_ = {
 	{"legrampart", 1},
 	{"leguwgeo", 1}
 };
-float NeedsGeo(const string& in name) { double v = 0; needgeo_.get(name, v); return float(v); }
+float NeedsGeo(const string& in name) { double v = 0; if (!needgeo_.get(name, v)) v = 0; return float(v); }
 
 dictionary metalmake_ = {
 	{"armcom", 2},
@@ -545,7 +545,7 @@ dictionary metalmake_ = {
 	{"scavbeacon_t3", 8},
 	{"scavbeacon_t4", 16}
 };
-float MetalMake(const string& in name) { double v = 0; metalmake_.get(name, v); return float(v); }
+float MetalMake(const string& in name) { double v = 0; if (!metalmake_.get(name, v)) v = 0; return float(v); }
 
 dictionary energymake_ = {
 	{"armaca", 10},
@@ -706,7 +706,7 @@ dictionary energymake_ = {
 	{"scavbeacon_t3", 800},
 	{"scavbeacon_t4", 1600}
 };
-float EnergyMake(const string& in name) { double v = 0; energymake_.get(name, v); return float(v); }
+float EnergyMake(const string& in name) { double v = 0; if (!energymake_.get(name, v)) v = 0; return float(v); }
 
 dictionary radardistance_ = {
 	{"armaap", 1000},
@@ -893,7 +893,7 @@ dictionary radardistance_ = {
 	{"raptor_hive", 900},
 	{"volcano_projectile_unit", 0}
 };
-float RadarRange(const string& in name) { double v = 0; radardistance_.get(name, v); return float(v); }
+float RadarRange(const string& in name) { double v = 0; if (!radardistance_.get(name, v)) v = 0; return float(v); }
 
 dictionary cloakcost_ = {
 	{"armamb", 24},
@@ -972,7 +972,7 @@ dictionary cloakcost_ = {
 	{"scavsafeareabeacon", 10},
 	{"volcano_projectile_unit", 0}
 };
-float CloakCost(const string& in name) { double v = 0; cloakcost_.get(name, v); return float(v); }
+float CloakCost(const string& in name) { double v = 0; if (!cloakcost_.get(name, v)) v = 0; return float(v); }
 
 dictionary cloakcostmoving_ = {
 	{"armcom", 1000},
@@ -1029,7 +1029,7 @@ dictionary cloakcostmoving_ = {
 	{"raptor_matriarch_spectre", 0},
 	{"volcano_projectile_unit", 0}
 };
-float CloakCostMoving(const string& in name) { double v = 0; cloakcostmoving_.get(name, v); return float(v); }
+float CloakCostMoving(const string& in name) { double v = 0; if (!cloakcostmoving_.get(name, v)) v = 0; return float(v); }
 
 dictionary mincloakdistance_ = {
 	{"armamb", 70},
@@ -1114,7 +1114,7 @@ dictionary mincloakdistance_ = {
 	{"scavsafeareabeacon", 250},
 	{"volcano_projectile_unit", 0}
 };
-float DecloakDistance(const string& in name) { double v = 0; mincloakdistance_.get(name, v); return float(v); }
+float DecloakDistance(const string& in name) { double v = 0; if (!mincloakdistance_.get(name, v)) v = 0; return float(v); }
 
 array<string> BuildOptions(const string& in fac)
 {

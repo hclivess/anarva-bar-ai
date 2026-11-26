@@ -164,6 +164,11 @@ is a decision nobody made.
 - **One install only: `Anarva`.** No side-by-side copies in the owner's BAR (owner: "why do you keep multiple
   copies"). Install only while the owner is not playing (the installer refuses while BAR holds the DLL), then verify
   with a short headless game before saying it is ready.
+- **End a game the moment we are outplayed** (owner, 2026-11-26: "monitor every stat - energy, metal, army, damage
+  taken vs dealt. the moment it swings in the enemy player, you should resign and rework yourself"; "end the spectated
+  games early ... when outplayed"). Run games through `tools/swing.py` (it stops the game when a stat favours BARb by more
+  than a tenth in two samples running and prints our decisions before it); a spectated game ends there too. Playing a
+  lost game to 20:00 teaches nothing the swing didn't.
 - **Every game is assessed with [CHECKLIST.md](CHECKLIST.md)** (owner, 2026-11-25, #92: "Why don't you have a basic
   checklist?"): `python tools/check_game.py runs/<batch>/gNN`. Overflow, stalls, army value, whether the army moves
   and fights come before the score. A failure there is fixed before anything else.

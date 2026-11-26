@@ -992,7 +992,7 @@ void OnDestroyed(CCircuitUnit@ u)
 		const array<string>@ xz = key.split(",");
 		const AIFloat3 c(parseFloat(xz[0]), 0.f, parseFloat(xz[1]));
 		if (u.GetPos(ai.frame).distance2D(c) > u.circuitDef.losRadius) {
-			int n = 0; cellDied.get(key, n); cellDied.set(key, n + 1);
+			int n = 0; if (!cellDied.get(key, n)) n = 0; cellDied.set(key, n + 1);
 		}
 	}
 	scouts.removeAt(at); ++lost;
@@ -1000,8 +1000,11 @@ void OnDestroyed(CCircuitUnit@ u)
 float CellSurvival(const AIFloat3& in c)
 {
 	const string key = int(c.x) + "," + int(c.z);
+	// a missing key leaves the out value undefined (it read the cell's z: sent = died = 2800, survival 0, no scout ever
+	// built - sc2): only a found key counts
 	int sent = 0, died = 0;
-	cellSent.get(key, sent); cellDied.get(key, died);
+	if (!cellSent.get(key, sent)) sent = 0;
+	if (!cellDied.get(key, died)) died = 0;
 	return (sent > 0) ? AiMax(0.f, float(sent - died) / float(sent)) : 1.f;
 }
 // how long our scouts live: scout-seconds survived / scouts lost (none lost yet: the horizon)
@@ -1028,12 +1031,25 @@ void Send()
 		string prev;
 		if (sentTo.get("" + scouts[best].id, prev) && prev == key) continue;  // already on its way there
 		sentTo.set("" + scouts[best].id, key);
-		{ int n = 0; cellSent.get(key, n); cellSent.set(key, n + 1); }
+		{ int n = 0; if (!cellSent.get(key, n)) n = 0; cellSent.set(key, n + 1); }
 		scouts[best].CmdMoveTo(picks[p]);
 	}
 }
 
-string Status() { return "scout: worthy=" + worthy + " top=" + int(topValue) + " quota=" + aiMilitaryMgr.quota.scout; }
+string Status()
+{
+	string f = "";
+	const uint k = scouts.length() + pendingDefs.length();
+	CCircuitDef@ d = ai.GetCircuitDef("armflea");
+	if (d is null) @d = ai.GetCircuitDef("corfav");
+	if (d !is null && k < pickVals.length()) {
+		const float walk = (HasBase() ? basePos.distance2D(picks[k]) : 0.f) / AiMax(1.f, d.speed);
+		f = " next: val " + int(pickVals[k]) + " pOcc " + F2(pOccupied) + " alive " + F2(AiMax(0.f, 1.f - walk / AiMax(1.f, Life())))
+			+ " (walk " + int(walk) + " s, life " + int(Life()) + " s) cellSurv " + F2(CellSurvival(picks[k]))
+			+ " los " + F2(AiMin(1.f, 2.f * d.losRadius / AiMax(1.f, Intel::CELL)));
+	}
+	return "scout: worthy=" + worthy + " top=" + int(topValue) + " scouts=" + scouts.length() + f;
+}
 
 }  // namespace Scout
 
@@ -1404,7 +1420,7 @@ void NanoUpdate()
 		const string key = "" + u.id;
 		const bool busy = (u.task !is null && u.task.GetType() == Task::Type::BUILDER);
 		float use = 1.f;  // a new nano is presumed useful until measured
-		nanoUse.get(key, use);
+		if (!nanoUse.get(key, use)) use = 1.f;
 		use = use + a * ((busy ? 1.f : 0.f) - use);
 		nanoUse.set(key, use);
 		const float keep = d.buildSpeed / bp * income * H * use;
@@ -2479,12 +2495,12 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		for (uint i = 0; i < mine.length(); ++i) {
 			const CCircuitDef@ d = mine[i].circuitDef;
 			if ((!IsArmy(d) && mine[i] !is commander) || Scout::IsScout(mine[i]) || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
-			int c = 0; cnt.get(d.GetName(), c); cnt.set(d.GetName(), c + 1);
+			int c = 0; if (!cnt.get(d.GetName(), c)) c = 0; cnt.set(d.GetName(), c + 1);
 			if (c == 0) ours.insertLast(d.GetName());
 			nOurs += 1.f;
 		}
 		for (uint j = 0; j < ours.length(); ++j) {
-			int c = 0; cnt.get(ours[j], c);
+			int c = 0; if (!cnt.get(ours[j], c)) c = 0;
 			CCircuitDef@ od = ai.GetCircuitDef(ours[j]);
 			for (uint k = 0; k < kE.length(); ++k) { string tm; kS[k] += float(c) * SurfPower(od, kMix[k], tm); }
 		}
@@ -5299,9 +5315,9 @@ void Micro()
 		if (inReach && !didFire) {
 			++idleInRange;
 			// who, against what, on which order (why does a unit with an enemy in reach not fire?)
-			string ord = "-"; Command::lastOrder.get("" + u.id, ord);
+			string ord = "-"; if (!Command::lastOrder.get("" + u.id, ord)) ord = "-";
 			const string key = d.GetName() + ">" + ed[rk].GetName() + (ed[rk].IsAbleToFly() ? "(air)" : "") + ((ef[rk] & 2) == 0 ? "(radar)" : "") + " " + (still ? "still" : "moving") + " " + ord.split(":")[0];
-			int c = 0; idleWhy.get(key, c); idleWhy.set(key, c + 1);
+			int c = 0; if (!idleWhy.get(key, c)) c = 0; idleWhy.set(key, c + 1);
 		}
 		if (hit && still) ++stillHit;
 	}
@@ -5310,7 +5326,7 @@ void Micro()
 		idleLogFrame = ai.frame;
 		const array<string>@ ks = idleWhy.getKeys();
 		string idleOut = "";
-		for (uint q = 0; q < ks.length(); ++q) { int c = 0; idleWhy.get(ks[q], c); if (c >= 3) idleOut += " | " + ks[q] + " x" + c; }
+		for (uint q = 0; q < ks.length(); ++q) { int c = 0; if (!idleWhy.get(ks[q], c)) c = 0; if (c >= 3) idleOut += " | " + ks[q] + " x" + c; }
 		if (idleOut.length() > 0) AiLog("[ANV-IDLE]" + idleOut);
 		idleWhy.deleteAll();
 	}
@@ -5385,10 +5401,10 @@ void SquadLog()
 	string sizes = "";
 	for (uint k = 0; k < order.length() && k < 12; ++k) sizes += (k > 0 ? "," : "") + size[order[k]];
 	dictionary comp;
-	for (uint i = 0; i < n; ++i) if (cl[i] == order[0]) { int c = 0; comp.get(nm[i], c); comp.set(nm[i], c + 1); }
+	for (uint i = 0; i < n; ++i) if (cl[i] == order[0]) { int c = 0; if (!comp.get(nm[i], c)) c = 0; comp.set(nm[i], c + 1); }
 	const array<string>@ ks = comp.getKeys();
 	string big = "";
-	for (uint k = 0; k < ks.length(); ++k) { int c = 0; comp.get(ks[k], c); big += (k > 0 ? "," : "") + ks[k] + ":" + c; }
+	for (uint k = 0; k < ks.length(); ++k) { int c = 0; if (!comp.get(ks[k], c)) c = 0; big += (k > 0 ? "," : "") + ks[k] + ":" + c; }
 	AiLog("[ANV-SQUAD] f=" + ai.frame + " units=" + n + " squads=" + nc + " sizes=" + sizes + " big=" + big);
 }
 IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
