@@ -3116,7 +3116,10 @@ float TailGrowth(const Sim@ s, float end)
 		if (s.usedSpot[tailOrder[j]]) continue;
 		++k;
 		W += tailDist[j] / AiMax(1.f, L.con.speed) + mexBuild;
-		const float tk = s.labAt + sqrt(2.f * conEvery * W);
+		// builder time available tau after the lab: the constructors' tau^2 / (2 conEvery) plus the commander's own tau
+		// (it keeps building - players' commanders take the near spots for the first minutes). Without it near spots
+		// came no sooner than far ones and a central start beat the cluster starts players use (Canis 2026-11-26).
+		const float tk = s.labAt + (-conEvery + sqrt(conEvery * conEvery + 2.f * conEvery * W));
 		if (tk >= end) break;
 		v += tailYield[j] * (end - tk) - mexCost;
 	}
