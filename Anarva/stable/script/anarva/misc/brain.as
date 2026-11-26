@@ -469,6 +469,7 @@ int orders = 0;
 IUnitTask@ pending = null;  // the tower ordered last, until its job ends: one at a time, like a player (26 towers in
                             // 10 minutes when every update ordered another before the last one stood, Gasbag)
 void OnTaskRemoved(IUnitTask@ t) { if (t is pending) @pending = null; }
+bool IsFactory(const CCircuitDef@ d) { return !d.IsMobile() && d.buildSpeed > 0.f && Facts::BuildOptions(d.GetName()).length() > 0; }
 float RaidLoss(CCircuitUnit@ u, const CCircuitDef@ con)
 {
 	const CCircuitDef@ d = u.circuitDef;
@@ -478,7 +479,26 @@ float RaidLoss(CCircuitUnit@ u, const CCircuitDef@ con)
 	array<AIFloat3> sp; array<float> si; array<bool> so;
 	const uint ns = AiGetMetalSpots(sp, si, so);
 	float avg = 0.f; for (uint i = 0; i < ns; ++i) avg += si[i]; avg = (ns > 0) ? avg / float(ns) : 0.f;
-	const float yield = Economist::Extract(nm) * avg + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
+	float yield = Economist::Extract(nm) * avg + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
+	// A factory's output is the army: while it is down, everything it would make isn't made. Its yield is its build
+	// power x the metal per build-second of what it makes (unit facts). Counted at its cost alone, one Incisor killed our
+	// lab at 3.7 min while the army raided far spots (Canis 2026-11-26).
+	if (!d.IsMobile() && d.buildSpeed > 0.f) {
+		const array<string>@ opts = Facts::BuildOptions(nm);
+		float sm = 0.f, sbt = 0.f;
+		for (uint k = 0; k < opts.length(); ++k) {
+			CCircuitDef@ o = ai.GetCircuitDef(opts[k]);
+			if (o is null || !o.IsMobile()) continue;
+			sm += o.costM; sbt += o.buildTime;
+		}
+		if (sbt > 0.f) yield += d.buildSpeed * sm / sbt;
+		// the last factory is all of our production: without it no unit at all is made (the constructor to rebuild it
+		// included), so its loss is the game's (owner: "losing a lab mainly means no unit production at all?!")
+		uint facs = 0;
+		const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+		for (uint k = 0; k < all.length(); ++k) if (IsFactory(all[k].circuitDef)) ++facs;
+		if (facs <= 1) return Economist::MetalValue(d) + GameValue();
+	}
 	float rebuild = 0.f;
 	if (con !is null) rebuild = (HasBase() ? basePos.distance2D(u.GetPos(ai.frame)) : 0.f) / AiMax(1.f, con.speed) + d.buildTime / AiMax(1.f, con.buildSpeed);
 	return Economist::MetalValue(d) + yield * rebuild;
@@ -491,6 +511,9 @@ void Update()
 	CCircuitDef@ tur = Strategic::BestTurret();
 	if (tur is null || !tur.IsAvailable(ai.frame)) return;
 	const float cost = Economist::MetalValue(tur);
+	// sites: extractors. (Factories here made every tower near the lab look worth ~1000 and builders spent the opening
+	// on towers - 0 extractors at minute 4; winners build 0.2 towers by 3:00 and defend the lab with the army. The
+	// lab's value goes to the army's defence decision, Command::OursThreatened.)
 	const array<CCircuitUnit@>@ mx = Economist::mexes;
 	CCircuitUnit@ best = null; float bestHeat = cost;
 	for (uint i = 0; i < mx.length(); ++i) {
