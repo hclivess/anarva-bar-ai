@@ -119,3 +119,10 @@ The latest batch (D-gun and strength fixes) is being played.
   because the spots are near their start, so the lever is the start position: the start choice still prefers a
   central start, 500-1300 elmos from later spots, because the expansion tail over the whole map outweighs the first
   minutes' walks.
+- **Start position experiment (Canis River, one game each):** the players' cluster start (2464,5696), forced for one
+  game, against the model's choice (2960,5296). Cluster start: 8 extractors at minute 4 (vs 4), 21 / 4 factories /
+  army 3632 at minute 12, 26 extractors / energy 1496 / army 6407 at minute 16 (winners 28.9 / 1567 / 7807), army
+  6108 vs BARb's 4670 at the end; lost on points (structures). The model's start (best earlier game) collapsed after
+  minute 12. The start model is wrong: it still scores the central-forward start 1.5% higher. Suspect raid exposure
+  (a forward start is nearer the enemy; the model counts only the first raid). Next: value repeated raid exposure in
+  the start choice, then re-run the comparison.
