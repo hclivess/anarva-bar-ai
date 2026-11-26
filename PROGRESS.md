@@ -279,3 +279,7 @@ The latest batch (D-gun and strength fixes) is being played.
   least as fast as the squad. cmd_m106: commander alive at 20:00, army 8046 at 12:00 and 11669 at 18:00 (ratio up
   to 11.5) - lost on points: extractors 22 -> 7 from minute 12 to 18 (raids), their buildings 33231 vs ours 2255.
   Open: the late extractor erosion and the army that never ends the game.
+- **Catch share in unit power - reverted (cmd_m108):** multiplying every unit's power by the share of the enemy it can
+  catch pushed the lab back to Pawns (35, the fastest bot) and Levelers wiped the army at minute 12 (6304 lost).
+  Catching raiders is a separate job from holding the fight: it needs its own (fast) units valued by the raids they
+  stop - towers, or a vehicle answer - not a factor on the main army's choice.
