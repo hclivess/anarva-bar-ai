@@ -2712,6 +2712,30 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				}
 				terms += " per-type " + int(vSurf) + " grow " + F2(grow);
 			}
+			// the first raids, valued by the loss a fighter prevents (#41/#103, "army by the first raid"): the opener's raid
+			// model (unit facts, setup) says how many raiders their lab has by the time this unit is ready; while they
+			// outnumber our fighters, each fighter that beats one in a duel stops its kill rate on our producers (its dps
+			// x our producers' metal per health) over the horizon. As a share of a bigger enemy's fight the same raid
+			// made fighters worth less (Pawn 0.71 vs constructor 2.08, army 54 vs 215 at 3:00, swe4).
+			if (Opening::raidRate > 0.f && mPerHp > 0.f) {
+				const float tUp = float(ai.frame) / SECOND + d.buildTime / AiMax(1.f, fdef.buildSpeed);
+				// their raider rate is the lab's build speed AND what their income pays for (they earn as we do: our income over
+				// a raider's metal) - on build speed alone it read 6.3 raiders at ~2:00 against BARb's real 86 metal of army,
+				// and the lab made Ticks and no constructors (swe6: army 504 vs 215 but metal 8.9 vs 11.2 at 3:00)
+				const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
+				const float nR = AiMax(0.f, tUp - Opening::raidLabAt) * rate;
+				if (nR > nOurs) {
+					// in the raider's own measure, sqrt(dps x health) both sides (SurfPower is on the core's threat scale: the
+					// duel read 0.01-0.02, swe5)
+					const float duel = WinShare(Opening::Strength(d), Opening::raidStrength);
+					// a fighter now instead of later answers the raid one lab slot sooner (its build time): that is the loss it
+					// prevents, not the raid's damage over the whole horizon (10711 s early: 85492, the whole stake - the lab made
+					// no constructor in its first 12 units and the base fell behind, buildings 665 vs 850 at 3:00, swe7)
+					const float slot = d.buildTime / AiMax(1.f, fdef.buildSpeed);
+					const float vRaid = AiMin(stakeSurf, Opening::raidDps * mPerHp * slot * duel);
+					if (vRaid > vSurf) { vSurf = vRaid; terms += " firstRaid " + int(vRaid) + " (" + F1(nR) + " raiders, duel " + F2(duel) + ")"; }
+				}
+			}
 			if (gE.length() > 0) {
 				float vG = 0.f;
 				for (uint g = 0; g < gE.length(); ++g) {
