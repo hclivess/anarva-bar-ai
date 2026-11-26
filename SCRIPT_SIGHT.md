@@ -33,6 +33,8 @@ and record it here. A blind spot is fixed when first met, not worked around.
 | damage per enemy type: dealt us / we dealt it, and totals | `AiDamageFrom(type)`, `AiDamageTo(type)`, `AiDamageFromAll()`, `AiDamageToAll()` | 2026-11-26 | exposed; a live enemy threat from it (cmd_m122) made the army shy and was reverted - unused for now |
 | damage taken / dealt per our unit type (live trade) | `AiDamageReceived(type)`, `AiDamageDealt(type)` | 2026-11-26 | unit choice: corrects the modelled trade by the live one (Pawns x0.13 vs Levelers) |
 | smoothed metal spend | `AiSmoothMetalPull()` | 2026-11-26 | metal price in the script (constructor value, reclaim): the share of income + bank we spend |
+| a unit fires while moving (share of its weapons with `turret`) | `Facts::FiresMoving(name)` (`gen_facts.py`) | 2026-11-26 | Micro: a unit that outranges the nearest enemy keeps to its own reach and fires (#116) |
+| what the AI knows, every 30 s (army position/spread/forward share, squads, pickets, commander, spots, sight, radars, known enemy) | `[ANV-AWARE]` log line | 2026-11-26 | owner: "awareness (missing info about own army position, map)"; read by `tools/analyst.py` |
 
 ## Still blind (open)
 

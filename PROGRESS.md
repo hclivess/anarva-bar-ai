@@ -733,3 +733,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   short-range types lead (Pawn, Blitz, Pyro at the front) and longer-range ones stand back by about their range edge
   (Mace +161, Can +181, Samson +457). Single-type squads are normal. Table in REPLAYS.md. Next: each of our units fights
   from its own reach in contact.
+- **Fight from own reach (kt1, #116):** `Facts::FiresMoving` exposed (every common land fighter of both sides has turret
+  weapons); Micro steps a unit that outranges the nearest enemy back to its own reach. kt1: 11 kite orders (Pawns rarely
+  outrange what they meet), but ops with kills 38/72 and 5335 metal killed (ft1: 7/71, 925), kills 52 vs 223; ahead at
+  4:00 (metal 27.3 vs 15.8); army behind from 8:00 (1317 vs 4230 at 12:00). Points loss.

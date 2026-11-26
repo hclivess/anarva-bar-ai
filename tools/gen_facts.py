@@ -100,6 +100,14 @@ def scan(units_dir):
                     cells = cells[1:]
                 if "g" in cells:
                     d["needgeo"] = 1.0
+            # weapons that turn independently of the hull ("turret" in the weapon def) fire while the unit moves in any
+            # direction: the share of its weapon defs that do (owner #116: a unit fights from its own reach - kiting
+            # pays only for units that fire while moving away)
+            wd = u.get("weapondefs") if isinstance(u.get("weapondefs"), dict) else {}
+            if wd:
+                tur = [w.get("turret") is True for w in wd.values() if isinstance(w, dict)]
+                if tur:
+                    d["turret"] = sum(tur) / len(tur)
             bo = u.get("buildoptions")
             d["buildoptions"] = [x for x in bo if isinstance(x, str)] if isinstance(bo, list) else []
             defs[name] = d
@@ -182,12 +190,14 @@ def main():
     for key, fn in (("stockpiletime", "StockpileTime"), ("metalpershot", "ShotMetal"), ("shieldradius", "ShieldRadius"),
                     ("extractsmetal", "ExtractsMetal"), ("energyupkeep", "EnergyUpkeep"), ("factorytier", "FactoryTier"),
                     ("needgeo", "NeedsGeo"), ("metalmake", "MetalMake"), ("energymake", "EnergyMake"),
-                    ("radardistance", "RadarRange"), ("cloakcost", "CloakCost"), ("cloakcostmoving", "CloakCostMoving"), ("mincloakdistance", "DecloakDistance")):
+                    ("radardistance", "RadarRange"), ("cloakcost", "CloakCost"), ("cloakcostmoving", "CloakCostMoving"), ("mincloakdistance", "DecloakDistance"),
+                    ("turret", "FiresMoving")):
         items = sorted((n, d[key]) for n, d in defs.items() if key in d)
         lines.append("dictionary %s_ = {" % key)
         lines.append(",\n".join('\t{"%s", %g}' % (n, v) for n, v in items))
         lines.append("};")
-        lines.append("float %s(const string& in name) { double v = 0; %s_.get(name, v); return float(v); }" % (fn, key))
+        # a missing key leaves the out value undefined in this AngelScript build: only a found key counts (sc2)
+        lines.append("float %s(const string& in name) { double v = 0; if (!%s_.get(name, v)) v = 0; return float(v); }" % (fn, key))
         lines.append("")
     lines.append("array<string> BuildOptions(const string& in fac)")
     lines.append("{")

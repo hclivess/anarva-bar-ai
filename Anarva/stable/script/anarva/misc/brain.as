@@ -5599,7 +5599,7 @@ void Micro()
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
-	uint contact = 0, fired = 0, noReply = 0, outranged = 0, idleInRange = 0, stillHit = 0;
+	uint contact = 0, fired = 0, noReply = 0, outranged = 0, idleInRange = 0, stillHit = 0, kited = 0;
 	dictionary hpNow;
 	for (uint i = 0; i < all.length(); ++i) {
 		CCircuitUnit@ u = all[i];
@@ -5617,6 +5617,29 @@ void Micro()
 			if (ed[k] !is null && ep[k].distance2D(p) <= reach) { inReach = true; rk = int(k); }
 		if (!hit && !inReach) continue;
 		++contact;
+		// Fight from its own reach (#116; winners' squads in contact: longer-range types stand back by their range edge,
+		// REPLAYS.md): a unit that outranges the nearest armed enemy, with it inside our reach, steps back to our reach
+		// from it - its weapon turns (Facts::FiresMoving), so it keeps firing while the enemy can't reply. Closing in
+		// stays the squad's order when they outrange us.
+		{
+			int nk = -1; float nd = 1e30f;
+			for (uint k = 0; k < n; ++k) {
+				if (ed[k] is null || !ed[k].IsMobile() || ed[k].GetSustainedDps() <= 0.f) continue;
+				const float dk = ep[k].distance2D(p);
+				if (dk < nd) { nd = dk; nk = int(k); }
+			}
+			if (nk >= 0 && Facts::FiresMoving(d.GetName()) > 0.f) {
+				const float re = ed[nk].GetMaxRange();
+				if (reach > re && nd < reach && nd < re + ed[nk].speed) {  // they close within a second of their reach
+					AIFloat3 away = p - ep[nk];
+					const float len = AiMax(1.f, away.Length2D());
+					AIFloat3 to(ep[nk].x + away.x / len * reach, 0.f, ep[nk].z + away.z / len * reach);
+					to.y = AiGetElevation(to.x, to.z);
+					u.CmdMoveTo(to);
+					++kited;
+				}
+			}
+		}
 		// fired within its own reload time (a weapon that reloads in more than a second can't fire every second)
 		const bool didFire = u.LastShotFrame() > AiMin(since, ai.frame - d.GetReloadTime());
 		const AIFloat3 v = u.GetVel();
@@ -5658,7 +5681,7 @@ void Micro()
 		md /= float(su.length());
 		spread += " " + su.length() + "u:" + F1(md / AiMax(1.f, minReach)) + "r";
 	}
-	AiLog("[ANV-MICRO] f=" + ai.frame + " contact=" + contact + " fired=" + fired + " noReply=" + noReply
+	AiLog("[ANV-MICRO] f=" + ai.frame + " contact=" + contact + " kited=" + kited + " fired=" + fired + " noReply=" + noReply
 		+ " outranged=" + outranged + " idleInRange=" + idleInRange + " stillHit=" + stillHit + " squadSpread=" + spread);
 }
 }  // namespace Check
