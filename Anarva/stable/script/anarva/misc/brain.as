@@ -4073,6 +4073,15 @@ void Update()
 		}
 		float opMetal = 0.f;
 		for (uint k = 0; k < op.units.length(); ++k) opMetal += op.units[k].circuitDef.costM;
+		// what the fight has shown: by the square law the loss ratio is the strength ratio, so the defence it meets is at
+		// least our strength x metal lost / enemy metal killed since it began - also when the shooters are out of sight.
+		// Counting seen enemies only, one op took Pawns in one at a time from minute 8 to 10 at ratio 1.2 -> 0.1 and lost
+		// 2179 without pulling back (Thuds and Grunts, Canis vs Cortex cmd_m37)
+		{
+			const float lostM = AiMax(0.f, op.startMetal - opMetal);
+			const float killedM = Assess::killedTotal - op.killedAtStart;
+			if (lostM > 0.f) op.defence = AiMax(op.defence, S * lostM / AiMax(1.f, killedM));
+		}
 		if (!alive || op.units.length() == 0 || FightGain(op.value, S, op.defence, opMetal) <= 0.f) {
 			if (alive && op.units.length() > 0) {
 				++retreats;
@@ -4102,7 +4111,7 @@ void Update()
 		for (uint o = 0; o < ops.length(); ++o)
 			if (ops[o].defence > 0.f && (bestOp < 0 || ops[o].value > ops[bestOp].value)) bestOp = int(o);
 		if (bestOp >= 0 && freeUnits.length() > 0) {
-			for (uint i = 0; i < freeUnits.length(); ++i) ops[bestOp].units.insertLast(freeUnits[i]);
+			for (uint i = 0; i < freeUnits.length(); ++i) { ops[bestOp].units.insertLast(freeUnits[i]); ops[bestOp].startMetal += freeUnits[i].circuitDef.costM; }
 			ops[bestOp].route.resize(0);  // re-route the bigger squad
 			AiLog("[ANV-CMD] reinforce (" + int(ops[bestOp].pos.x) + "," + int(ops[bestOp].pos.z) + ") +" + freeUnits.length() + " units");
 			freeUnits.resize(0);
