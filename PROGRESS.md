@@ -490,3 +490,8 @@ The latest batch (D-gun and strength fixes) is being played.
   opener builds one extractor, a solar and the lab: the extractor-first test compares "extractor then lab" with "lab
   now" and the extractor's energy makes the lab wait; winners build extractor x3, solar x2, then the lab (~61 s). Next:
   weigh short sequences (extractor, plant, lab), not single steps.
+- **Opener sequences, reverted (st2-5):** trying extractor -> plant -> lab in the extractor-first test left one extractor
+  before the lab; charging the lab's delay only past the earliest raid gave three commander extractors but 30 s apart
+  (13 / 43 / 77 s) and the lab at 101-105 s, and moved the start pick to (2400,6000) with 300-380 walks between spots.
+  Income at 4:00 9.9 either way (winners 19). The opener's single-step tests interact with the start valuation; a
+  short-sequence plan (the retired rollout planner) is the next approach, not more single-step terms.
