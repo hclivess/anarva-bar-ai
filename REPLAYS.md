@@ -105,3 +105,21 @@ longest range). Small set: a lead, not a rule.
   failed because it walked into fire without fighting (ops ending "target gone", 3800-7000 metal lost for 0 killed, mm1).
 - Next to measure: winners vs losers separately, and how often the main squad holds versus chases.
 
+## Where the metal goes in the first 8 minutes (2026-11-26)
+
+Metal of everything built by 8:00, by category: 24 Armada bot-lab 1v1 winners (replays.db, unit costs from `built`)
+against three of our games vs BARb hard (en8, rp2, kt1; Comet Catcher, Armada vs Cortex).
+
+| Category | Winners (median) | en8 | rp2 | kt1 |
+|---|---|---|---|---|
+| Army | 3242 | 699 | 1122 | 1107 |
+| Constructors | 1050 | 1210 | 680 | 660 |
+| Extractors | 950 | 600 | 600 | 650 |
+| Energy | 1858 | 2480 | 2015 | 2560 |
+| Labs + caretakers | 1320 | 960 | 500 | 1420 |
+| Towers + radar | 652 | 60 | 145 | 205 |
+| **Total** | **~9070** | 6009 | 5062 | 6602 |
+
+Winners spend ~45% more by 8:00 (more extractors: ~19 vs our ~12) and put 36% into army against our 12-18%; we put more
+metal into energy than they do in absolute terms.
+
