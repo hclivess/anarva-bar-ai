@@ -131,3 +131,14 @@ extractors; constructors take 15 extractors. The reason (comparative advantage):
 second and the costliest unit to lose, so it builds at base where nothing needs walking; the fast, cheap constructors
 claim the spots. Ours did the reverse (rc1: commander picks 155 extractor, 87 solar).
 
+## Our fights against BARb's, in contact (dr2 played back, 2026-11-26)
+
+| | Anarvā | BARb |
+|---|---|---|
+| Median squad size in contact | 15.5 | 17 |
+| Composition | Pawns only (range 180), ~14.5 | Brutes (350) ~11, Mists (700) ~5, Pounders (315) ~4.5, Incisors (230) ~3, Wolverines (710) ~1 |
+| Median distance to the nearest enemy | 316 (outside our own 180) | 1050-1400 (outside our reach) |
+
+One short-range type in one ball against a mixed squad that fights from range: BARb's rockets and artillery outrange the
+Pawns four times over and shell them without entering their reach (owner: "1 unit type bulked in one ball").
+
