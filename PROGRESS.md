@@ -114,3 +114,8 @@ The latest batch (D-gun and strength fixes) is being played.
   and start choice plan for an unboosted lab, so after one extractor and a solar they build the lab and every later
   extractor is a 500-1300 elmo walk (Canis, round 35). Model the commander's boost in the opener's draw and the
   start choice, then re-test.
+- Tried and reverted: planning the opener for the boosted lab's draw. The lab came at ~3.5 min (the opener waited for
+  an income the commander alone can't reach) and there was no army until minute 8. Winners take 3 extractors early
+  because the spots are near their start, so the lever is the start position: the start choice still prefers a
+  central start, 500-1300 elmos from later spots, because the expansion tail over the whole map outweighs the first
+  minutes' walks.

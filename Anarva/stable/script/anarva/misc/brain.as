@@ -3538,6 +3538,8 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 		// (Drawing "at the rate metal allows" read 29 E/s and built the lab first: energy stalled at 30/s.)
 		drawE = firstUnit.costE / AiMax(1.f, ut);
 		drawM = firstUnit.costM / AiMax(1.f, ut);
+		// (Planning for the commander's boost made the opener wait for an income it can't reach alone: the lab came at
+		// ~3.5 min and there was no army until minute 8, Canis 2026-11-26. The lab is planned for its own draw.)
 		Sim@ t = Copy(s0);
 		const float t0 = t.t;
 		Apply(t, opts[lab], bp, speed);
