@@ -632,6 +632,9 @@ void Update()
 	if (best is null) return;
 	if (pending !is null) {
 		if (bestHeat <= pendingValue) return;  // the pending order is still the best site
+		// a builder on its way has taken it: a tower that gets built beats a better one that never does (replaced under
+		// the walking builder, ~20 orders between 4:03 and 13:14 built none while one extractor died 7 times; df5)
+		if (pending.GetUnits().length() > 0) return;
 		AiLog("[ANV] MexPorc: untaken tower order (worth " + int(pendingValue) + ") replaced by a better site (" + int(bestHeat) + ")");
 		pending.Abort();
 		@pending = null;

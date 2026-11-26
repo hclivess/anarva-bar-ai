@@ -72,7 +72,8 @@ def main():
                     if s == "damage share" and (pair[0]["damage share"] == 0 and pair[1]["damage share"] == 0):
                         worse = False
                 else:
-                    worse = ours < theirs
+                    # a swing is a real gap, not a build finishing a few seconds later: behind by more than a tenth
+                    worse = ours < theirs * 0.9
                 behind[s] = behind[s] + 1 if worse else 0
                 if behind[s] >= 2 and swing is None:
                     swing = (fr, s, ours, theirs)
