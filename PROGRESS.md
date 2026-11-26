@@ -636,3 +636,6 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   sent = died = the cell's z (2800, 560), survival 0, so no scout ever had value (0 scouts all game, fb3; we saw 50-56% of
   BARb's army). Every unguarded `get` (20, incl. Production's per-type unit counts, caretaker use, unit facts) now checks
   the return. sc3: cellSurv 1.00, 4 scouts out by 3:00. Rule added to CLAUDE.md: end a game at the swing (tools/swing.py).
+- **Sight after the scout fix (sc4):** enemy army known 3836 vs real 4226 at 12:00 (fb3: 3195 vs 5745). Lost at 19:00.
+  The gap stays the opening: metal 8.9 vs 18.1 at 4:00 - our 7 extractors by 3:12 die to the first Gators (1:43 on),
+  BARb towers its own from 2:06. swing.py now counts energy as a gap only when our bank is empty and theirs isn't.

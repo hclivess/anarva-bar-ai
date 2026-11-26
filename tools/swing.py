@@ -15,14 +15,15 @@ import sys
 import time
 
 STAT = re.compile(r"\[HARNESS\] stats f=(\d+) dead=\w+ team=(\d) units=\d+ army_m=(\d+) static_m=(\d+) m_inc=([\d.]+) "
-                  r"e_inc=(\d+) m=[\d/]+ e=[\d/]+ killed_m=(\d+) lost_m=(\d+) dmg_out=(\d+) dmg_in=(\d+)")
+                  r"e_inc=(\d+) m=[\d/]+ e=(\d+)/(\d+) killed_m=(\d+) lost_m=(\d+) dmg_out=(\d+) dmg_in=(\d+)")
 # stat -> how ours is compared with theirs (bigger is better for all; damage and kills as a share of the exchange)
-STATS = ["metal income", "energy income", "army", "buildings", "army+buildings", "damage share", "kill share"]
+STATS = ["metal income", "energy short", "army", "buildings", "army+buildings", "damage share", "kill share"]
 
 
 def values(t):
-    f, team, army, static, minc, einc, killed, lost, dout, din = t
+    f, team, army, static, minc, einc, ecur, esto, killed, lost, dout, din = t
     return {
+        "energy short": 1.0 if int(ecur) * 10 < int(esto) else 0.0,  # bank under a tenth: production waits
         "metal income": float(minc), "energy income": float(einc), "army": int(army), "buildings": int(static),
         "army+buildings": int(army) + int(static),
         "damage share": int(dout) / max(1, int(dout) + int(din)),
@@ -67,7 +68,10 @@ def main():
                 continue
             for s in STATS:
                 ours, theirs = pair[0][s], pair[1][s]
-                if s in ("damage share", "kill share"):
+                if s == "energy short":
+                    # energy matters when it runs out: ours short while theirs isn't (more income spent is no gap)
+                    worse = pair[0][s] > 0 and pair[1][s] == 0
+                elif s in ("damage share", "kill share"):
                     worse = (pair[0]["damage share" if s == "damage share" else "kill share"] < 0.5) and (ours > 0 or theirs > 0)
                     if s == "damage share" and (pair[0]["damage share"] == 0 and pair[1]["damage share"] == 0):
                         worse = False
