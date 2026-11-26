@@ -288,3 +288,10 @@ The latest batch (D-gun and strength fixes) is being played.
   2701 at 10:00 and the game lost at 11:49. Command has no hunting role (a squad moves at its slowest), so hunters
   built were spent as weak fighters. A raid answer needs both: a unit that wins against the raider class and catches
   it, and a separate squad for it. Until then towers (covered producers live 1240-5572 s vs 171-308 uncovered).
+- **Why the strong army sits idle (cmd_m111, skip log):** a raid spot is worth one extractor (~750) and its defence
+  counts every enemy that can reach the squad on its way (40-67 of our ~100): every raid read -2000..-4000. Valuing
+  the enemies on the way as gain too (cmd_m113) launched 22 raids from early on and the army never grew (518 at 12:00)
+  - reverted. The mismatch is real but the cure has to be the defence side: what fights the squad on a long walk is
+  not their whole army (it can't be everywhere), and an early raid must not trade the army's growth for one spot.
+  Pattern of the last ten tries: targeted fixes of inconsistencies held; every change that adds aggression or a new
+  role regressed in its first game. Single games vary widely - changes of that kind need several games each.
