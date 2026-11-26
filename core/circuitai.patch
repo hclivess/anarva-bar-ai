@@ -6008,7 +6008,7 @@ index aa96738e..691b678e 100644
  				return false;
  			}
 diff --git a/src/circuit/task/builder/RepairTask.cpp b/src/circuit/task/builder/RepairTask.cpp
-index 77c22dd9..352fd9ef 100644
+index 77c22dd9..39ca2382 100644
 --- a/src/circuit/task/builder/RepairTask.cpp
 +++ b/src/circuit/task/builder/RepairTask.cpp
 @@ -6,6 +6,8 @@
@@ -6020,7 +6020,22 @@ index 77c22dd9..352fd9ef 100644
  #include "task/RetreatTask.h"
  #include "module/BuilderManager.h"
  #include "module/EconomyManager.h"
-@@ -66,7 +68,7 @@ void CBRepairTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+@@ -34,9 +36,11 @@ CBRepairTask::~CBRepairTask()
+ 
+ bool CBRepairTask::CanAssignTo(CCircuitUnit* unit) const
+ {
+-	if (unit->GetCircuitDef()->IsRoleComm()) {
+-		return false;
+-	}
++	// Anarva: the commander assists too - joining a build is worth the time it saves (the builders' join value decides).
++	// BARb kept every commander off it, while the 1v1 winners' commanders spend 27% of their time assisting builds in
++	// progress (comm table, 23221 samples, 107 wins); winners field 5 constructors and 12 fighters by 4:00, more lab
++	// time than one unassisted lab has (replays.db, 24 Armada bot-lab wins; rc1: the lab spent ~300 of ~400 s on
++	// constructors, army 183 vs 506 at 4:00)
+ 	return IRepairTask::CanAssignTo(unit);
+ }
+ 
+@@ -66,7 +70,7 @@ void CBRepairTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
  	const int frame = circuit->GetLastFrame();
  	CCircuitDef* cdef = unit->GetCircuitDef();
  	const float healthPerc = unit->GetHealthPercent();
@@ -6029,7 +6044,7 @@ index 77c22dd9..352fd9ef 100644
  		if (healthPerc < cdef->GetSelfDHP()) {
  			unit->CmdSelfD(true);
  		}
-@@ -80,15 +82,7 @@ void CBRepairTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+@@ -80,15 +84,7 @@ void CBRepairTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
  bool CBRepairTask::Reevaluate(CCircuitUnit* unit)
  {
  	CCircuitAI* circuit = manager->GetCircuit();

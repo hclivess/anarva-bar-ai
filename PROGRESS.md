@@ -701,3 +701,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   24 energy jobs dropped; "to energy" was only 21. rc1: extractors 14 at 12:00 and 24 at 20:00 (pk1: 6-8), metal 109 vs
   133 at 20:00 (closest yet), army 7687 vs 9980; but a weak opening (2-7 extractors, army ~170 at 4-8 min) and still 31
   extractor jobs dropped for reclaim. Points loss.
+- **Commander may assist (ca1):** BARb's CBRepairTask::CanAssignTo refused every commander; winners' commanders spend 27%
+  of their time assisting, and winners field 5 constructors + 12 fighters by 4:00 - more than one unassisted lab can make.
+  ca1: 153 commander assist picks; army ahead at 12:00 (3107 vs 2880), kills 100/150. But 6 constructors and 2
+  extractors at 4:00, and 2-3 extractors after 12:00 (metal 6.6 vs 155 at 20:00). Next: what the constructors did instead
+  of extractors in ca1 (assisting builds too?).
