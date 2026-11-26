@@ -472,3 +472,6 @@ The latest batch (D-gun and strength fixes) is being played.
   wins losing metal x (D/S)^2, the weaker loses all and kills (S/D)^2. Army idle while stronger: 1 minute per game (was 9).
   sq2 the closest yet: trade 0.99, 97 M/s at 16:00, buildings 15820 vs 29276, army 7314 vs 8200 (pts loss). Pull-backs
   still 54-103 per game.
+- **Outranged units close or leave, reverted (or1-3):** a unit inside a visible enemy's reach but out of its own
+  closed on it if faster, else left its reach. Outranged hits 5-14%, standing still under fire 9-12% of contacts
+  (before 5-23% / 5-15%): no measurable change; trades 0.83 / 0.52 / 0.87, all lost (or1 buildings 10850 vs 24830).
