@@ -4491,6 +4491,7 @@ float JobPDeath(CCircuitUnit@ builder, const CCircuitDef@ job, const AIFloat3& i
  */
 int builderEvacs = 0;
 array<IUnitTask@> safeTasks;
+dictionary leftAt;  // unit id -> the place an evacuated builder left
 void BuilderSafeUpdate()
 {
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
@@ -4505,9 +4506,13 @@ void BuilderSafeUpdate()
 		if (fac is null) continue;
 		const float tHome = MoveTime(d, fac.GetPos(ai.frame).distance2D(c));
 		const float P = UnitPDeath(u, c, tHome);
-		// on its safe job: back to work as soon as nothing can reach it (the guard was its whole horizon before)
+		// on its safe job: back to work once the place it left is safe - not its own position, which is safe the moment
+		// it arrives (rez bots fled and returned 618 times in one game, Canis 2026-11-26)
 		if (u.task !is null && safeTasks.findByRef(u.task) >= 0) {
-			if (P <= 0.f) { u.task.Abort(); }
+			AIFloat3 left;
+			const bool known = leftAt.get("" + u.id, left);
+			const float Pleft = known ? UnitPDeath(u, left, MoveTime(d, left.distance2D(c))) : P;
+			if (Pleft <= 0.f) { u.task.Abort(); leftAt.delete("" + u.id); }
 			continue;
 		}
 		IBuilderTask@ bt = cast<IBuilderTask>(u.task);
@@ -4540,6 +4545,12 @@ void BuilderSafeUpdate()
 		IUnitTask@ g = aiBuilderMgr.Enqueue(TaskB::Guard(Task::Priority::HIGH, fac, true, int(Brain::Economist::Horizon() * SECOND) + 1));
 		if (g is null) continue;
 		safeTasks.insertLast(g);
+		leftAt.set("" + u.id, (bt !is null) ? bt.GetBuildPos() : c);  // where it fled from
+		{  // the escape is this decision's job: worth what it keeps (the builder and its future work), so nothing else
+		   // ends it (energy-binding ended these guards and rez bots looped evacuate -> guard -> reclaim 675 times)
+			IBuilderTask@ gt = cast<IBuilderTask>(g);
+			if (gt !is null) gt.value = own + future;
+		}
 		aiBuilderMgr.AssignTask(u, g);
 		++builderEvacs;
 	}

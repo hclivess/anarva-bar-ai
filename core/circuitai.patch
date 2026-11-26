@@ -4911,7 +4911,7 @@ index fcc4c984..71fead41 100644
  
  	float prevCost = query->GetCostAt(endPos, range);
 diff --git a/src/circuit/task/builder/BuilderTask.cpp b/src/circuit/task/builder/BuilderTask.cpp
-index 172d4c26..98e036f4 100644
+index 172d4c26..c0947d40 100644
 --- a/src/circuit/task/builder/BuilderTask.cpp
 +++ b/src/circuit/task/builder/BuilderTask.cpp
 @@ -6,6 +6,8 @@
@@ -5109,7 +5109,7 @@ index 172d4c26..98e036f4 100644
  				)
  			}
  			return true;
-@@ -530,13 +578,38 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -530,13 +578,42 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  	if (unit->IsAttrNoDisrupt()) {
  		return true;
  	}
@@ -5121,7 +5121,8 @@ index 172d4c26..98e036f4 100644
 +	// energy dropping too low before it stalls, build energy, and boost again as energy allows (owner, 2026-11-25).
 +	// It ends when energy binds: the bank runs dry before our build power could close the deficit. The way back is
 +	// the re-pick after the energy job is finished (builders finish jobs), so it doesn't flap.
-+	const bool boostEnds = (buildType == BuildType::GUARD) && AnarvaEnergyBindsNow(manager->GetCircuit());
++	// (a guard a decision gave a value - an evacuation - is that decision's, not a boost to end)
++	const bool boostEnds = (buildType == BuildType::GUARD) && (GetAnarvaValue() <= 0.f) && AnarvaEnergyBindsNow(manager->GetCircuit());
 +	// Any job yields to energy when energy binds and the re-pick is an energy plant: the commander walked on to an
 +	// extractor while energy went 124/s short at minute 2 and the lab took 51 s per unit (Gasbag, 2026-11-25).
 +	// Only toward energy and only while it binds, so it doesn't flap.
@@ -5140,7 +5141,10 @@ index 172d4c26..98e036f4 100644
 +			&& (priority != IBuilderTask::Priority::NOW))
 +			|| (boostEnds && (static_cast<IBuilderTask*>(task)->GetBuildType() != BuildType::GUARD))
 +			|| (toEnergy && ((static_cast<IBuilderTask*>(task)->GetBuildType() == BuildType::ENERGY)
-+				|| (static_cast<IBuilderTask*>(task)->GetBuildType() == BuildType::GEO)))))
++				|| (static_cast<IBuilderTask*>(task)->GetBuildType() == BuildType::GEO))
++				// only a builder that can build that plant (rez bots can't: 508 switches by Graverobbers in one game)
++				&& (static_cast<IBuilderTask*>(task)->GetBuildDef() != nullptr)
++				&& unit->GetCircuitDef()->CanBuild(static_cast<IBuilderTask*>(task)->GetBuildDef()))))
  	{
 +		if (boostEnds || toEnergy) {
 +			CCircuitAI* c = manager->GetCircuit();
@@ -5151,7 +5155,7 @@ index 172d4c26..98e036f4 100644
  		manager->AssignTask(unit, task);
  		return false;
  	}
-@@ -577,7 +650,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
+@@ -577,7 +654,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
  	CPathFinder* pathfinder = circuit->GetPathfinder();
  	std::shared_ptr<IPathQuery> query = pathfinder->CreatePathSingleQuery(
  			unit, circuit->GetThreatMap(),
@@ -5160,7 +5164,7 @@ index 172d4c26..98e036f4 100644
  	pathQueries[unit] = query;
  
  	pathfinder->RunQuery(circuit->GetScheduler().get(), query, [this](const IPathQuery* query) {
-@@ -828,7 +901,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
+@@ -828,7 +905,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
  						}
  					} break;
  					case SBuildInfo::Condition::CHANCE: {
@@ -5321,7 +5325,7 @@ index 5ecb5eb9..82b0481e 100644
  	} else {
  		// Fallback to Guard/Assist/Patrol
 diff --git a/src/circuit/task/builder/GuardTask.cpp b/src/circuit/task/builder/GuardTask.cpp
-index a8950289..2d48d266 100644
+index a8950289..cac10b40 100644
 --- a/src/circuit/task/builder/GuardTask.cpp
 +++ b/src/circuit/task/builder/GuardTask.cpp
 @@ -103,10 +103,12 @@ bool CBGuardTask::Execute(CCircuitUnit* unit)
@@ -5350,7 +5354,7 @@ index a8950289..2d48d266 100644
  {
 -	if (!isInterrupt) {
 +	// Anarva: boosting ends when energy binds, interruptible or not (see IBuilderTask::Reevaluate)
-+	if (!isInterrupt && !AnarvaEnergyBindsNow(manager->GetCircuit())) {
++	if (!isInterrupt && ((GetAnarvaValue() > 0.f) || !AnarvaEnergyBindsNow(manager->GetCircuit()))) {
  		return true;
  	}
  	return IBuilderTask::Reevaluate(unit);
