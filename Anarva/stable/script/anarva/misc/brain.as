@@ -2525,8 +2525,10 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				k = int(kName.length()); kName.insertLast(d.GetName()); kE.insertLast(0.f); kS.insertLast(0.f);
 				Mix mk; mk.dps.insertLast(d.GetSustainedDps()); mk.range.insertLast(d.GetMaxRange()); mk.aoe.insertLast(d.GetAoe());
 				mk.shot.insertLast(d.GetShotSpeed()); mk.speed.insertLast(d.speed); mk.rad.insertLast(d.GetRadius()); mk.w.insertLast(1.f);
+				mk.cnt.insertLast(0.f);
 				kMix.insertLast(mk);
 			}
+			kMix[k].cnt[0] += 1.f;
 			kE[k] += sqrt(d.GetSustainedDps() * AiMax(1.f, eh[i] * d.health));
 			mE += 1.f;
 		}
@@ -2563,8 +2565,10 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 					k = int(kName.length()); kName.insertLast(d.GetName()); kE.insertLast(0.f); kS.insertLast(0.f);
 					Mix mk2; mk2.dps.insertLast(d.GetSustainedDps()); mk2.range.insertLast(d.GetMaxRange()); mk2.aoe.insertLast(d.GetAoe());
 					mk2.shot.insertLast(d.GetShotSpeed()); mk2.speed.insertLast(d.speed); mk2.rad.insertLast(d.GetRadius()); mk2.w.insertLast(1.f);
+					mk2.cnt.insertLast(0.f);
 					kMix.insertLast(mk2);
 				}
+				kMix[k].cnt[0] += extra;
 				kE[k] += extra * sqrt(d.GetSustainedDps() * AiMax(1.f, d.health));
 				mE += extra;
 			}
@@ -2741,7 +2745,7 @@ float ArmyControl(bool home = false)
 // moves while the shot flies the weapon's range (unit facts: shot speed, range, target speed and size).
 // The enemy ground units a fighter of ours will meet, weighted by strength: as seen; none seen yet, the units the
 // given factory options field (they build the same class of units). Shared by Production and the factory choice.
-class Mix { array<float> dps, range, w, aoe, shot, speed, rad; }
+class Mix { array<float> dps, range, w, aoe, shot, speed, rad, cnt; }  // cnt: enemy units an entry stands for (0: hypothetical)
 void FillMix(Mix@ m, const array<string>@ opts)
 {
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
@@ -2752,6 +2756,7 @@ void FillMix(Mix@ m, const array<string>@ opts)
 		m.dps.insertLast(d.GetSustainedDps()); m.range.insertLast(d.GetMaxRange()); m.aoe.insertLast(d.GetAoe());
 		m.shot.insertLast(d.GetShotSpeed()); m.speed.insertLast(d.speed); m.rad.insertLast(d.GetRadius());
 		m.w.insertLast(sqrt(d.GetSustainedDps() * AiMax(1.f, d.health)));
+		m.cnt.insertLast(1.f);
 	}
 	if (m.w.length() == 0 && opts !is null) {
 		for (uint i = 0; i < opts.length(); ++i) {
@@ -2759,6 +2764,7 @@ void FillMix(Mix@ m, const array<string>@ opts)
 			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
 			m.dps.insertLast(d.GetSustainedDps()); m.range.insertLast(d.GetMaxRange()); m.aoe.insertLast(d.GetAoe());
 			m.shot.insertLast(d.GetShotSpeed()); m.speed.insertLast(d.speed); m.rad.insertLast(d.GetRadius()); m.w.insertLast(1.f);
+			m.cnt.insertLast(0.f);
 		}
 	}
 }
@@ -2769,6 +2775,15 @@ void FillMix(Mix@ m, const array<string>@ opts)
 //  - dodging: a shell fired at range R with speed v lands R/v later; a target of radius r moving at u has moved u*R/v,
 //    so it is hit with chance ~ r / max(r, u*R/v) (instant weapons always hit) - for our shots and theirs.
 // (Without these, sqrt(dps x health) per metal made the Flea our best fighter: 14-16 per game, short test s32.)
+int armyCountFrame = -1; float armyCount = 0.f;
+float OurArmyCount()
+{
+	if (armyCountFrame == ai.frame) return armyCount;
+	armyCountFrame = ai.frame; armyCount = 0.f;
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	for (uint i = 0; i < mine.length(); ++i) if (IsArmy(mine[i].circuitDef) && mine[i].circuitDef.GetSustainedDps() > 0.f) armyCount += 1.f;
+	return armyCount;
+}
 float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 {
 	// #116 design (1): against an enemy that outranges us and is at least as fast, we never close - it backs off and
@@ -2798,6 +2813,17 @@ float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 		wSum += m.w[k];
 	}
 	if (wSum > 0.f) gapDmg /= wSum;
+	// #116: every enemy in range fires on the squad while it closes, shared among our units - the sum over the enemy
+	// units the mix stands for (cnt) over our army's count; as a strength-weighted average one Pawn closing on a line of
+	// artillery read like facing one gun (Pawns traded 0.40-0.69 walking in, cb1-2). Hypothetical mixes keep the average.
+	{
+		float cntSum = 0.f, fire = 0.f;
+		for (uint k = 0; k < m.cnt.length() && k < m.dps.length(); ++k) {
+			cntSum += m.cnt[k];
+			fire += m.cnt[k] * m.dps[k] * AiMax(0.f, m.range[k] - d.GetMaxRange()) / AiMax(1.f, d.speed);
+		}
+		if (cntSum > 0.f) gapDmg = fire / AiMax(1.f, OurArmyCount());
+	}
 	const float hits = (dpsW > 0.f) ? hitsW / dpsW : 1.f;  // (logged) splash hits per shot, damage-weighted
 	const float land = (wSum > 0.f) ? landW / wSum : 1.f;
 	const float taken = (dpsW > 0.f) ? AiMax(1e-3f, inW / AiMax(1e-3f, hitsW)) : 1.f;  // hit chance, damage x splash weighted
