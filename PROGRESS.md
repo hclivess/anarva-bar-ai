@@ -310,3 +310,7 @@ The latest batch (D-gun and strength fixes) is being played.
   when all our free strength beat its defence: 7 ops went for it, it survived, trade 0.33, lost at 14:01 - reverted.
   Its threat (D-gun, 3700 hp) is underrated by the generic threat number; the live trade per enemy type (damage it
   deals us / damage we deal it) is the honest measure of what it takes, and the next thing to wire into its defence.
+- **Live enemy threat (cmd_m122) - reverted:** each enemy type's threat x sqrt of its live trade against us over the
+  average made every defence larger; the army avoided fights, the base fell, lost at 11:35 (trade 0.37). The tallies
+  stay exposed (AiDamageFrom/To). Of the last 20 tries, the changes that held were fixes of inconsistent or inherited
+  logic (reclaim 1000, keep vs launch tests, rez pool, escape time); every change of how bold the army is regressed.

@@ -30,6 +30,7 @@ and record it here. A blind spot is fixed when first met, not worked around.
 | a job's metal and energy (a wreck's, for reclaim) | `task.GetCostM()`, `task.GetCostE()` | 2026-11-26 | rez bots' evacuation (their jobs counted 0) |
 | game chat | `AiSay(text)` | 2026-11-26 | telling a watching player which side is Anarvā |
 | wind as it blows | core `GetWindMean/Low/LullShare` | 2026-11-25 | turbine value, lulls |
+| damage per enemy type: dealt us / we dealt it, and totals | `AiDamageFrom(type)`, `AiDamageTo(type)`, `AiDamageFromAll()`, `AiDamageToAll()` | 2026-11-26 | exposed; a live enemy threat from it (cmd_m122) made the army shy and was reverted - unused for now |
 | damage taken / dealt per our unit type (live trade) | `AiDamageReceived(type)`, `AiDamageDealt(type)` | 2026-11-26 | unit choice: corrects the modelled trade by the live one (Pawns x0.13 vs Levelers) |
 | smoothed metal spend | `AiSmoothMetalPull()` | 2026-11-26 | metal price in the script (constructor value, reclaim): the share of income + bank we spend |
 
