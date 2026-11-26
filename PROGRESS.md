@@ -200,3 +200,10 @@ The latest batch (D-gun and strength fixes) is being played.
   Players break it by defending (towers 6.2 by 8:00, army presence) and holding 19 extractors at 8:00. Fix to
   reason out: value an extractor over the life it has where we defend it, and charge the defence (tower / army time)
   as its cost, instead of the life measured while undefended.
+- **Army curve now at the winners' (cmd_m49, cmd_m56, committed e3ca9bd):** 5578 at 12:00 (winners 5027), 10266 at
+  15:00, ratio 4-28 - yet lost: 17 kills all game, never at their base, and the commander dies (19:27, 1527 out).
+- **Enemy base as a target - tried four ways, reverted:** valued at the game (ours + theirs) with its defence as the
+  seen threat, the judged threat, the judged threat with a win gate, and the peak enemy army ever seen. All four games
+  weak (cmd_m51/53/55/58: army 918-1836 at 12:00) vs both without (m49/m56: 4212-5578): early base attacks of 4-13
+  units at 1:46-8:17 spent the army before it grew - early on even the peak seen is small. Their base needs to be
+  seen (scouting) before it can be judged; Fleas are at 0 since the per-cell scout survival.
