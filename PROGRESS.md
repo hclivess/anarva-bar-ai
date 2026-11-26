@@ -525,3 +525,7 @@ The latest batch (D-gun and strength fixes) is being played.
   the commander on base energy or assisting the lab (11-13 times a game). No change: 3-4 extractors and 8-10 M/s at
   4:00, 8-9 units. dv4 had four constructors by 142 s and still 4 extractors by 4:00 - the constructors don't expand
   (their picks go to radar, towers, winds). The constructor job choice is the next piece of #105.
+- **Radar from the earliest raid (rr1-5):** nothing hidden can be near before the earliest enemy raid can arrive, so a
+  radar is ordered only when it would stand by then. First radar 152-197 s (was 80-136 s; winners' median ~198 s,
+  replays.db). Full games rr3-5: trades 0.77 / 0.82 / 0.79, all lost at 17-18 min with the commander dead near base;
+  rr5 reached 26 extractors and 54.6 M/s at 12:00, 89 at 16:00. Kept (timing matches the replays, no regression).

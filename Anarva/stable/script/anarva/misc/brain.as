@@ -690,6 +690,12 @@ void Update()
 		}
 	}
 	if (defs.length() == 0) return;
+	// nothing hidden can be near before the earliest enemy raid can arrive (as the commander's fog): a radar is worth
+	// something only from then, so it is ordered when it would stand by then (its build time at our build power). At
+	// "unseen share 1.00" from the first second it took the first constructor's time at 80-136 s while extractors waited
+	// (winners' first radar: median 3.3 min, replays.db)
+	const float tBuildR = defs[0].buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower());
+	if (float(ai.frame) / SECOND + tBuildR < Opening::raidArrive) return;
 	// the share of their strength we don't see
 	const float seen = Economist::KnownEnemyThreat();
 	const float ours = Director::OurPower();
