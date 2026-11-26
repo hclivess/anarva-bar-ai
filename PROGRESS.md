@@ -495,3 +495,9 @@ The latest batch (D-gun and strength fixes) is being played.
   (13 / 43 / 77 s) and the lab at 101-105 s, and moved the start pick to (2400,6000) with 300-380 walks between spots.
   Income at 4:00 9.9 either way (winners 19). The opener's single-step tests interact with the start valuation; a
   short-sequence plan (the retired rollout planner) is the next approach, not more single-step terms.
+- **Bounded opening plan search, reverted (sp1-4):** before the lab, every plan of up to three steps (the three nearest
+  extractors by path, energy plants) then the lab, scored by the plan value. Re-planned each step, the lab never came
+  (8 extractors and 16-20 M/s by 4:00 - the winners' income - but no lab, no army); committed to the taken plan, four
+  extractors then the lab at ~134 s (worse than the committed opener's lab at ~52 s). The plan value counts resources
+  gathered and nothing of the army needed by the earliest raid, so more extractors always beat the lab. The opener
+  plan value must count the army the raid needs (#41 just in time) before a sequence search can help.
