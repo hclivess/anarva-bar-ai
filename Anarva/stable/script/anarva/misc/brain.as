@@ -820,7 +820,7 @@ float NextValue(const CCircuitDef@ d)
 	// ...and only if it lives to get there: the measured life of our scouts against its walk to the cell
 	const float walk = (HasBase() ? basePos.distance2D(picks[k]) : 0.f) / AiMax(1.f, d.speed);
 	const float alive = AiMax(0.f, 1.f - walk / AiMax(1.f, Life()));
-	return pickVals[k] * pOccupied * alive * AiMin(1.f, 2.f * d.losRadius / AiMax(1.f, Intel::CELL));
+	return pickVals[k] * pOccupied * alive * CellSurvival(picks[k]) * AiMin(1.f, 2.f * d.losRadius / AiMax(1.f, Intel::CELL));
 }
 void OnFinished(CCircuitUnit@ u)
 {
@@ -829,7 +829,30 @@ void OnFinished(CCircuitUnit@ u)
 	pendingDefs.removeAt(at);
 	scouts.insertLast(u);
 }
-void OnDestroyed(CCircuitUnit@ u) { const int at = scouts.findByRef(u); if (at >= 0) { scouts.removeAt(at); ++lost; } }
+// per cell: scouts sent there and scouts killed on the way (before it was in their sight) - 16 of 39 Fleas died to
+// light lasers around the same enemy cells, each new one valued at the global life (Canis vs Cortex, cmd_m26)
+dictionary cellSent, cellDied;
+void OnDestroyed(CCircuitUnit@ u)
+{
+	const int at = scouts.findByRef(u);
+	if (at < 0) return;
+	string key;
+	if (sentTo.get("" + u.id, key)) {
+		const array<string>@ xz = key.split(",");
+		const AIFloat3 c(parseFloat(xz[0]), 0.f, parseFloat(xz[1]));
+		if (u.GetPos(ai.frame).distance2D(c) > u.circuitDef.losRadius) {
+			int n = 0; cellDied.get(key, n); cellDied.set(key, n + 1);
+		}
+	}
+	scouts.removeAt(at); ++lost;
+}
+float CellSurvival(const AIFloat3& in c)
+{
+	const string key = int(c.x) + "," + int(c.z);
+	int sent = 0, died = 0;
+	cellSent.get(key, sent); cellDied.get(key, died);
+	return (sent > 0) ? AiMax(0.f, float(sent - died) / float(sent)) : 1.f;
+}
 // how long our scouts live: scout-seconds survived / scouts lost (none lost yet: the horizon)
 float exposure = 0.f; int lost = 0; int lifeFrame = -1;
 float Life()
@@ -854,6 +877,7 @@ void Send()
 		string prev;
 		if (sentTo.get("" + scouts[best].id, prev) && prev == key) continue;  // already on its way there
 		sentTo.set("" + scouts[best].id, key);
+		{ int n = 0; cellSent.get(key, n); cellSent.set(key, n + 1); }
 		scouts[best].CmdMoveTo(picks[p]);
 	}
 }
@@ -2204,26 +2228,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// it closes the gap: its health in the fight is less that damage (range, speed and dps from the unit defs). Without
 	// it, sqrt(dps x health) per metal made the Flea - a scout with a needle gun - our best fighter: 14-16 per game
 	// and the extractors raided away (short test s32, 2026-11-25).
-	array<float> mixDps, mixRange, mixW, mixAoe, mixShot, mixSpeed, mixRad;
-	{
-		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
-		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
-		for (uint i = 0; i < ne; ++i) {
-			const CCircuitDef@ d = ed[i];
-			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
-			mixDps.insertLast(d.GetSustainedDps()); mixRange.insertLast(d.GetMaxRange()); mixAoe.insertLast(d.GetAoe());
-			mixShot.insertLast(d.GetShotSpeed()); mixSpeed.insertLast(d.speed); mixRad.insertLast(d.GetRadius());
-			mixW.insertLast(sqrt(d.GetSustainedDps() * AiMax(1.f, d.health)));
-		}
-		if (mixW.length() == 0) {
-			for (uint i = 0; i < opts.length(); ++i) {
-				CCircuitDef@ d = ai.GetCircuitDef(opts[i]);
-				if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
-				mixDps.insertLast(d.GetSustainedDps()); mixRange.insertLast(d.GetMaxRange()); mixAoe.insertLast(d.GetAoe());
-				mixShot.insertLast(d.GetShotSpeed()); mixSpeed.insertLast(d.speed); mixRad.insertLast(d.GetRadius()); mixW.insertLast(1.f);
-			}
-		}
-	}
+	Mix mix; FillMix(mix, opts);
 	// An army holds the flow, not only the stock: our income over the horizon is what a raid takes and what holding
 	// the map keeps (the constructor's value counts the yield it claims over the horizon; against a stake of owned
 	// metal alone the lab made 19 constructors and 86 army by minute 8 vs the winners' 10.8 and 2036, Feast 2026-11-25)
@@ -2258,35 +2263,8 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			if (Economist::mexT1 !is null && d.CanBuild(Economist::mexT1)) vBuild = EcoPos::constructorValue;
 		} else if (d.GetSustainedDps() > 0.f) {
 			const float hp = AiMax(1.f, d.health);
-			float gapDmg = 0.f, wSum = 0.f;
-			for (uint k = 0; k < mixW.length(); ++k) {
-				gapDmg += mixW[k] * mixDps[k] * AiMax(0.f, mixRange[k] - d.GetMaxRange()) / AiMax(1.f, d.speed);
-				wSum += mixW[k];
-			}
-			if (wSum > 0.f) gapDmg /= wSum;
-			// Splash: a shot with area of effect hits every unit of ours within its radius. Units in a squad stand about
-			// a body apart (two of their radii), so one shot hits ~(aoe / that spacing)^2 of them, at least one - a small
-			// unit massed takes each splash shot several times over (44 Pawns lost to Pounders in one minute, Canis
-			// 2026-11-26). Its health in the fight is divided by the hits a shot makes, averaged over the enemy mix.
-			float hitsW = 0.f;
-			for (uint k = 0; k < mixW.length(); ++k) {
-				const float spacing = AiMax(1.f, 2.f * d.GetRadius());
-				hitsW += mixW[k] * AiMax(1.f, (mixAoe[k] / spacing) * (mixAoe[k] / spacing));
-			}
-			const float hits = (wSum > 0.f) ? hitsW / wSum : 1.f;
-			// Dodging: a shell fired at range R with speed v lands R/v later; a target of radius r moving at u has moved
-			// u*R/v by then, so it is hit with chance ~ r / max(r, u*R/v) (instant weapons always hit). Our damage counts
-			// the hits we land on the units we'll meet; our health, the hits theirs land on us (unit facts).
-			float landW = 0.f, takenW = 0.f;
-			for (uint k = 0; k < mixW.length(); ++k) {
-				landW += mixW[k] * HitChance(d.GetShotSpeed(), d.GetMaxRange(), mixSpeed[k], mixRad[k]);
-				takenW += mixW[k] * HitChance(mixShot[k], mixRange[k], d.speed, d.GetRadius());
-			}
-			const float land = (wSum > 0.f) ? landW / wSum : 1.f;
-			const float taken = (wSum > 0.f) ? AiMax(1e-3f, takenW / wSum) : 1.f;
-			const float hpSurf = AiMax(1.f, (hp - gapDmg) / hits / taken);
-			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp), us = sqrt(AiMax(0.f, d.surfThrDmg) * land * hpSurf);
-			terms = "(hits " + F2(land) + " taken " + F2(taken) + " splash " + F1(hits) + " gapDmg " + int(gapDmg) + ")";
+			const float us = SurfPower(d, mix, terms);
+			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp);
 			vFight = stakeAir * (WinShare(sAir + ua, eAir) - WinShare(sAir, eAir))
 				+ stakeSurf * (WinShare(sSurf + us, eSurf) - WinShare(sSurf, eSurf));
 			vFight *= AiMax(0.f, 1.f - dist / AiMax(1.f, d.speed) / H);
@@ -2339,6 +2317,56 @@ float ArmyControl(bool home = false)
 // 2026-11-25). The square law still decides whether a fight is taken (Command).
 // Chance a shot lands on a moving target: instant weapons (shot speed 0) always; else the target's radius over how far it
 // moves while the shot flies the weapon's range (unit facts: shot speed, range, target speed and size).
+// The enemy ground units a fighter of ours will meet, weighted by strength: as seen; none seen yet, the units the
+// given factory options field (they build the same class of units). Shared by Production and the factory choice.
+class Mix { array<float> dps, range, w, aoe, shot, speed, rad; }
+void FillMix(Mix@ m, const array<string>@ opts)
+{
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	for (uint i = 0; i < ne; ++i) {
+		const CCircuitDef@ d = ed[i];
+		if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
+		m.dps.insertLast(d.GetSustainedDps()); m.range.insertLast(d.GetMaxRange()); m.aoe.insertLast(d.GetAoe());
+		m.shot.insertLast(d.GetShotSpeed()); m.speed.insertLast(d.speed); m.rad.insertLast(d.GetRadius());
+		m.w.insertLast(sqrt(d.GetSustainedDps() * AiMax(1.f, d.health)));
+	}
+	if (m.w.length() == 0 && opts !is null) {
+		for (uint i = 0; i < opts.length(); ++i) {
+			CCircuitDef@ d = ai.GetCircuitDef(opts[i]);
+			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
+			m.dps.insertLast(d.GetSustainedDps()); m.range.insertLast(d.GetMaxRange()); m.aoe.insertLast(d.GetAoe());
+			m.shot.insertLast(d.GetShotSpeed()); m.speed.insertLast(d.speed); m.rad.insertLast(d.GetRadius()); m.w.insertLast(1.f);
+		}
+	}
+}
+// A unit's ground fighting power against the mix, sqrt(dps landed x health in the fight), from unit facts:
+//  - range gap: a unit outranged takes their fire while it closes: its health is less that damage;
+//  - splash: one shot hits ~(aoe / two of our radii)^2 of a squad, at least one (44 Pawns lost to Pounders in a
+//    minute, Canis 2026-11-26); its health is divided by the hits a shot makes;
+//  - dodging: a shell fired at range R with speed v lands R/v later; a target of radius r moving at u has moved u*R/v,
+//    so it is hit with chance ~ r / max(r, u*R/v) (instant weapons always hit) - for our shots and theirs.
+// (Without these, sqrt(dps x health) per metal made the Flea our best fighter: 14-16 per game, short test s32.)
+float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
+{
+	const float hp = AiMax(1.f, d.health);
+	float gapDmg = 0.f, wSum = 0.f, hitsW = 0.f, landW = 0.f, takenW = 0.f;
+	const float spacing = AiMax(1.f, 2.f * d.GetRadius());
+	for (uint k = 0; k < m.w.length(); ++k) {
+		gapDmg += m.w[k] * m.dps[k] * AiMax(0.f, m.range[k] - d.GetMaxRange()) / AiMax(1.f, d.speed);
+		hitsW += m.w[k] * AiMax(1.f, (m.aoe[k] / spacing) * (m.aoe[k] / spacing));
+		landW += m.w[k] * HitChance(d.GetShotSpeed(), d.GetMaxRange(), m.speed[k], m.rad[k]);
+		takenW += m.w[k] * HitChance(m.shot[k], m.range[k], d.speed, d.GetRadius());
+		wSum += m.w[k];
+	}
+	if (wSum > 0.f) gapDmg /= wSum;
+	const float hits = (wSum > 0.f) ? hitsW / wSum : 1.f;
+	const float land = (wSum > 0.f) ? landW / wSum : 1.f;
+	const float taken = (wSum > 0.f) ? AiMax(1e-3f, takenW / wSum) : 1.f;
+	const float hpSurf = AiMax(1.f, (hp - gapDmg) / hits / taken);
+	terms = "(hits " + F2(land) + " taken " + F2(taken) + " splash " + F1(hits) + " gapDmg " + int(gapDmg) + ")";
+	return sqrt(AiMax(0.f, d.surfThrDmg) * land * hpSurf);
+}
 float HitChance(float shotSpeed, float range, float targetSpeed, float targetRadius)
 {
 	if (shotSpeed <= 0.f) return 1.f;
@@ -3022,6 +3050,40 @@ CCircuitDef@ BestLab()
 		if (v > bv) { bv = v; @best = labs[k].def; }
 	}
 	return best;
+}
+// Once the game has shown us the enemy: the T1 lab whose best fighter does most per metal against it - strength per
+// metal x the share of the enemy it can catch (its speed over their mobiles' mean speed now, at most 1). Second
+// factories were always another bot lab (BestLab ignores the enemy) at 14:45; winners add one at a median 7:29, a
+// vehicle or air plant in 78 of 94 games (replays.db 1v1 winners) - Pawns chased Grunts as fast as themselves.
+CCircuitDef@ BestLabVsEnemy()
+{
+	if (!ready && commander !is null) Init();
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	float sumS = 0.f; int cnt = 0;
+	for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile() && ed[i].GetSustainedDps() > 0.f) { sumS += ed[i].speed; ++cnt; }
+	if (cnt == 0) return BestLab();
+	const float eSpeed = sumS / float(cnt);
+	// the same fighting power Production uses against what we've seen (range gap, splash, hit chance): strength per
+	// metal alone picked the cheapest unit (Pawns) while BARb's Raiders and Levelers killed 37 Pawns in 90 s (cmd_m24)
+	Brain::Production::Mix mix; Brain::Production::FillMix(mix, null);
+	CCircuitDef@ best = null; float bv = -1e30f;
+	string why = "";
+	for (uint k = 0; k < labs.length(); ++k) {
+		const array<string> opts = Facts::BuildOptions(labs[k].def.GetName());
+		float lv = 0.f; string lu = "-";
+		for (uint o = 0; o < opts.length(); ++o) {
+			CCircuitDef@ u = ai.GetCircuitDef(opts[o]);
+			if (u is null || !u.IsMobile() || u.surfThrDmg <= 0.f || u.IsRoleAny(Unit::Role::BUILDER.mask) || !u.IsAvailable(ai.frame)) continue;  // it must hit what it meets on the ground
+			string tm;
+			const float v = Brain::Production::SurfPower(u, mix, tm) / AiMax(1.f, Economist::MetalValue(u)) * AiMin(1.f, u.speed / AiMax(1e-3f, eSpeed));
+			if (v > lv) { lv = v; lu = u.GetName(); }
+		}
+		why += " " + labs[k].def.GetName() + "(" + lu + ")=" + F2(lv);
+		if (lv > bv) { bv = lv; @best = labs[k].def; }
+	}
+	AiLog("[ANV] LabVsEnemy: enemy speed " + F1(eSpeed) + " |" + why);
+	return (best !is null) ? best : BestLab();
 }
 AIFloat3 Home() { if (planning) return planHome; return HasBase() ? basePos : commander.GetPos(ai.frame); }
 AIFloat3 Them() { return planning ? planThem : AiEnemyBasePos(); }

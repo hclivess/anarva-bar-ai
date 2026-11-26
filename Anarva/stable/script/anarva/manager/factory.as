@@ -127,7 +127,9 @@ CCircuitDef@ AiGetFactoryToBuild(const AIFloat3& in pos, bool isStart, bool isRe
 	// their side). BARb's pick rebuilt a lost lab as an advanced lab with one extractor standing (Canis River).
 	CCircuitDef@ d = aiFactoryMgr.DefaultGetFactoryToBuild(pos, isStart, isReset);
 	if (d !is null && Brain::Tech::Tier(d) > 1 && Brain::Tech::Allowed(d)) return d;
-	CCircuitDef@ lab = Brain::Opening::BestLab();
+	// the first lab is the opener's; later ones are chosen against the enemy we have seen
+	CCircuitDef@ lab = (Brain::Intel::allFactories.length() == 0) ? Brain::Opening::BestLab() : Brain::Opening::BestLabVsEnemy();
+	if (lab !is null) AiLog("[ANV] next factory: " + lab.GetName());
 	return (lab !is null) ? lab : d;
 }
 
