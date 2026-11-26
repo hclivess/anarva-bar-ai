@@ -4863,8 +4863,12 @@ float FightGain(float value, float S, float D, float metal)
 		const float r = D / st;
 		return value - metal * r * r;
 	}
+	// the weaker side kills (S/D)^2 of what it FACES - the defenders' metal (their strength at our metal per strength) -
+	// not of the target's value: as value x k^2 a half-strength fight on a 15000 target read +1750 and went in; 54 ops
+	// lost >500 each against predicted losses of ~1000 they took anyway (trade 0.45 over 304 ops, bp1-2/lr1-3/lp1/kt1/dp1)
 	const float k = st / AiMax(1e-6f, D);
-	return value * k * k - metal;
+	const float defMetal = D * metal / AiMax(1e-3f, S);
+	return defMetal * k * k - metal;
 }
 // A unit's threat in a fight against the enemies we've seen: its generic threat x its fighting power against them
 // (Production::SurfPower: range gap, splash on a massed squad, hit chance) over its plain sqrt(dps x health). Summed
