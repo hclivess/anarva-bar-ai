@@ -72,6 +72,14 @@ IMPROVEMENT ONLY THEN YOU CAN TEST."
 
 ## 1. Every strategic claim is verified against replays
 
+- **Always do a replay view first** (owner, 2026-11-26: "cant you check a replay building by building to see what the
+  player is doing?" ... "mark in md that you always need to do a replay view"). Before changing any decision, lay out a
+  winner's game building by building for the phase in question - every unit and building with its time, who built it
+  (commander, constructor, lab) and its distance from the start, plus the per-minute economy (`built`, `cbuild`,
+  `comm`, `stats` in `runs/replays.db`) - and the same view of one of our games side by side. Aggregates and medians
+  come after, never instead. (A day of single-term changes to the opening missed what one replay view showed at once:
+  the winner's lab made 2-3 constructors then a Tick every ~3 s, its constructors claimed only far extractors, its
+  commander built winds at base; ours made 7 constructors and almost no army.)
 - **Always verify claims against replays.** Before arguing that strong players do X, or that X wins,
   find it in replays and measure it. Intuition, forum lore and "humans usually..." are hypotheses until
   a replay shows them.

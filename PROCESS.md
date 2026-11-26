@@ -33,6 +33,10 @@ The largest gap is the next job. The checklist failures (overflow, stalls, an ar
 
 ## 4. Reason: why do the players do it?
 
+**Start with a replay view, always** (owner, 2026-11-26; CLAUDE.md §1): a winner's game laid out building by building
+for the phase (time, unit, who built it, distance from start, per-minute economy from `runs/replays.db`) next to the
+same view of one of our games. Only then aggregates.
+
 For that gap, find in the replays what the players were looking at and why they acted:
 - **Situation:** what the map and the enemy looked like at that moment.
 - **Aim:** what they wanted.
