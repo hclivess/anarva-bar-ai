@@ -723,3 +723,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   Ticks, 7 Pawns, 6 constructors, lost at 14:00. The value must be what raids actually kill: enemy metal killed during raid
   ops per raider-second, times the raider's measured life - 0 until a raid has killed something.
 - **Raider worth from measured raid kills (tk3):** enemy metal killed within a raider's reach on raid ops, per raider-second, x the raiders' measured life, at the unit's dps against theirs; 0 until a raid has killed. tk3: no runaway (19 Ticks, 124 Pawns, 7 constructors; raid values 19-110); even at 4:00 (army 354 vs 344), metal 40.5 vs 43.3 at 12:00; then collapse 12-16 min (metal 2.0, army 617 vs 6228). Points loss.
+- **Enemy memory in production (mm1):** types seen and out of sight still count, fading over the horizon. mm1: a mixed
+  lab (72 Pawns, 63 Maces, 21 Ticks); but kills 12 vs 151 all game - ops "target gone" after losing 3800-7000 metal for 0
+  killed. Owner: "maybe your fighting principles are kinda bad", "you had 1 unit type bulked in one ball".
+- **Attack-move for routes and pickets (ft1):** on a plain move squads walked past what shot them. ft1: still 13 kills vs
+  75; 71 ops, 7 killed anything (925 metal). The fighting itself needs redesigning from the replays (winners: one main
+  squad holding their half, mostly idle; singles spread early; fights taken with an edge), not another term.

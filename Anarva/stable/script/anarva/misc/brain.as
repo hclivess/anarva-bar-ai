@@ -2508,6 +2508,45 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			kE[k] += sqrt(d.GetSustainedDps() * AiMax(1.f, eh[i] * d.health));
 			mE += 1.f;
 		}
+		// Memory of what scouting has shown (owner: "you should resolve that through scouting", "no prior"): per enemy
+		// type the most seen at once and when; a type seen and now out of sight still counts, by the share of the
+		// horizon since it was seen (sightings, not assumptions). Counting only what is in sight now, Storms and Thuds
+		// seen at 12:00 left the mix as they left sight and the lab kept making Pawns into their push (tk3).
+		{
+			dictionary nowCnt;
+			for (uint i = 0; i < ne; ++i) {
+				const CCircuitDef@ d = ed[i];
+				if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
+				int c = 0; if (!nowCnt.get(d.GetName(), c)) c = 0; nowCnt.set(d.GetName(), c + 1);
+			}
+			const array<string>@ ks = nowCnt.getKeys();
+			for (uint q = 0; q < ks.length(); ++q) {
+				int c = 0; if (!nowCnt.get(ks[q], c)) c = 0;
+				int m = 0; if (!memMax.get(ks[q], m)) m = 0;
+				if (c >= m) { memMax.set(ks[q], c); memFrame.set(ks[q], ai.frame); }
+			}
+			const array<string>@ mk = memMax.getKeys();
+			const float Hm = AiMax(1.f, Economist::Horizon());
+			for (uint q = 0; q < mk.length(); ++q) {
+				int m = 0; if (!memMax.get(mk[q], m)) m = 0;
+				int fr = 0; if (!memFrame.get(mk[q], fr)) fr = ai.frame;
+				int c = 0; if (!nowCnt.get(mk[q], c)) c = 0;
+				const float age = float(ai.frame - fr) / SECOND;
+				const float extra = float(m - c) * AiMax(0.f, 1.f - age / Hm);  // remembered, out of sight, fading over the horizon
+				if (extra <= 0.f) continue;
+				CCircuitDef@ d = ai.GetCircuitDef(mk[q]);
+				if (d is null) continue;
+				int k = kName.find(d.GetName());
+				if (k < 0) {
+					k = int(kName.length()); kName.insertLast(d.GetName()); kE.insertLast(0.f); kS.insertLast(0.f);
+					Mix mk2; mk2.dps.insertLast(d.GetSustainedDps()); mk2.range.insertLast(d.GetMaxRange()); mk2.aoe.insertLast(d.GetAoe());
+					mk2.shot.insertLast(d.GetShotSpeed()); mk2.speed.insertLast(d.speed); mk2.rad.insertLast(d.GetRadius()); mk2.w.insertLast(1.f);
+					kMix.insertLast(mk2);
+				}
+				kE[k] += extra * sqrt(d.GetSustainedDps() * AiMax(1.f, d.health));
+				mE += extra;
+			}
+		}
 		float seen = 0.f;
 		for (uint k = 0; k < kE.length(); ++k) seen += kE[k];
 		const float scale = (seen > 0.f) ? AiMax(1.f, eSurf / seen) : 1.f;
@@ -2758,7 +2797,8 @@ float WinShare(float S, float E) { return (S + E > 0.f) ? S / (S + E) : 0.f; }
 float Gran(float n) { const float m = AiMax(1.f, n); return sqrt((m + 1.f) / (2.f * m)); }
 
 float lastBestRatio = 0.f;  // production's best value per metal at its last fighter pick (what army metal buys now)
-float peakE = 0.f, growthE = 0.f; int peakFrame = -1;  // strongest enemy surface strength seen, its measured growth /s
+float peakE = 0.f, growthE = 0.f; int peakFrame = -1;
+dictionary memMax, memFrame;  // enemy type -> most seen at once; frame of that sighting  // strongest enemy surface strength seen, its measured growth /s
 string Status() { return "moho=" + mohoCons + "(" + mohoWhy + ") prod=" + choices + "/b" + builders + " rez=" + rezBots.length() + "/" + rezOrders + " last=" + last; }
 
 }  // namespace Production
@@ -4521,7 +4561,7 @@ void Pickets(array<CCircuitUnit@>@ freeUnits)
 		if (prev != key) AiLog("[ANV-PICKET] " + ud.GetName() + " -> (" + key + "): losses there " + int(bestL) + " over " + int(tGame) + " s, x H " + int(H)
 			+ " x win " + F2(bestW) + " = " + int(bestV) + " > its value in the army " + int(bestC) + " (kill time " + int(bestT) + " s)");
 		now.set("" + u.id, key);
-		if (u.GetPos(ai.frame).distance2D(site[bs]) > ud.GetMaxRange()) u.CmdMoveTo(site[bs]);
+		if (u.GetPos(ai.frame).distance2D(site[bs]) > ud.GetMaxRange()) u.CmdFightTo(site[bs]);
 	}
 	picketAt = now;
 	for (int i = int(freeUnits.length()) - 1; i >= 0; --i) if (used[i]) freeUnits.removeAt(i);
@@ -4640,7 +4680,9 @@ bool MoveGroup(Op@ op, uint o, const AIFloat3& in dest)
 		const string key = "grp" + o + ":" + op.leg + ":" + int(op.routeTo.x) + "," + int(op.routeTo.z);
 		if (lastOrder.get("" + op.units[k].id, prevKey) && prevKey == key) continue;
 		lastOrder.set("" + op.units[k].id, key);
-		op.units[k].CmdMoveTo(op.route[op.leg]);
+		// attack-move (owner, 2026-11-26: "maybe your fighting principles are kinda bad"): on a plain move the squad
+		// walked past what shot it - ops lost 3800-7000 metal for 0 killed ("target gone", mm1); Fight engages on the way
+		op.units[k].CmdFightTo(op.route[op.leg]);
 		op.units[k].CmdWantedSpeed(slowest);  // together: the squad moves at its slowest member's pace
 	}
 	return false;
