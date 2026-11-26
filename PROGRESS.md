@@ -305,3 +305,8 @@ The latest batch (D-gun and strength fixes) is being played.
   (0.45), units killed 29 vs lost 208. The Director's ratio (2-17 in strong games) compares our army with the enemy
   army in sight, so it flatters us whenever theirs is unseen; the harness dmg_out/dmg_in is the honest yardstick.
   The gap to close is the trade itself (how and where our army fights), before conversion or scoring.
+- **Their commander (cmd_m118 damage log, cmd_m120 test):** BARb's commander dealt 91731 damage to our Pawns in one game,
+  more than all other enemies together - it fights at the front, and its death would end the game. Valued at the game
+  when all our free strength beat its defence: 7 ops went for it, it survived, trade 0.33, lost at 14:01 - reverted.
+  Its threat (D-gun, 3700 hp) is underrated by the generic threat number; the live trade per enemy type (damage it
+  deals us / damage we deal it) is the honest measure of what it takes, and the next thing to wire into its defence.
