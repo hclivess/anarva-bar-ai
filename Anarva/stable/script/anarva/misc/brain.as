@@ -3594,21 +3594,35 @@ CCircuitDef@ BestLabVsEnemy()
 	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
 	float sumS = 0.f; int cnt = 0;
 	for (uint i = 0; i < n; ++i) if (ed[i] !is null && ed[i].IsMobile() && ed[i].GetSustainedDps() > 0.f) { sumS += ed[i].speed; ++cnt; }
-	if (cnt == 0) return BestLab();
-	const float eSpeed = sumS / float(cnt);
+	// nothing in sight: the first lab is the opener's; a later one is still chosen among the kinds we don't have (the
+	// early return gave the opener's bot lab every time no enemy was in view - every second factory a bot lab, vp1-4)
+	if (cnt == 0 && Intel::allFactories.length() == 0) return BestLab();
+	const float eSpeed = (cnt > 0) ? sumS / float(cnt) : 0.f;  // 0: no enemy speed seen - no closing-speed factor
 	// the same fighting power Production uses against what we've seen (range gap, splash, hit chance): strength per
 	// metal alone picked the cheapest unit (Pawns) while BARb's Raiders and Levelers killed 37 Pawns in 90 s (cmd_m24)
 	Brain::Production::Mix mix; Brain::Production::FillMix(mix, null);
 	CCircuitDef@ best = null; float bv = -1e30f;
 	string why = "";
+	// a lab we already have brings no new units, only build power - which caretakers give more cheaply: a second
+	// factory is worth the options it opens (owner: "1 unit type bulked in one ball"; winners' second factories: 78 of
+	// 94 a T1 vehicle or air plant, median 7:29, replays.db; ours were all bot labs - dr1-2, bp1-2, fg2 - and our Pawns
+	// met BARb's 700-range Mists and Wolverines with nothing that reaches them)
+	array<string> owned;
+	{
+		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+		for (uint i = 0; i < mine.length(); ++i)
+			if (!mine[i].circuitDef.IsMobile() && mine[i].circuitDef.buildSpeed > 0.f && Facts::BuildOptions(mine[i].circuitDef.GetName()).length() > 0)
+				owned.insertLast(mine[i].circuitDef.GetName());
+	}
 	for (uint k = 0; k < labs.length(); ++k) {
+		if (owned.find(labs[k].def.GetName()) >= 0 && owned.length() < labs.length()) continue;  // a duplicate: unless we have every kind
 		const array<string> opts = Facts::BuildOptions(labs[k].def.GetName());
 		float lv = 0.f; string lu = "-";
 		for (uint o = 0; o < opts.length(); ++o) {
 			CCircuitDef@ u = ai.GetCircuitDef(opts[o]);
 			if (u is null || !u.IsMobile() || u.surfThrDmg <= 0.f || u.IsRoleAny(Unit::Role::BUILDER.mask) || !u.IsAvailable(ai.frame)) continue;  // it must hit what it meets on the ground
 			string tm;
-			const float v = Brain::Production::SurfPower(u, mix, tm) / AiMax(1.f, Economist::MetalValue(u)) * AiMin(1.f, u.speed / AiMax(1e-3f, eSpeed));
+			const float v = Brain::Production::SurfPower(u, mix, tm) / AiMax(1.f, Economist::MetalValue(u)) * ((eSpeed > 0.f) ? AiMin(1.f, u.speed / eSpeed) : 1.f);
 			if (v > lv) { lv = v; lu = u.GetName(); }
 		}
 		why += " " + labs[k].def.GetName() + "(" + lu + ")=" + F2(lv);

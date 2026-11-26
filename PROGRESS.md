@@ -772,3 +772,10 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
 - **Reverted: measured defence ratio at launch (dr1-2).** Launch defence x (defence ops met / predicted): trades 0.30 and 0.60, losses at 15:00 and 13:00 - no change. Record on the latest builds: 2 wins in 21.
 - **Fight replay view (dr2):** ours Pawns only (range 180), 316 from the nearest enemy; BARb a mixed squad (Brutes, Mists 700, Pounders, Incisors, Wolverines 710) holding 1050-1400 away - outranging us 4x. Next: the lab's answer to a ranged mix (units that reach them: range, speed to close, or artillery of our own), judged per enemy type as seen.
 - **Why the lab stays on Pawns vs the ranged mix (dr2):** Rocketeer (475, unguided slow missiles: hit 0.17 vs moving targets, correctly) and Mace (380) don't reach Mists/Wolverines (700-710); no bot-lab unit outranges them. Winners' squads (README army tables): Pawn early, Flash/Pawn 6-10 min, Mace/Stumpy from 10 - vehicle-plant units that close fast or soak the range gap. Next: which lab to run against the enemy mix as seen (the vehicle plant's answer vs the bot lab's), a production decision above unit choice.
+- **Second factory among new kinds (vp1-6):** a duplicate lab brings no new units (caretakers give build power cheaper);
+  the core's held factory choice is re-decided while unbuilt; BestLabVsEnemy no longer falls back to the opener's bot
+  lab when nothing is in sight. Now it ranks the vehicle plant first (vp6: armvp 0.06 vs armhp 0.04 - on its scout,
+  with no enemy mix in view), but no vehicle plant was built: vp5 no second factory, vp6 an advanced bot lab and another
+  bot lab at 708 s from another path. All lost (12:00-19:00). Record on the latest builds: 2 wins in 27. Open: which
+  path still orders bot labs; scoring factories against the remembered enemy mix (Production's memory), not the mix in
+  sight.
