@@ -39,14 +39,33 @@ def main():
     ap.add_argument("--side0", default="Armada")
     ap.add_argument("--side1", default="Cortex")
     ap.add_argument("--minutes", type=float, default=20.0)
+    ap.add_argument("--yardstick", choices=["barb", "winners"], default="barb",
+                    help="winners: stop when we fall below 0.9 x the median 1v1 winner at that minute (replays.db, the "
+                         "Armada bot-lab wins) on metal income, energy income or army - CLAUDE.md: compare with the best "
+                         "players, not BARb")
     a = ap.parse_args()
+    win = {}
+    if a.yardstick == "winners":
+        import sqlite3, statistics
+        db = sqlite3.connect(os.path.join("runs", "replays.db")); c = db.cursor()
+        q = ("select t.replay_id,t.team from teams t where t.won=1 and (select count(*) from teams t2 where t2.replay_id=t.replay_id)=2 "
+             "and exists(select 1 from built b where b.replay_id=t.replay_id and b.team=t.team and b.unit='armcom') "
+             "and exists(select 1 from built b where b.replay_id=t.replay_id and b.team=t.team and b.unit='armlab' and b.frame<3600)")
+        ws = c.execute(q).fetchall()
+        for m in range(1, 31):
+            r = [c.execute("select m_inc,e_inc,army from stats where replay_id=? and team=? and minute=?", (x, y, m)).fetchone() for x, y in ws]
+            r = [v for v in r if v]
+            if len(r) >= len(ws) // 2:  # a minute most winners' games still reach
+                win[m] = {"metal income": statistics.median(v[0] for v in r), "energy income": statistics.median(v[1] for v in r),
+                          "army": statistics.median(v[2] for v in r)}
+        print(f"yardstick: median of {len(ws)} Armada bot-lab 1v1 winners, minutes {min(win)}-{max(win)}")
     cmd = [sys.executable, "tools/batch.py", a.out, "--games", "1", "--par", "1", "--me", "Anarva:anarva", "--opp", "BARb:hard",
            "--side0", a.side0, "--side1", a.side1, "--maps", a.map, "--game-minutes", str(a.minutes), "--minutes", str(a.minutes + 15)]
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     log = os.path.join(a.out, "g00", "infolog.txt")
     seen = 0
     samples = {}  # frame -> {team: values}
-    behind = {s: 0 for s in STATS}
+    behind = {s: 0 for s in STATS + ["energy income"]}
     swing = None
     while proc.poll() is None and swing is None:
         time.sleep(5)
@@ -65,6 +84,16 @@ def main():
                 continue
             pair["done"] = True
             if fr < 30 * 30:  # the first half minute: both sides start equal
+                continue
+            if win:
+                m = fr // 1800
+                if fr % 1800 == 0 and m in win:
+                    for s2 in ("metal income", "energy income", "army"):
+                        ours = pair[0][s2]
+                        worse = ours < win[m][s2] * 0.9
+                        behind[s2] = behind[s2] + 1 if worse else 0
+                        if behind[s2] >= 2 and swing is None:
+                            swing = (fr, s2 + " vs winners", ours, win[m][s2])
                 continue
             for s in STATS:
                 ours, theirs = pair[0][s], pair[1][s]
@@ -89,7 +118,7 @@ def main():
         except subprocess.TimeoutExpired:
             proc.kill()
         fr, s, ours, theirs = swing
-        print(f"SWING at {fr // 1800}:{fr // 30 % 60:02d} (frame {fr}): {s} - ours {ours:.2f} vs BARb {theirs:.2f}")
+        print(f"SWING at {fr // 1800}:{fr // 30 % 60:02d} (frame {fr}): {s} - ours {ours:.2f} vs {'winners median' if win else 'BARb'} {theirs:.2f}")
         last = samples[fr]
         for k in STATS:
             print(f"   {k:15} ours {last[0][k]:9.2f}  BARb {last[1][k]:9.2f}")
