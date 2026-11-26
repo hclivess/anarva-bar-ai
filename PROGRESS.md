@@ -192,3 +192,11 @@ The latest batch (D-gun and strength fixes) is being played.
   Earliest gap again: 3 / 6 extractors at 4:00 / 8:00 (winners 9 / 19) with 500-1000 metal banked minutes 4-9.
   (Note: one headless game hung in pregame with no AI loaded, cmd_m39; batch's --minutes cap didn't stop it -
   runs are now wrapped in an outer timeout.)
+- **Next (the earliest gap, cmd_m42):** in minutes 2-7.5 builders picked reclaim 361 times vs 91 extractors; by 5:00
+  3 extractors and 13 turbines (winners 8 and 10.9 by 4:00). The pick log: reclaim 2.27 builder-s per metal of value,
+  extractor 76 (33x worse). The extractor isn't undervalued by a slip but by a loop: its yield counts over the value
+  horizon = measured producer life (~190-380 s, short because raids kill extractors), discounted by the spot's keep
+  share, less 50 M + 500 E. Raids -> short life -> extractors look break-even -> fewer and undefended -> raids.
+  Players break it by defending (towers 6.2 by 8:00, army presence) and holding 19 extractors at 8:00. Fix to
+  reason out: value an extractor over the life it has where we defend it, and charge the defence (tower / army time)
+  as its cost, instead of the life measured while undefended.
