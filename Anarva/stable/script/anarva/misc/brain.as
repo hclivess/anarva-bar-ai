@@ -4601,7 +4601,8 @@ float CommFog(const AIFloat3& in p, float tHome, float seenThreat, float seenSpe
 	return dist / AiMax(1.f, sp) <= tHome ? hidden : 0.f;
 }
 float commDanger = 0.f, commCover = 0.f, commDps = 0.f;
-float commEnemyHp = 0.f, commOurDps = 0.f;  // the reaching enemies' health, our dps there (how long the fight lasts)
+float commEnemyHp = 0.f, commOurDps = 0.f;
+float commInFire = 0.f, commERange = 0.f;  // our power standing in the reaching enemies' range now; their longest range  // the reaching enemies' health, our dps there (how long the fight lasts)
 
 /*
  * Wreck reclaim (owner: "24 minutes in, zero reclaim" with ~3000 metal in 47 wrecks and metal at 0/6700).
@@ -4667,13 +4668,13 @@ void CommForces(const AIFloat3& in p, float tHome)
 {
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
-	commDanger = 0.f; commDps = 0.f; commEnemyHp = 0.f; commOurDps = 0.f;
+	commDanger = 0.f; commDps = 0.f; commEnemyHp = 0.f; commOurDps = 0.f; commInFire = 0.f; commERange = 0.f;
 	for (uint i = 0; i < n; ++i) {
 		CCircuitDef@ d = ed[i];
 		if (d is null || d.threat <= 0.f || (ef[i] & 4) != 0) continue;
 		const float reach = AiMax(0.f, ep[i].distance2D(p) - d.GetMaxRange());
-		if (!d.IsMobile()) { if (reach <= 0.f) { commDanger += d.threat; commDps += d.surfThrDmg; commEnemyHp += d.health * eh[i]; } continue; }
-		if (MoveTime(d, reach) <= tHome) { commDanger += d.threat * eh[i]; commDps += d.surfThrDmg * eh[i]; commEnemyHp += d.health * eh[i]; }
+		if (!d.IsMobile()) { if (reach <= 0.f) { commDanger += d.threat; commDps += d.surfThrDmg; commEnemyHp += d.health * eh[i]; commERange = AiMax(commERange, d.GetMaxRange()); } continue; }
+		if (MoveTime(d, reach) <= tHome) { commDanger += d.threat * eh[i]; commDps += d.surfThrDmg * eh[i]; commEnemyHp += d.health * eh[i]; commERange = AiMax(commERange, d.GetMaxRange()); }
 	}
 	{
 		float seenT = 0.f, seenS = 0.f, perThreatDps = 0.f; uint seenN = 0;
@@ -4687,6 +4688,7 @@ void CommForces(const AIFloat3& in p, float tHome)
 	}
 	commCover = riskUnit.circuitDef.power;
 	commOurDps = riskUnit.circuitDef.surfThrDmg;
+	commInFire = riskUnit.circuitDef.power;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	for (uint i = 0; i < all.length(); ++i) {
 		CCircuitUnit@ u = all[i];
@@ -4697,6 +4699,7 @@ void CommForces(const AIFloat3& in p, float tHome)
 			commCover += d.power;
 			commOurDps += AiMax(0.f, d.surfThrDmg);
 		}
+		if (dist <= commERange) commInFire += d.power;  // standing in their fire with it now: shares it
 	}
 }
 float RiskPDeath(const AIFloat3& in p, float tHome)
@@ -4714,7 +4717,10 @@ float RiskPDeath(const AIFloat3& in p, float tHome)
 	// (tHome) - against its health now. With the "fight lost" term alone, an army of 3726 nearby made the commander's
 	// risk ~0 and it fought Levelers until it died at 13:26, the game lost (cmd_m33).
 	const float health = (riskHealth > 0.f ? riskHealth : AiMax(1.f, riskUnit.GetHealth()));
-	const float share = riskUnit.circuitDef.power / AiMax(1e-3f, commCover);
+	// fire is split among what stands in it now, not what could arrive: counted over all cover, an army on its way made
+	// the commander's share ~0 and it took 54 fights, dying at 14:16; winners' commanders have an enemy within 600 only
+	// 4-9% of the time at minutes 4-14 (replays.db comm table, 1v1 winners, 660-1284 samples per minute)
+	const float share = riskUnit.circuitDef.power / AiMax(1e-3f, commInFire);
 	const float tExposed = AiMin(tHome, commEnemyHp / AiMax(1e-3f, commOurDps));
 	const float pFocus = AiMin(1.f, commDps * share * tExposed / health);
 	return 1.f - (1.f - pLose) * (1.f - pFocus);

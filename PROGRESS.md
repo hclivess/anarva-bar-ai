@@ -175,3 +175,13 @@ The latest batch (D-gun and strength fixes) is being played.
   - EcoReclaim tore down new turbines at 2:29 and rebuilt them (metal back counted in full with 580 banked); now the
     metal back is priced at the metal share. cmd_m21: metal income 17.7 / 30.6 at 4:00 / 8:00, extractors 8 / 17,
     3 towers by 8:00, army 2416 at 12:00 (winners 5027); still lost at minute 14 (losses 1451 and 2435 at 10:00 and 12:00).
+- **Army and commander, 2026-11-26 night (Armada vs Cortex, Canis, one game each):**
+  - Ops sum each unit's threat x its SurfPower against the seen mix (EffThreat); army at 12:00 2430 -> 2862 -> 3510.
+  - Commander: one test to start and keep a fight (CommNet); death risk from current health (was max) and from
+    focus fire while the fight is won, shared among our units standing in the enemies' range now. Winners'
+    commanders have an enemy within 600 only 4-9% of the time (replays.db comm, 1v1 winners). cmd_m37: the commander
+    survived to 20:00 for the first time; the army collapsed at 9-10 min (lost 797 + 1382) and the base fell by 15.
+  - Factory choice vs the enemy seen and scouts by per-cell survival: still a bot lab (Pawns 0.07-0.11 vs Flash
+    0.06-0.11); Fleas 50 -> 0 by 14:00.
+  - Open, in order: the army's collapse at 9-10 min vs Raiders/Levelers (composition and where it fights); the
+    bank full again from minute 8-11 in most games (build power); towers still 1-4 by 8:00 vs 6.2.
