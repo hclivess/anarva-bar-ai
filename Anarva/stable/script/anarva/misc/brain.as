@@ -4052,10 +4052,17 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 			const float conSpeed = (L.con !is null) ? AiMax(1.f, L.con.speed) : AiMax(1.f, speed);
 			for (uint a = 0; a < opts.length(); ++a) {
 				if (opts[a].kind != 0) continue;
-				const float tt = Walk(s0.pos, opts[a].pos, speed) + opts[a].def.buildTime / AiMax(1.f, bp);
-				const float tByCon = (t.t + tt) + L.conTime + opts[lab].pos.distance2D(opts[a].pos) / conSpeed;
-				const float gain = opts[a].yieldM * AiMax(0.f, tByCon - (s0.t + tt));
-				const float cost = tt * drawEq;
+				// simulated, with the resource waits: the extractor first, then the lab - against the lab now (t). It costs the
+				// lab's production for every second the lab stands later; the commander's time alone missed that the stock
+				// spent on it makes the lab wait (pl1: spot 49 "111 vs 104", then the lab took 46 s, standing at 119 s)
+				Sim@ w = Copy(s0);
+				Apply(w, opts[a], bp, speed);
+				const float mexDone = w.t;
+				Apply(w, opts[lab], bp, speed);
+				const float tt = mexDone - s0.t;
+				const float tByCon = w.t + L.conTime + opts[lab].pos.distance2D(opts[a].pos) / conSpeed;
+				const float gain = opts[a].yieldM * AiMax(0.f, tByCon - mexDone);
+				const float cost = AiMax(0.f, w.t - t.t) * drawEq;
 				if (gain - cost > firstGain - firstCost) { firstGain = gain; firstCost = cost; firstName = "spot " + opts[a].spot; firstOpt = int(a); }
 			}
 		}
