@@ -2100,7 +2100,11 @@ CCircuitDef@ RezToBuild(const CCircuitDef@ fdef)
 		// wrecks of units only (resurrectable): rocks and trees counted too ordered rez bots without end on a rock-rich
 		// map (owner, 2026-11-25: "building nothing but rezbots?!"); winners build 0.56 by minute 5, 1.83 by 10, once
 		// fights have left wrecks (replays.db, 107 1v1 wins) - constructors reclaim rocks themselves
-		for (uint i = 0; i < w; ++i) if (wr[i]) pool += wm[i];
+		// ...and only what we will hold: wrecks on our side, at our share of the exchange (HoldShare, as the comment above
+		// intends - unapplied, every wreck counted and 33 rez bots came in minutes 12-19 while the trade ran 0.45 and
+		// the army lost its fights, cmd_m116)
+		for (uint i = 0; i < w; ++i) if (wr[i] && Assess::OnOurSide(wp[i])) pool += wm[i];
+		pool *= HoldShare();
 	}
 	float fleet = 0.f;
 	for (uint i = 0; i < rezBots.length(); ++i)
