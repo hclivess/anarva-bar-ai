@@ -295,3 +295,9 @@ The latest batch (D-gun and strength fixes) is being played.
   not their whole army (it can't be everywhere), and an early raid must not trade the army's growth for one spot.
   Pattern of the last ten tries: targeted fixes of inconsistencies held; every change that adds aggression or a new
   role regressed in its first game. Single games vary widely - changes of that kind need several games each.
+- **Raid defence sampled along the path (cmd_m115 g00):** an enemy counts where it can reach the path by the time the
+  squad is there (now / half way / target) instead of Cover(squad, whole walk). Armada vs Cortex: commander alive,
+  army 12796 at 20:00 (ratio 14.5), extractors 20 at 12:00, our buildings 4535 at 20:00 (baseline 850-2255), 13 raids
+  without an early bleed; points loss (their buildings 28429). Note for testing: `--games 2` swaps seats - g01 had
+  Anarva as Cortex (a different matchup: 139 raids, 125 pulled back). Compare like with like by repeating
+  `--games 1` runs.

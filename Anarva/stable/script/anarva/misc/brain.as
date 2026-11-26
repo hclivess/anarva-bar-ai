@@ -4269,7 +4269,12 @@ void Update()
 			const float tFight = chp[i] / AiMax(1e-3f, freeDps);
 			// the same test a running op must keep passing (what can reach the squad on its way, not only at the
 			// target): launched on the target alone, 269 of 292 raids pulled back at once (Canis 2026-11-26)
-			dfc[i] = AiMax(Cover(cp[i], tFight), Cover(fc, t));
+			// on the way: an enemy fights the squad only where it can reach the path by the time the squad is there - here
+			// now, half way at half the walk, the target on arrival. Cover(squad, whole walk) counted every enemy within its
+			// speed x the trip of where the squad stands - on a long walk their whole army (defence 40-67 vs our ~100):
+			// every raid read -2000..-4000 and the army sat idle at ratio 2.5-17 (cmd_m111)
+			const AIFloat3 midW = (fc + cp[i]) * 0.5f;
+			dfc[i] = AiMax(AiMax(Cover(cp[i], AiMax(tFight, t)), Cover(midW, t * 0.5f)), Cover(fc, 0.f));
 			if (cid[i] < 0) dfc[i] = AiMax(dfc[i], unseenDefence);
 			for (uint k = 0; k < shownPos.length(); ++k)
 				if (shownPos[k].distance2D(cp[i]) <= shownReach[k]) dfc[i] = AiMax(dfc[i], shownDef[k]);
