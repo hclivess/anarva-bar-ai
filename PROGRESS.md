@@ -567,3 +567,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   constructors by 8:00 that still don't claim extractors, extractors stayed 2-11 and income 6-37; trades 0.80 / 0.63 /
   0.78, all lost at 18-19 min with the commander dead. Fewer constructors pay only if each claims extractors: the
   constructors' job choice has to change with it (#105).
+- **Spare-constructor count + constructor redirect to extractors together, reverted (cj0-3):** 53-59 redirects a game,
+  army 270-540 at 4:00, but extractors 3-13 and 14-17 lost, income up to ~26; trades 0.46 / 0.85 / 0.54, all lost with
+  the commander dead. Even together, redirected constructors take the nearest open spot on our side whether it can be
+  held; the winners' constructors claim far spots under the cover of a Tick swarm and forward towers/radar. Holding the
+  spots (what makes a far extractor worth claiming) is the missing part of #105.
