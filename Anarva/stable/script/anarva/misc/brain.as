@@ -408,6 +408,7 @@ void Update()
 	// weaker than the known enemy army). "Enough to claim within the horizon" asked for 1-2 constructors early (the
 	// horizon is long while we own the commander's 2700 metal) while the winners run 7 by minute 4.
 	float claimWork = 0.f, claimYield = 0.f;  // constructor-seconds; metal/s the free spots would yield us
+	array<float> spWork, spYield;  // per free spot: walk + build seconds, metal/s kept
 	CCircuitDef@ conDef = CheapestConstructor();
 	if (conDef !is null && Economist::mexT1 !is null && HasBase()) {
 		const float conSpeed = AiMax(1.f, conDef.speed);
@@ -429,13 +430,29 @@ void Update()
 				keep *= (dThem < dUs) ? control : homeControl;
 				claimWork += keep * (dUs / conSpeed + conBuild);
 				claimYield += keep * msi2[i] * ext;
+				spWork.insertLast(dUs / conSpeed + conBuild); spYield.insertLast(keep * msi2[i] * ext);
 			}
 	}
 	const float N = float(AiMax(1, int(aiBuilderMgr.GetWorkerCount())));
 	// the yield claimed is metal: worth the share of our metal we actually spend (with 500-1000 banked a constructor
 	// scored 2x a Pawn and the lab made ~9 units by 4:00, half constructors, vs the winners' 17.6 - 3.9 constructors,
 	// 13.7 Pawns and Fleas: replays.db, 24 Armada bot-lab 1v1 winners)
-	const float saved = claimYield * claimWork / 2.f * (1.f / N - 1.f / (N + 1.f)) * Economist::MetalShare();
+	// The claim schedule within the horizon: N constructors take the spots least work first, spot j done at
+	// T_j = (work up to j) / N, yielding until the horizon: V(N) = sum y_j (H - T_j)+. One more is worth V(N+1) - V(N).
+	// (yield x work/2 x (1/N - 1/(N+1)) summed every free spot on the map with no horizon - quadratic in the spot count:
+	// a constructor read 22597 against a Pawn's 183 at 2:00 and the lab made 6 constructors by 4:14 while raiders
+	// killed the extractors - metal 6.6 vs BARb 18.1 and army 270 vs 637 at 4:00, swing.py sw5)
+	for (uint a = 0; a < spWork.length(); ++a)
+		for (uint b = a + 1; b < spWork.length(); ++b)
+			if (spWork[b] < spWork[a]) { const float tw = spWork[a]; spWork[a] = spWork[b]; spWork[b] = tw; const float ty = spYield[a]; spYield[a] = spYield[b]; spYield[b] = ty; }
+	const float Hc = AiMax(1.f, Economist::Horizon());
+	float vN = 0.f, vN1 = 0.f, cum = 0.f;
+	for (uint j = 0; j < spWork.length(); ++j) {
+		cum += spWork[j];
+		vN += spYield[j] * AiMax(0.f, Hc - cum / N);
+		vN1 += spYield[j] * AiMax(0.f, Hc - cum / (N + 1.f));
+	}
+	const float saved = (vN1 - vN) * Economist::MetalShare();
 	// A constructor without a building job proves the work we can claim now is covered: one more saves nothing (25
 	// constructors, 12 idle and 3 extractors at minute 8 while the raiders made every free spot unsafe: Eye of Horus
 	// 1v1, 2026-11-25). The lab builds the army that makes spots claimable instead.

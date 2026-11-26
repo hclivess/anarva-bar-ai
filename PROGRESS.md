@@ -608,3 +608,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   df4: 13 detachments, 1 lab 0 caretakers, bank 1068-1399, army 367 vs 2894 at 12:00, lost at 15:25. df5: 97 detachments,
   10 caretakers, army 4195 vs 6055 at 20:00, kills 114/145, points loss; but 43 extractors lost, metal 52 -> 18 M/s from
   12 to 20 min (BARb 40 -> 105). Next: towers at raided extractors.
+- **Constructor value bounded by the horizon (sw5-6):** yield x work/2 summed every free spot was quadratic in the spot
+  count (22597 vs a Pawn's 183 at 2:00); now the claim schedule V(N+1)-V(N) within the horizon (500-640). Constructors
+  still win (ratio 1.9-4.8 vs Pawn 1.4-3.0) because the fighter's value is the marginal WinShare of one global battle:
+  behind (12 vs 236), one Pawn adds ~0.009 of the stake. Raids are local fights against single raiders; the fighter is
+  worth the raid losses it stops - next. Swing at 4:00 both runs: metal 6.6-8.9 vs 18.1, damage share 0.13-0.22.
