@@ -586,3 +586,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   (lost/killed read 448-491 in the first seconds: 205 launches pulled back 1-2 s later in hc2). Pull-backs 21 / 15 / 33
   per game, largest defence pulled back from 50 / 91 / 26; **commander alive in all three** (first full set); trades
   0.76 / 0.77 / 0.92, df3 killed 119 units for 93. All lost on points: BARb's buildings 20-37k vs ours ~1k (#107).
+- **Enemy buildings over the horizon (#107), reverted (ev1-6):** valued as ours (yield over the horizon, factories by
+  their production) the army hit BARb's economy (their buildings 14-18k at the end, was 20-37k) but over-committed:
+  trades 0.46 / 0.64 / 0.67; with our losses also valued over the horizon (metal + share of income/army) 0.46 / 0.62 /
+  0.46, economy collapsing in ev4. The principle holds; our fight estimate can't carry a higher stake yet - more value
+  means more fights we can't win. Kept: extractors valued at the metal of their own spot, not the map average (owner:
+  "different metal spots have different values"), in the enemy value, raid loss and threatened-producer value.

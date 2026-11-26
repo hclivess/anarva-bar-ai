@@ -486,16 +486,29 @@ void OnTaskRemoved(IUnitTask@ t)
 	@pending = null;
 }
 bool IsFactory(const CCircuitDef@ d) { return !d.IsMobile() && d.buildSpeed > 0.f && Facts::BuildOptions(d.GetName()).length() > 0; }
+// The metal of the spot under an extractor at p: the nearest metal spot within the extractor's radius x 2 (its
+// footprint), else the map's average. Spots differ in richness (owner: "different metal spots have different values");
+// valued at the average, a rich spot and a poor one counted the same (#107).
+float SpotMetalAt(const AIFloat3& in p, const CCircuitDef@ d)
+{
+	array<AIFloat3> sp; array<float> si; array<bool> so;
+	const uint ns = AiGetMetalSpots(sp, si, so);
+	float avg = 0.f, best = -1.f, bd = 1e9f;
+	for (uint i = 0; i < ns; ++i) {
+		avg += si[i];
+		const float dd = sp[i].distance2D(p);
+		if (dd < bd) { bd = dd; best = si[i]; }
+	}
+	avg = (ns > 0) ? avg / float(ns) : 0.f;
+	return (best >= 0.f && bd <= 2.f * AiMax(1.f, d.GetRadius())) ? best : avg;
+}
 float RaidLoss(CCircuitUnit@ u, const CCircuitDef@ con)
 {
 	const CCircuitDef@ d = u.circuitDef;
 	const string nm = d.GetName();
 	const float upkeep = Facts::EnergyUpkeep(nm);
 	const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
-	array<AIFloat3> sp; array<float> si; array<bool> so;
-	const uint ns = AiGetMetalSpots(sp, si, so);
-	float avg = 0.f; for (uint i = 0; i < ns; ++i) avg += si[i]; avg = (ns > 0) ? avg / float(ns) : 0.f;
-	float yield = Economist::Extract(nm) * avg + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
+	float yield = Economist::Extract(nm) * SpotMetalAt(u.GetPos(ai.frame), d) + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
 	// A factory's output is the army: while it is down, everything it would make isn't made. Its yield is its build
 	// power x the metal per build-second of what it makes (unit facts). Counted at its cost alone, one Incisor killed our
 	// lab at 3.7 min while the army raided far spots (Canis 2026-11-26).
@@ -4334,9 +4347,23 @@ float EnemyValue(uint i, float H)
 	float v = Economist::MetalValue(d);
 	const float upkeep = Facts::EnergyUpkeep(nm);
 	const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
-	const float yield = Economist::Extract(nm) * spotIncome + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
-	// they rebuild as we do: what a kill takes from them is its yield until it stands again (a constructor's walk from
-	// their base and its build), not its whole future - symmetric with what a raid takes from us (MexPorc::RaidLoss)
+	float yield = Economist::Extract(nm) * MexPorc::SpotMetalAt(ePos[i], d) + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
+	// a factory yields its production: its build power x the metal per build-second of what it makes (as our own lab is
+	// valued, MexPorc::RaidLoss)
+	if (!d.IsMobile() && d.buildSpeed > 0.f) {
+		const array<string>@ fo = Facts::BuildOptions(nm);
+		float sm = 0.f, sbt = 0.f;
+		for (uint k = 0; k < fo.length(); ++k) { CCircuitDef@ o = ai.GetCircuitDef(fo[k]); if (o !is null && o.IsMobile()) { sm += o.costM; sbt += o.buildTime; } }
+		if (sbt > 0.f) yield += d.buildSpeed * sm / sbt;
+	}
+	// Valued as we value our own (#107, owner: "you should judge enemy buildings the same way you judge ours";
+	// "usefulness to the enemy is the detriment to us"): its cost and what it yields them over the same horizon we give
+	// our own producers. Counted only until they could rebuild it, a seen enemy extractor was worth ~1/5 of the same
+	// extractor of ours (and of an unseen enemy spot, valued over the horizon): the army skipped them while BARb's
+	// buildings reached 28-38k against our 1.5-5k at 20:00.
+	// what a kill takes from them is its yield until they could stand it again (a constructor's walk from their base and
+	// its build), symmetric with what a raid takes from us (MexPorc::RaidLoss). (Over the whole horizon - #107 - the
+	// army over-committed: trades 0.46-0.67 in six games against 0.76-0.92 without, ev1-6.)
 	if (yield > 0.f) {
 		const CCircuitDef@ con = EcoPos::CheapestConstructor();
 		float rebuild = H;
@@ -4379,7 +4406,7 @@ float OursThreatened(uint i, const array<CCircuitUnit@>@ mine, float tAnswer)
 			const string nm = d.GetName();
 			const float upkeep = Facts::EnergyUpkeep(nm);
 			const float eYield = Facts::EnergyMake(nm) + ((upkeep < 0.f) ? -upkeep : 0.f);
-			const float yield = Economist::Extract(nm) * spotIncome + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
+			const float yield = Economist::Extract(nm) * MexPorc::SpotMetalAt(mine[k].GetPos(ai.frame), d) + Facts::MetalMake(nm) + eYield / AiMax(1e-3f, Economist::energyPerMetal);
 			// what a raid takes: its cost and its yield until it stands again, as for raid towers (MexPorc::RaidLoss).
 			// With its whole future yield every defence looked worth any odds and the army threw itself away (army
 			// 54-354 at minute 8 in round 31 vs 1400-1900 at minute 12 in round 30).
