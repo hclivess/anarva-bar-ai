@@ -162,3 +162,9 @@ The latest batch (D-gun and strength fixes) is being played.
   (only the distance keep), so the tower that keeps it alive can't look worth it. 8 extractors died before 8:00 to
   Grunts/Instigators (cmd_m15). Next: price an extractor by its measured expected life at its site (ANV-JOBS producer
   life, 380 s), and a tower by the life it adds to the producers in its reach.
+- **Metal price, continuous (cmd_m17 vs cmd_m16, Armada vs Cortex, Canis):** "metal floats" only fired when the bank
+  would fill within one job; 1100/1250 at 10 M/s read as not floating, pM stayed 1, extractors beat turbines while the
+  lab waited for energy. Now pM = spend / (income + bank/horizon once producing). Extractors built by 4:00/8:00 5/11 ->
+  8/14, metal income at 8:00 17.6 -> 21.3, energy 331 -> 420 (winners 521), first construction turret 5:15 (winners
+  4:42). Still lost (min 14): army 108 at 4:00, 702 at 8:00 vs winners 660/2044. Tower kills now limited by raiders
+  seen (not 1): order values 192-337, still 1 tower by 8:00.

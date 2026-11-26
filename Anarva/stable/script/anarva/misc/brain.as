@@ -592,7 +592,13 @@ void Update()
 			// vs Cortex, players 6.2).
 			if (Opening::raidHp > 0.f && Opening::raidSpeed > 0.f) {
 				const float exposure = 2.f * tur.GetMaxRange() / Opening::raidSpeed;
-				const float kills = AiMin(1.f, tur.GetSustainedDps() * exposure / Opening::raidHp);
+				// limited by how many come: the armed enemy mobiles we know of (at least one). Capped at one raider, a light
+				// laser that can kill ~4 Grunts per pass counted one while 7 raided (cmd_m13)
+				array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+				const uint en = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+				float raiders = 0.f;
+				for (uint e = 0; e < en; ++e) if (ed[e] !is null && ed[e].IsMobile() && ed[e].surfThrDmg > 0.f && ed[e].buildSpeed <= 0.f) raiders += 1.f;
+				const float kills = AiMin(AiMax(1.f, raiders), tur.GetSustainedDps() * exposure / Opening::raidHp);
 				expected += raids * kills * Opening::raidCostM * pHit;
 			}
 			if (expected > bestHeat) { bestHeat = expected; @best = mx[i]; }
