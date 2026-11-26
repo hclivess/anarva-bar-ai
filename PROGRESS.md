@@ -343,3 +343,7 @@ The latest batch (D-gun and strength fixes) is being played.
   the lab during its build. With the gate closed play is unchanged. The decision now rests on that return-rate
   comparison: whether the next extractor's 28 s should count its measured short life (uncovered producers live
   ~150 s) - an extractor that dies before it pays twice isn't the better investment.
+- **Other maps, same build (Armada vs Cortex):** Gasbag Grabens lost at 15:50 (trade 0.45, commander dead), Feast of
+  Hades lost at 17:52 (trade 0.51, commander dead) with the winners' economy (26 extractors, 53 M/s at 12:00) and an
+  army of 15456 at 16:00. The gaps are not Canis's: the fights lose ~2:1 and the commander dies when the fighting
+  reaches it. Those two decide every game; economy and army size are no longer the gap.
