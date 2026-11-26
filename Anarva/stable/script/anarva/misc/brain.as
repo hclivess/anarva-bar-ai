@@ -4043,7 +4043,7 @@ void Update()
 		fSpeed = AiMax(1.f, fSpeed);
 		float freeDps = 0.f;
 		for (uint i = 0; i < freeUnits.length(); ++i) freeDps += freeUnits[i].circuitDef.GetSustainedDps();
-		array<AIFloat3> cp; array<float> cv; array<int> cid; array<float> chp;
+		array<AIFloat3> cp; array<float> cv; array<int> cid; array<float> chp; array<float> cspd;
 		for (uint i = 0; i < n; ++i) {
 			if (eDef[i] is null || eDef[i].IsAbleToFly() || (eFlags[i] & 2) == 0) continue;
 			bool taken = false;
@@ -4051,12 +4051,17 @@ void Update()
 			if (taken) continue;
 			cp.insertLast(ePos[i]); cv.insertLast(EnemyValue(i, H) + OursThreatened(i, all, fc.distance2D(ePos[i]) / fSpeed)); cid.insertLast(eIds[i]);
 			chp.insertLast(eHp[i] * eDef[i].health);
+			cspd.insertLast(eDef[i].IsMobile() ? eVel[i].Length2D() * SECOND : 0.f);  // how fast it moves now
 		}
 		for (uint i = 0; i < EcoPos::raidPos.length(); ++i) {
 			if (AiIsInLOS(EcoPos::raidPos[i])) continue;  // in sight: the known enemies above cover it
 			cp.insertLast(EcoPos::raidPos[i]); cv.insertLast(EcoPos::raidVal[i]); cid.insertLast(-1);
 			chp.insertLast(Economist::mexT1 !is null ? Economist::mexT1.health : 0.f);  // what a raid spot holds
+			cspd.insertLast(0.f);
 		}
+		float fRange = 0.f;
+		for (uint i = 0; i < freeUnits.length(); ++i) fRange += freeUnits[i].circuitDef.GetMaxRange();
+		fRange /= AiMax(1.f, float(freeUnits.length()));
 		array<float> score(cp.length());
 		array<float> dfc(cp.length());
 		// An unscouted spot isn't undefended: expect the enemy's towers per extractor among what we've seen, at their mean
@@ -4071,7 +4076,15 @@ void Update()
 		}
 		const float unseenDefence = (eTowers > 0.f) ? AiMin(1.f, eTowers / AiMax(1.f, eMexes)) * eTowerThreat / eTowers : 0.f;
 		for (uint i = 0; i < cp.length(); ++i) {
-			const float t = fc.distance2D(cp[i]) / fSpeed;
+			// a moving target is reached when we catch it: the gap beyond our range over how fast we close on it (its
+			// speed now). The army of 21-25 chased lone Grunts as fast as itself, "target gone" after 19-31 s each,
+			// while other Grunts killed 13 extractors and 7 constructors (Canis vs Cortex, 9:00-12:00, cmd_m21)
+			float t = fc.distance2D(cp[i]) / fSpeed;
+			if (cspd[i] > 0.f) {
+				const float gap = fc.distance2D(cp[i]) - fRange;
+				const float closing = fSpeed - cspd[i];
+				t = (gap <= 0.f) ? 0.f : ((closing > 0.f) ? gap / closing : 1e9f);
+			}
 			// The defence is what fights there while we kill the target: enemies within reach of it for as long as the
 			// fight lasts (its health over our dps; they answer once it starts). Counting everything that could reach the
 			// spot during our whole march (60 s+) put BARb's whole army, commander included, on every lone raider: no op
@@ -4081,7 +4094,7 @@ void Update()
 			// target): launched on the target alone, 269 of 292 raids pulled back at once (Canis 2026-11-26)
 			dfc[i] = AiMax(Cover(cp[i], tFight), Cover(fc, t));
 			if (cid[i] < 0) dfc[i] = AiMax(dfc[i], unseenDefence);
-			score[i] = cv[i] / AiMax(1.f, t);
+			score[i] = (t >= 1e8f) ? 0.f : cv[i] / AiMax(1.f, t);  // uncatchable: not a target
 		}
 		while (freeUnits.length() > 0) {
 			int best = -1;
