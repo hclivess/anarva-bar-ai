@@ -134,3 +134,10 @@ The latest batch (D-gun and strength fixes) is being played.
   count its expected life and the scouts already out. (2) against Cortex's splash and fast raiders the lab still picks
   Pawns (78); Hammer/Rocko land 15-28% of shots on fast raiders. Check what Armada players field against Cortex in
   the replays (unit time map by matchup) for the reason, then the decision.
+- **Armada vs Cortex, players' reason (replays.db, 28 Armada winners vs Cortex):** by 8:00 they build ~17 Pawns, ~10
+  Blitz and ~6 Rovers (vehicle plant), **6.2 light laser towers**, 2.8 Fleas. Anarva in the same matchup: 0 towers by
+  8:00, a 2nd and 3rd bot lab instead of a vehicle plant, 52 Fleas from minute 8 to 14.
+  Causes to fix: (1) a tower is valued at one raid's expected loss, but Cortex raids repeat - it protects against
+  every raid over the horizon (loss rate at the spot x horizon), so valued tower orders never beat an extractor;
+  (2) the second factory is always another bot lab (BestLab); players add the vehicle plant for fast raiders;
+  (3) scout overbuild.
