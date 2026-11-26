@@ -758,3 +758,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   (replays.db medians). Extractors 3-4 at 4-6 min (winners 9). Next: the builders' plant picks while energy is banked -
   the planner's need test counts the bank now (en4), the builders' payback pick does not.
 - **Energy need vs the next plant (en7):** the bank against one plant's online time, not the whole gap's (quadratic). en7: energy still 405 E/s with 2167 banked at 8:00 (~20 E per M): the builders' own plant picks (payback at the energy price) are the remaining source. Army 594 vs 2036 at 8:00; points loss.
+- **Builders' energy price counts the bank (en8):** plant picks with 1500+ energy banked 149 -> 47 of 124-277. Energy still 367-560 E/s with 2000+ banked; army 279 vs 2089 at 8:00; lost at 12:00. Army production by 8:00 stays at 300-600 metal in every recent game against BARb's 1300-2100.
