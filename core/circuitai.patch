@@ -3966,7 +3966,7 @@ index 2baf4ae9..641575f7 100644
  
  CEconomyScript::~CEconomyScript()
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..41ff55bb 100644
+index c3aaefe5..b42f0704 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -4074,7 +4074,7 @@ index c3aaefe5..41ff55bb 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +776,297 @@ void CInitScript::RegisterCore()
+@@ -735,9 +776,299 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -4157,6 +4157,8 @@ index c3aaefe5..41ff55bb 100644
 +static float Bridge_GetMaxWind() { return bridgeAI->GetMap()->GetMaxWind(); }
 +static float Bridge_GetCurWind() { return bridgeAI->GetMap()->GetCurWind(); }
 +static float Bridge_GetTidal() { return bridgeAI->GetMap()->GetTidalStrength(); }
++// Anarva: the smoothed metal pull (what we actually spend), so the script prices metal the way the builders do
++static float Bridge_GetSmoothMetalPull() { return bridgeAI->GetEconomyManager()->GetSmoothMetalPull(); }
 +// Anarva: direct orders for script-commanded units
 +static void CCircuitUnit_CmdMoveTo(CCircuitUnit* u, const AIFloat3& p) { TRY_UNIT(bridgeAI, u, u->CmdMoveTo(p, 0, NO_EXPIRY);) }
 +static void CCircuitUnit_CmdFightTo(CCircuitUnit* u, const AIFloat3& p) { TRY_UNIT(bridgeAI, u, u->CmdFightTo(p, 0, NO_EXPIRY);) }
@@ -4372,7 +4374,7 @@ index c3aaefe5..41ff55bb 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +1096,49 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +1098,50 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -4383,6 +4385,7 @@ index c3aaefe5..41ff55bb 100644
 +	r = engine->RegisterGlobalFunction("uint AiGetEnemies(array<AIFloat3>@+, array<AIFloat3>@+, array<CCircuitDef@>@+, array<float>@+, array<int>@+, array<float>@+, array<float>@+)", asFUNCTION(Bridge_GetEnemies), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdMoveTo(const AIFloat3& in)", asFUNCTION(CCircuitUnit_CmdMoveTo), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiMinWind()", asFUNCTION(Bridge_GetMinWind), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterGlobalFunction("float AiSmoothMetalPull()", asFUNCTION(Bridge_GetSmoothMetalPull), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiMaxWind()", asFUNCTION(Bridge_GetMaxWind), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiCurWind()", asFUNCTION(Bridge_GetCurWind), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiTidal()", asFUNCTION(Bridge_GetTidal), asCALL_CDECL); ASSERT(r >= 0);
@@ -4422,7 +4425,7 @@ index c3aaefe5..41ff55bb 100644
  }
  
  bool CInitScript::Init()
-@@ -782,6 +1154,7 @@ bool CInitScript::Init()
+@@ -782,6 +1157,7 @@ bool CInitScript::Init()
  	mainInfo.receiveMessage = script->GetFunc(mod, "void AiMessage(const string& in, int)");
  	mainInfo.unitFinished = script->GetFunc(mod, "void AiUnitFinished(CCircuitUnit@)");
  	mainInfo.unitDestroyed = script->GetFunc(mod, "void AiUnitDestroyed(CCircuitUnit@)");
@@ -4430,7 +4433,7 @@ index c3aaefe5..41ff55bb 100644
  	asIScriptFunction* main = script->GetFunc(mod, "void AiMain()");
  	if (main == nullptr) {
  		return false;
-@@ -793,6 +1166,19 @@ bool CInitScript::Init()
+@@ -793,6 +1169,19 @@ bool CInitScript::Init()
  	return true;
  }
  
@@ -4450,7 +4453,7 @@ index c3aaefe5..41ff55bb 100644
  void CInitScript::Update()
  {
  	if (mainInfo.update == nullptr) {
-@@ -859,6 +1245,9 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
+@@ -859,6 +1248,9 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
  	r = engine->RegisterObjectProperty(cls, "CCircuitDef@ const buildDef", asOFFSET(T, buildDef)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "CCircuitUnit@ const target", asOFFSET(T, target)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "bool canAutoAbort", asOFFSET(T, canAutoAbort)); ASSERT(r >= 0);
@@ -4460,7 +4463,7 @@ index c3aaefe5..41ff55bb 100644
  }
  
  template <class T>
-@@ -920,22 +1309,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1312,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  

@@ -432,7 +432,10 @@ void Update()
 			}
 	}
 	const float N = float(AiMax(1, int(aiBuilderMgr.GetWorkerCount())));
-	const float saved = claimYield * claimWork / 2.f * (1.f / N - 1.f / (N + 1.f));
+	// the yield claimed is metal: worth the share of our metal we actually spend (with 500-1000 banked a constructor
+	// scored 2x a Pawn and the lab made ~9 units by 4:00, half constructors, vs the winners' 17.6 - 3.9 constructors,
+	// 13.7 Pawns and Fleas: replays.db, 24 Armada bot-lab 1v1 winners)
+	const float saved = claimYield * claimWork / 2.f * (1.f / N - 1.f / (N + 1.f)) * Economist::MetalShare();
 	// A constructor without a building job proves the work we can claim now is covered: one more saves nothing (25
 	// constructors, 12 idle and 3 extractors at minute 8 while the raiders made every free spot unsafe: Eye of Horus
 	// 1v1, 2026-11-25). The lab builds the army that makes spots claimable instead.
@@ -1182,7 +1185,9 @@ void EcoReclaimUpdate()
 		if (d.IsMobile() || pending.findByRef(u) >= 0) continue;
 		const float make = AiEnergyMake(ai.GetCircuitDef(d.id));
 		if (make <= 0.f || make / AiMax(1e-3f, d.costM) >= bestPlant) continue;  // not outclassed: keep it
-		const float gain = d.costM - make * H / epm;
+		// the metal back is worth the share of our metal we actually spend (as the builders price it): counted in full
+		// with 580 banked, new turbines were reclaimed at 2:29 and rebuilt and reclaimed again (Canis, cmd_m20)
+		const float gain = d.costM * Brain::Economist::MetalShare() - make * H / epm;
 		if (gain > bestGain) { bestGain = gain; @best = u; bestMake = make; }
 	}
 	if (best is null) return;
@@ -2501,6 +2506,18 @@ void UpdateProducerLife()
 		producerExposure += float(n) * float(f - producerFrame) / SECOND;
 	}
 	producerFrame = f;
+}
+// The share of the metal we have to spend (income, plus the bank over the value horizon once a factory has produced)
+// that we actually spend (smoothed pull) - the builders' metal price (core pM). More metal is worth only that share.
+float MetalShare()
+{
+	bool producing = false;
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	for (uint i = 0; i < mine.length() && !producing; ++i)
+		producing = mine[i].circuitDef.IsMobile() && mine[i] !is Brain::commander;
+	const float bank = producing ? aiEconomyMgr.metal.current / AiMax(1.f, ProducerLife()) : 0.f;
+	const float avail = aiEconomyMgr.metal.income + bank;
+	return (avail > 0.f) ? AiMin(1.f, AiSmoothMetalPull() / avail) : 1.f;
 }
 float ProducerLife()
 {
@@ -4042,6 +4059,17 @@ void Update()
 		}
 		array<float> score(cp.length());
 		array<float> dfc(cp.length());
+		// An unscouted spot isn't undefended: expect the enemy's towers per extractor among what we've seen, at their mean
+		// threat (live). Taken as 0, ten lone Pawns raided nine spots at 5:40 and light lasers killed 8 of them (Canis vs
+		// Cortex, cmd_m19); Armada winners there face 6.2 towers by 8:00 the other way round (replays.db, 28 games).
+		float eTowers = 0.f, eMexes = 0.f, eTowerThreat = 0.f;
+		for (uint i = 0; i < n; ++i) {
+			const CCircuitDef@ ed = eDef[i];
+			if (ed is null || ed.IsMobile()) continue;
+			if (ed.surfThrDmg > 0.f && ed.threat > 0.f) { eTowers += 1.f; eTowerThreat += ed.threat; }
+			else if (Facts::ExtractsMetal(ed.GetName()) > 0.f) eMexes += 1.f;
+		}
+		const float unseenDefence = (eTowers > 0.f) ? AiMin(1.f, eTowers / AiMax(1.f, eMexes)) * eTowerThreat / eTowers : 0.f;
 		for (uint i = 0; i < cp.length(); ++i) {
 			const float t = fc.distance2D(cp[i]) / fSpeed;
 			// The defence is what fights there while we kill the target: enemies within reach of it for as long as the
@@ -4052,6 +4080,7 @@ void Update()
 			// the same test a running op must keep passing (what can reach the squad on its way, not only at the
 			// target): launched on the target alone, 269 of 292 raids pulled back at once (Canis 2026-11-26)
 			dfc[i] = AiMax(Cover(cp[i], tFight), Cover(fc, t));
+			if (cid[i] < 0) dfc[i] = AiMax(dfc[i], unseenDefence);
 			score[i] = cv[i] / AiMax(1.f, t);
 		}
 		while (freeUnits.length() > 0) {

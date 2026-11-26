@@ -168,3 +168,10 @@ The latest batch (D-gun and strength fixes) is being played.
   8/14, metal income at 8:00 17.6 -> 21.3, energy 331 -> 420 (winners 521), first construction turret 5:15 (winners
   4:42). Still lost (min 14): army 108 at 4:00, 702 at 8:00 vs winners 660/2044. Tower kills now limited by raiders
   seen (not 1): order values 192-337, still 1 tower by 8:00.
+- **Army trades, self-reclaim (cmd_m19-21, Armada vs Cortex, Canis):**
+  - Constructor value x the metal share we spend (script `Economist::MetalShare`, via the new `AiSmoothMetalPull`).
+  - Unscouted raid spots expect the towers-per-extractor seen at their mean threat: ten lone Pawns at 5:40 had died
+    to light lasers (3 kills / 193 losses); next game raids went 4-19 strong, 35 / 115.
+  - EcoReclaim tore down new turbines at 2:29 and rebuilt them (metal back counted in full with 580 banked); now the
+    metal back is priced at the metal share. cmd_m21: metal income 17.7 / 30.6 at 4:00 / 8:00, extractors 8 / 17,
+    3 towers by 8:00, army 2416 at 12:00 (winners 5027); still lost at minute 14 (losses 1451 and 2435 at 10:00 and 12:00).
