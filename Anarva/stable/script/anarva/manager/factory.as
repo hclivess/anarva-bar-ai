@@ -126,14 +126,41 @@ CCircuitDef@ AiGetFactoryToBuild(const AIFloat3& in pos, bool isStart, bool isRe
 	// it; otherwise the T1 lab the opener judges best for this map (strength per metal it fields, units that reach
 	// their side). BARb's pick rebuilt a lost lab as an advanced lab with one extractor standing (Canis River).
 	CCircuitDef@ d = aiFactoryMgr.DefaultGetFactoryToBuild(pos, isStart, isReset);
-	if (d !is null && Brain::Tech::Tier(d) > 1 && Brain::Tech::Allowed(d)) return d;
 	// the first lab is the opener's; later ones are chosen against the enemy we have seen
 	CCircuitDef@ lab = (Brain::Intel::allFactories.length() == 0) ? Brain::Opening::BestLab() : Brain::Opening::BestLabVsEnemy();
+	// A higher tier competes on the same value as a T1 lab, the one the builders rank it by: the metal it lets us spend
+	// that we otherwise don't (min of our overflow and its build power x metal per build-second of what it makes) over
+	// the horizon, less its cost, per second of building it. Returned whenever "allowed", the advanced lab (2247-3620
+	// metal, value -1154 to -3378 at the builders' prices) stood in for every second factory: one lab all game while
+	// winners add a T1 vehicle or air plant at a median 7:29 (78 of 94 second factories; replays.db 1v1 winners; cmd_m61).
+	if (d !is null && Brain::Tech::Tier(d) > 1 && Brain::Tech::Allowed(d) && lab !is null && Brain::Intel::allFactories.length() > 0) {
+		const float vT = FactoryValue(d), vL = FactoryValue(lab);
+		AiLog("[ANV] next factory: " + d.GetName() + " " + int(vT) + " vs " + lab.GetName() + " " + int(vL) + " (value per build-second x 1000)");
+		if (vT > vL) return d;
+	} else if (d !is null && Brain::Tech::Tier(d) > 1 && Brain::Tech::Allowed(d)) return d;
 	if (lab !is null) AiLog("[ANV] next factory: " + lab.GetName());
 	return (lab !is null) ? lab : d;
 }
 
 /* --- Utils --- */
+
+// what a factory is worth per second of building it, x1000 (as the core's build-power value)
+float FactoryValue(CCircuitDef@ f)
+{
+	const array<string> opts = Facts::BuildOptions(f.GetName());
+	float sm = 0.f, sbt = 0.f;
+	for (uint k = 0; k < opts.length(); ++k) {
+		CCircuitDef@ o = ai.GetCircuitDef(opts[k]);
+		if (o is null || !o.IsMobile()) continue;
+		sm += o.costM; sbt += o.buildTime;
+	}
+	const float rate = (sbt > 0.f) ? f.buildSpeed * sm / sbt : 0.f;  // metal/s it can spend
+	const float H = AiMax(1.f, Brain::Economist::ProducerLife());
+	const float overflow = AiMax(0.f, aiEconomyMgr.metal.income - AiSmoothMetalPull()) + aiEconomyMgr.metal.current / H;
+	const float busy = f.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower());
+	const float V = AiMin(overflow, rate) * AiMax(0.f, H - busy) - Brain::Economist::MetalValue(f);
+	return 1000.f * V / AiMax(1.f, busy);
+}
 
 
 }  // namespace Factory
