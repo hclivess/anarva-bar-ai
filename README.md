@@ -1,4 +1,12 @@
-# Anarvā — a Skirmish AI for Beyond All Reason
+# Anarvā — a new AI and a data lab for Beyond All Reason
+
+Two things in one repository:
+
+- **A new Skirmish AI.** It decides everything from the live game: values computed from unit facts and measured
+  state, with no dice and no hand-picked constants. It runs on its own build of BARb's C++ core.
+- **A BAR data lab.** Hundreds of top-player replays are played back headless and stored in one SQLite database:
+  economy by minute, every unit built with time and place, kills by attacker and victim, commander tracks. The
+  figures below come from it, and so does every claim the AI's decisions rest on (see [Replay study](#replay-study)).
 
 ## What "Anarvā" means
 
