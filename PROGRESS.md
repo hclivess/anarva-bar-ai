@@ -283,3 +283,8 @@ The latest batch (D-gun and strength fixes) is being played.
   catch pushed the lab back to Pawns (35, the fastest bot) and Levelers wiped the army at minute 12 (6304 lost).
   Catching raiders is a separate job from holding the fight: it needs its own (fast) units valued by the raids they
   stop - towers, or a vehicle answer - not a factor on the main army's choice.
+- **Raider hunters as a production job - reverted (cmd_m110):** valued by the measured raid loss rate x catch share x
+  win chance, shared among hunters: 24 of 69 units went to it, mostly Fleas and Pawns (fast and weak), the army was
+  2701 at 10:00 and the game lost at 11:49. Command has no hunting role (a squad moves at its slowest), so hunters
+  built were spent as weak fighters. A raid answer needs both: a unit that wins against the raider class and catches
+  it, and a separate squad for it. Until then towers (covered producers live 1240-5572 s vs 171-308 uncovered).
