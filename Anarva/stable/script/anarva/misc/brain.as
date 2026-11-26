@@ -2371,8 +2371,25 @@ float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 	const float land = (wSum > 0.f) ? landW / wSum : 1.f;
 	const float taken = (wSum > 0.f) ? AiMax(1e-3f, takenW / wSum) : 1.f;
 	const float hpSurf = AiMax(1.f, (hp - gapDmg) / hits / taken);
-	terms = "(hits " + F2(land) + " taken " + F2(taken) + " splash " + F1(hits) + " gapDmg " + int(gapDmg) + ")";
-	return sqrt(AiMax(0.f, d.surfThrDmg) * land * hpSurf);
+	float mixDps = 0.f;
+	for (uint k = 0; k < m.w.length(); ++k) mixDps += m.w[k] * m.dps[k];
+	mixDps = (wSum > 0.f) ? mixDps / wSum : 0.f;
+	float power = sqrt(AiMax(0.f, d.surfThrDmg) * land * hpSurf);
+	// Live trade, once this type has taken a unit's worth of damage (enough to mean something): damage dealt over taken
+	// in this game, against the model's own (our dps x our hit chance) / (their dps x splash hits x their hit chance).
+	// Modelled, Pawns dodged half the shells; live, Levelers dealt them 14709 by minute 11 (cmd_m86) and killed 130 in a
+	// game (cmd_m75). Fighting value goes with sqrt of the trade (square law), so the correction is sqrt(live / model).
+	const float rec = AiDamageReceived(d.GetName()), dealt = AiDamageDealt(d.GetName());
+	string live = "";
+	if (rec >= hp && mixDps > 0.f) {
+		// in damage per second on both sides (surfThrDmg is the core's threat-weighted figure: with it the model read
+		// ~0.004, the correction multiplied the Pawn ~10x and 93 Pawns died to Levelers, cmd_m88)
+		const float model = AiMax(0.f, d.GetSustainedDps()) * land / AiMax(1e-3f, mixDps * hits * taken);
+		const float meas = dealt / rec;
+		if (model > 0.f) { power *= sqrt(meas / model); live = " live " + F2(meas) + "/" + F2(model) + " x" + F2(sqrt(meas / model)); }
+	}
+	terms = "(hits " + F2(land) + " taken " + F2(taken) + " splash " + F1(hits) + " gapDmg " + int(gapDmg) + live + ")";
+	return power;
 }
 float HitChance(float shotSpeed, float range, float targetSpeed, float targetRadius)
 {

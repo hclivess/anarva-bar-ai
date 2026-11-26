@@ -1,8 +1,34 @@
 diff --git a/src/circuit/CircuitAI.cpp b/src/circuit/CircuitAI.cpp
-index 40517444..60d61992 100644
+index 40517444..3694cfd0 100644
 --- a/src/circuit/CircuitAI.cpp
 +++ b/src/circuit/CircuitAI.cpp
-@@ -306,6 +306,11 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
+@@ -295,6 +295,25 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
+ 			TRACY_TOPIC_UNIT("EVENT_UNIT_DAMAGED", UnitDamaged, evt->unit);
+ 
+ 			CCircuitUnit* unit = GetTeamUnit(evt->unit);
++			// Anarva: the damage each of our unit types takes from each enemy type, live (the script models dodging from
++			// unit facts; Levelers killed 130 Pawns the model said dodge half their shots - SCRIPT_SIGHT.md). Logged once
++			// a game minute, the largest pairs: [ANV-DMG] victim<-attacker damage.
++			if ((unit != nullptr) && !evt->paralyzer && (evt->damage > 0.f)) {
++				CEnemyInfo* ea = GetEnemyInfo(evt->attacker);
++				const std::string key = std::string(unit->GetCircuitDef()->GetDef()->GetName()) + "<-"
++					+ (((ea != nullptr) && (ea->GetCircuitDef() != nullptr)) ? ea->GetCircuitDef()->GetDef()->GetName() : "?");
++				anvDamage[key] += evt->damage;
++				anvReceived[unit->GetCircuitDef()->GetDef()->GetName()] += evt->damage;
++				if (lastFrame - anvDamageLog >= FRAMES_PER_SEC * 60) {
++					anvDamageLog = lastFrame;
++					std::vector<std::pair<float, std::string>> v;
++					for (auto& kv : anvDamage) v.push_back(std::make_pair(kv.second, kv.first));
++					std::sort(v.rbegin(), v.rend());
++					std::string line;
++					for (size_t i = 0; i < v.size() && i < 10; ++i) line += " " + v[i].second + "=" + std::to_string(int(v[i].first));
++					LOG("[ANV-DMG] t=%dm%s", lastFrame / (FRAMES_PER_SEC * 60), line.c_str());
++				}
++			}
+ 			ret = (unit != nullptr)
+ 					? this->UnitDamaged(unit, evt->attacker, evt->weaponDefId, AIFloat3(evt->dir_posF3))
+ 					: ERROR_UNIT_DAMAGED;
+@@ -306,6 +325,11 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
  			CEnemyInfo* attacker = GetEnemyInfo(evt->attacker);
  			CCircuitUnit* unit = GetTeamUnit(evt->unit);
  			if (unit != nullptr) {
@@ -14,7 +40,18 @@ index 40517444..60d61992 100644
  				ret = this->UnitDestroyed(unit, attacker);
  				UnregisterTeamUnit(unit);
  			} else {
-@@ -381,6 +386,9 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
+@@ -373,6 +397,10 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
+ 
+ 			struct SEnemyDamagedEvent* evt = (struct SEnemyDamagedEvent*)data;
+ 			CEnemyInfo* enemy = GetEnemyInfo(evt->enemy);
++			{  // Anarva: damage our unit types deal (the other side of their live trade)
++				CCircuitUnit* our = GetTeamUnit(evt->attacker);
++				if ((our != nullptr) && (evt->damage > 0.f)) anvDealt[our->GetCircuitDef()->GetDef()->GetName()] += evt->damage;
++			}
+ 			ret = (enemy != nullptr) ? this->EnemyDamaged(enemy) : ERROR_ENEMY_DAMAGED;
+ 		} break;
+ 		case EVENT_ENEMY_DESTROYED: {
+@@ -381,6 +409,9 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
  			struct SEnemyDestroyedEvent* evt = (struct SEnemyDestroyedEvent*)data;
  			CEnemyInfo* enemy = GetEnemyInfo(evt->enemy);
  			if (enemy != nullptr) {
@@ -24,7 +61,7 @@ index 40517444..60d61992 100644
  				allyTeam->DyingEnemy(enemy->GetData(), lastFrame);
  				ret = 0;
  			} else {
-@@ -673,6 +681,20 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+@@ -673,6 +704,20 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
  		}
  	}
  
@@ -45,7 +82,7 @@ index 40517444..60d61992 100644
  	if (isCheating) {
  		cheats->SetEnabled(true);
  		cheats->SetEventsEnabled(true);
-@@ -705,7 +727,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+@@ -705,7 +750,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
  				}
  #endif
  			});
@@ -54,7 +91,7 @@ index 40517444..60d61992 100644
  #if 0
  		} else if (allyTeam->GetAliveSize() > 2) {
  			// FIXME: Follower AI shares all its mobile non-builder-role units to Leader AI.
-@@ -719,7 +741,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+@@ -719,7 +764,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
  					scheduler->RemoveJob(mergeTask);
  				}
  			});
@@ -63,7 +100,7 @@ index 40517444..60d61992 100644
  #endif
  		}
  	}
-@@ -1530,9 +1552,8 @@ void CCircuitAI::Garbage(CCircuitUnit* unit, const char* reason)
+@@ -1530,9 +1575,8 @@ void CCircuitAI::Garbage(CCircuitUnit* unit, const char* reason)
  	// NOTE: Happens because engine can send EVENT_UNIT_FINISHED after EVENT_UNIT_DESTROYED.
  	//       Engine should not send events with isDead units.
  	garbage.insert(unit);
@@ -75,7 +112,7 @@ index 40517444..60d61992 100644
  }
  
  CCircuitUnit* CCircuitAI::GetTeamUnit(ICoreUnit::Id unitId) const
-@@ -1614,16 +1635,20 @@ void CCircuitAI::CreateFakeEnemy(int weaponId, const AIFloat3& startPos, const A
+@@ -1614,16 +1658,20 @@ void CCircuitAI::CreateFakeEnemy(int weaponId, const AIFloat3& startPos, const A
  	}
  	float range = weaponDefs[weaponId].GetRange();
  	const AIFloat3 enemyPos = CTerrainManager::CorrectPosition(startPos, dir, range);  // range adjusted
@@ -100,10 +137,24 @@ index 40517444..60d61992 100644
  		allyTeam->RegisterEnemyFake(defId, enemyPos, timeout);
  	} else if (enemy->IsBeingBuilt()) {
 diff --git a/src/circuit/CircuitAI.h b/src/circuit/CircuitAI.h
-index 18003828..a230e4a2 100644
+index 18003828..39ef33d4 100644
 --- a/src/circuit/CircuitAI.h
 +++ b/src/circuit/CircuitAI.h
-@@ -151,6 +151,7 @@ private:
+@@ -120,6 +120,13 @@ private:
+ 	int UnitIdle(CCircuitUnit* unit);
+ 	int UnitMoveFailed(CCircuitUnit* unit);
+ 	int UnitDamaged(CCircuitUnit* unit, ICoreUnit::Id attackerId, int weaponId, springai::AIFloat3 dir);
++	std::map<std::string, float> anvDamage;  // Anarva: damage taken, "ourType<-theirType"
++	int anvDamageLog = 0;
++	std::map<std::string, float> anvReceived, anvDealt;  // Anarva: per our unit type, damage taken and dealt this game
++public:
++	float GetAnvReceived(const std::string& n) const { auto it = anvReceived.find(n); return (it != anvReceived.end()) ? it->second : 0.f; }
++	float GetAnvDealt(const std::string& n) const { auto it = anvDealt.find(n); return (it != anvDealt.end()) ? it->second : 0.f; }
++private:
+ 	int UnitDestroyed(CCircuitUnit* unit, CEnemyInfo* attacker);
+ 	int UnitGiven(ICoreUnit::Id unitId, int oldTeamId, int newTeamId);
+ 	int UnitCaptured(ICoreUnit::Id unitId, int oldTeamId, int newTeamId);
+@@ -151,6 +158,7 @@ private:
  public:
  	void GiveUnits(std::vector<CCircuitUnit*>&& units, int newTeamId);
  	void Garbage(CCircuitUnit* unit, const char* reason);
@@ -3994,7 +4045,7 @@ index 2baf4ae9..641575f7 100644
  
  CEconomyScript::~CEconomyScript()
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..b42f0704 100644
+index c3aaefe5..70072203 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -4102,7 +4153,7 @@ index c3aaefe5..b42f0704 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +776,299 @@ void CInitScript::RegisterCore()
+@@ -735,9 +776,302 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -4187,6 +4238,9 @@ index c3aaefe5..b42f0704 100644
 +static float Bridge_GetTidal() { return bridgeAI->GetMap()->GetTidalStrength(); }
 +// Anarva: the smoothed metal pull (what we actually spend), so the script prices metal the way the builders do
 +static float Bridge_GetSmoothMetalPull() { return bridgeAI->GetEconomyManager()->GetSmoothMetalPull(); }
++// Anarva: damage a unit type of ours has taken / dealt this game (its live trade)
++static float Bridge_DamageReceived(const std::string& n) { return bridgeAI->GetAnvReceived(n); }
++static float Bridge_DamageDealt(const std::string& n) { return bridgeAI->GetAnvDealt(n); }
 +// Anarva: direct orders for script-commanded units
 +static void CCircuitUnit_CmdMoveTo(CCircuitUnit* u, const AIFloat3& p) { TRY_UNIT(bridgeAI, u, u->CmdMoveTo(p, 0, NO_EXPIRY);) }
 +static void CCircuitUnit_CmdFightTo(CCircuitUnit* u, const AIFloat3& p) { TRY_UNIT(bridgeAI, u, u->CmdFightTo(p, 0, NO_EXPIRY);) }
@@ -4402,7 +4456,7 @@ index c3aaefe5..b42f0704 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +1098,50 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +1101,52 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -4414,6 +4468,8 @@ index c3aaefe5..b42f0704 100644
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "void CmdMoveTo(const AIFloat3& in)", asFUNCTION(CCircuitUnit_CmdMoveTo), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiMinWind()", asFUNCTION(Bridge_GetMinWind), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiSmoothMetalPull()", asFUNCTION(Bridge_GetSmoothMetalPull), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterGlobalFunction("float AiDamageReceived(const string& in)", asFUNCTION(Bridge_DamageReceived), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterGlobalFunction("float AiDamageDealt(const string& in)", asFUNCTION(Bridge_DamageDealt), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiMaxWind()", asFUNCTION(Bridge_GetMaxWind), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiCurWind()", asFUNCTION(Bridge_GetCurWind), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiTidal()", asFUNCTION(Bridge_GetTidal), asCALL_CDECL); ASSERT(r >= 0);
@@ -4453,7 +4509,7 @@ index c3aaefe5..b42f0704 100644
  }
  
  bool CInitScript::Init()
-@@ -782,6 +1157,7 @@ bool CInitScript::Init()
+@@ -782,6 +1162,7 @@ bool CInitScript::Init()
  	mainInfo.receiveMessage = script->GetFunc(mod, "void AiMessage(const string& in, int)");
  	mainInfo.unitFinished = script->GetFunc(mod, "void AiUnitFinished(CCircuitUnit@)");
  	mainInfo.unitDestroyed = script->GetFunc(mod, "void AiUnitDestroyed(CCircuitUnit@)");
@@ -4461,7 +4517,7 @@ index c3aaefe5..b42f0704 100644
  	asIScriptFunction* main = script->GetFunc(mod, "void AiMain()");
  	if (main == nullptr) {
  		return false;
-@@ -793,6 +1169,19 @@ bool CInitScript::Init()
+@@ -793,6 +1174,19 @@ bool CInitScript::Init()
  	return true;
  }
  
@@ -4481,7 +4537,7 @@ index c3aaefe5..b42f0704 100644
  void CInitScript::Update()
  {
  	if (mainInfo.update == nullptr) {
-@@ -859,6 +1248,9 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
+@@ -859,6 +1253,9 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
  	r = engine->RegisterObjectProperty(cls, "CCircuitDef@ const buildDef", asOFFSET(T, buildDef)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "CCircuitUnit@ const target", asOFFSET(T, target)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "bool canAutoAbort", asOFFSET(T, canAutoAbort)); ASSERT(r >= 0);
@@ -4491,7 +4547,7 @@ index c3aaefe5..b42f0704 100644
  }
  
  template <class T>
-@@ -920,22 +1312,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1317,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  
