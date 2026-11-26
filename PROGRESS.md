@@ -582,3 +582,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   ~0.95), combat units at 6:00 9 / 17 / 8 (was 5; winners 14-22), commander alive in 2 of 3. Lost on points twice
   (buildings 1467 / 1730 vs 30726 / 32476) and once at 13:00: extractors still fall (4-15 held, 12-19 lost) and our
   buildings are a tenth of BARb's. Kept. Next: what the buildings gap is made of.
+- **In-fight defence by the square law's inversion (df1-3):** D = S x sqrt(lost / metal sent), independent of kills
+  (lost/killed read 448-491 in the first seconds: 205 launches pulled back 1-2 s later in hc2). Pull-backs 21 / 15 / 33
+  per game, largest defence pulled back from 50 / 91 / 26; **commander alive in all three** (first full set); trades
+  0.76 / 0.77 / 0.92, df3 killed 119 units for 93. All lost on points: BARb's buildings 20-37k vs ours ~1k (#107).

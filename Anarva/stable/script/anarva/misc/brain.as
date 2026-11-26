@@ -4562,7 +4562,11 @@ void Update()
 			// square law: the loss ratio is the strength ratio squared (as FightGain prices it), so D = S x sqrt(lost/killed);
 			// linear, a pull-back with ~nothing killed read defence 34795 against our 129 and the army skipped every target
 			// for the rest of the game while 2.3x stronger (fr1, 16:07)
-			if (lostM > 0.f && age >= tgtHp / AiMax(1e-3f, dps)) op.defence = AiMax(op.defence, S * sqrt(lostM / AiMax(1.f, killedM)));
+			// The square law's own inversion: a won fight costs our metal x (D/S)^2, so the defence our losses imply is
+			// D = S x sqrt(lost / metal sent) - independent of what we've killed. (From lost/killed, with ~nothing killed in
+			// the first seconds it read 448-491 against our 62-67: 33 units launched and pulled back 1-2 s later, 205
+			// times in hc2, and the army never finished a fight.)
+			if (lostM > 0.f && age >= tgtHp / AiMax(1e-3f, dps)) op.defence = AiMax(op.defence, S * sqrt(lostM / AiMax(1.f, op.startMetal)));
 		}
 		if (!alive || op.units.length() == 0 || FightGain(op.value, S, op.defence, opMetal) <= 0.f) {
 			if (alive && op.units.length() > 0) {
