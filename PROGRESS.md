@@ -671,3 +671,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
 - **Plant construction out of the energy ratio (en6):** no overshoot (485 E/s vs BARb's 818 at 12:00; plan 177-719).
   The game went another way: metal 4.3-11.2 M/s from 6:00 (extractors lost to raids), lost at 16:00 - one game, the
   energy mechanism judged on its own. Games swing between economy and army losses run to run.
+- **en6 raids, traced:** Incisors killed 5 solars, 2 extractors and a constructor 200-400 from base at 3:00-5:20. Responses
+  went in piecemeal: e.g. 2 units at strength 8.4 vs defence 10.8 (expected loss 8846) while the rest stayed on other ops.
+  The detachment refused more units because each costs its op a share of the op's value, and op values for a single
+  raider read 15000-16000 (EnemyValue + OursThreatened): detaching never paid, so a losing 2-unit fight went ahead instead
+  of a winning one with the army. Next: what a raider target is worth (the damage it can do before it is stopped, not the
+  sum of everything it threatens), so the detachment's arithmetic can concentrate the army at home.
