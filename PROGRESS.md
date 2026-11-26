@@ -264,3 +264,8 @@ The latest batch (D-gun and strength fixes) is being played.
   (army 0 by 12-14, extractors to 0-1). The committed build (c87b9db) stays the best: army 10102-14080 at 20:00,
   commander alive. Its open gaps: raiders kill our buildings late (41 in minutes 16-19) while the army waits at home;
   our metal income stalls at ~20/s (winners ~37, BARb 87-154); the army never ends the game.
+- **Inherited constant removed - unit-target reclaim (cmd_m99/m100):** every reclaim of a unit (stuck or unfinished
+  ones of ours) carried a fixed cost {1000, 0} and 0 s of reclaim time, so it read 1000 metal for nothing and builders
+  reclaimed 1352 times in minutes 10-16 while extractors stalled at 11-12. Now its metal x build progress, its build
+  time x progress at our reclaim speed. Extractor picks 193 -> 890, extractors 22-23 at 10-12 min (winners 26.6),
+  metal income 44-46 (was 27). Lost: the commander died at 14:08, 1116 out, a Gator beside it.
