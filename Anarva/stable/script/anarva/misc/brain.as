@@ -3437,6 +3437,25 @@ AIFloat3 Them() { return planning ? planThem : AiEnemyBasePos(); }
 float Strength(const CCircuitDef@ d) { return sqrt(AiMax(0.f, d.GetSustainedDps()) * AiMax(1.f, d.health)); }
 
 // a spot near home where it can stand: home, else the first point of a ring at the commander's build distance
+// a site touching the builder's footprint, never on it (owner, 2026-11-26: "why walk over to build, do not place the
+// building on yourself"): builder radius + building radius from where it stands, inside its build distance, so it builds
+// without a step. Of the directions around it, the buildable one nearest home (keeps the base together, away from them).
+bool PlaceNextTo(CCircuitDef@ d, const AIFloat3& in at, AIFloat3& out p)
+{
+	const float r = ComDef().GetRadius() + d.GetRadius();
+	const AIFloat3 h = Home();
+	float best = 1e30f;
+	bool ok = false;
+	for (int k = 0; k < 16; ++k) {  // the 16 directions a footprint's neighbours take around it (a square grid's compass)
+		const float ang = 2.f * Pi() * float(k) / 16.f;
+		AIFloat3 q(at.x + r * cos(ang), 0.f, at.z + r * sin(ang));
+		q.y = AiGetElevation(q.x, q.z);
+		if (!AiCanBeBuiltAt(d, q)) continue;
+		const float dh = q.distance2D(h);
+		if (dh < best) { best = dh; p = q; ok = true; }
+	}
+	return ok;
+}
 bool PlaceNearHome(CCircuitDef@ d, AIFloat3& out p)
 {
 	const AIFloat3 h = Home();
@@ -3767,6 +3786,8 @@ array<Opt@> Options(const Sim@ s, const array<AIFloat3>@ sp, const array<float>@
 	}
 	for (uint k = 0; k < plants.length(); ++k) {
 		Opt o; o.kind = 1; @o.def = plants[k]; o.pos = plantPos[k]; o.yieldE = aiEconomyMgr.GetEnergyMake(plants[k]);
+		AIFloat3 nx;
+		if (PlaceNextTo(plants[k], s.pos, nx)) o.pos = nx;  // where the commander stands, not back home
 		opts.insertLast(o);
 	}
 	if (s.lab < 0 && Intel::allFactories.length() == 0) {
@@ -4070,7 +4091,7 @@ void Update()
 	if (o.kind == 0)
 		@planned = aiBuilderMgr.Enqueue(TaskB::Spot(Task::BuildType::MEX, Task::Priority::NOW, o.def, o.pos, o.spot, true, OrderLife(o.def, o.pos)));
 	else if (o.kind == 1)
-		@planned = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::ENERGY, Task::Priority::NOW, o.def, o.pos, ComDef().GetBuildDistance(), true, OrderLife(o.def, o.pos)));
+		@planned = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::ENERGY, Task::Priority::NOW, o.def, o.pos, 0.f, true, OrderLife(o.def, o.pos)));  // the site chosen next to it, no shake
 	else
 		@planned = aiBuilderMgr.Enqueue(TaskB::Factory(Task::Priority::NOW, o.def, o.pos, o.def, 0.f, false, true, OrderLife(o.def, o.pos)));
 	if (planned !is null) aiBuilderMgr.AssignTask(commander, planned);
@@ -4131,7 +4152,10 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 			// one commander closes both gaps one after the other (g / r each), and each deficit runs until then: the stock
 			// must carry each for the sum (half-credit for a shrinking deficit let the lab go first and stall, minute 1-2)
 			const float tFix = ((needE > 0.f) ? needE / AiMax(1e-3f, bestE) : 0.f) + ((needM > 0.f) ? needM / AiMax(1e-3f, bestM) : 0.f);
-			if (needE > 0.f) carried = carried && (bestE > 0.f) && (t.E >= needE * tFix);
+			// energy must be there before the lab, not carried by the stock: BARb builds 3 solars before its plant and has
+			// 90 E/s at 2:00 against our 50 - the second stat to swing (tools/swing.py sw2); after the lab the commander builds
+			// extractors, not plants, so a gap the stock "carries" stays open and the lab runs short
+			if (needE > 0.f) carried = false;
 			if (needM > 0.f) carried = carried && (bestM > 0.f) && (t.M >= needM * tFix);
 		}
 		// An extractor the commander builds first yields from now until the lab's first constructor could have built it
@@ -4155,7 +4179,13 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 				const float tt = mexDone - s0.t;
 				const float tByCon = w.t + L.conTime + opts[lab].pos.distance2D(opts[a].pos) / conSpeed;
 				const float gain = opts[a].yieldM * AiMax(0.f, tByCon - mexDone);
-				const float cost = AiMax(0.f, w.t - t.t) * drawEq;
+				// A later lab loses no resources (they bank and are spent once it stands); what it costs is the army later, and
+				// that matters only past the earliest enemy raid: the lab's production for the time its first unit comes
+				// later than the raid can arrive (#41). Charged for the whole delay, the opener built one extractor before
+				// the lab while BARb built two and three solars before its plant: metal 6.6 vs 8.9 at 2:00 - the first stat
+				// to swing (tools/swing.py, sw1).
+				const float tR = raidArrive;
+				const float cost = drawEq * (AiMax(0.f, w.t + L.unitTime - tR) - AiMax(0.f, t.t + L.unitTime - tR));
 				if (gain - cost > firstGain - firstCost) { firstGain = gain; firstCost = cost; firstName = "spot " + opts[a].spot; firstOpt = int(a); }
 			}
 		}
