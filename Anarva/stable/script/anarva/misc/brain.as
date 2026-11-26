@@ -4696,9 +4696,13 @@ float CommFog(const AIFloat3& in p, float tHome, float seenThreat, float seenSpe
 	if (float(ai.frame) / SECOND < Opening::raidArrive) return 0.f;
 	Director::MeasuredPower();
 	const float sp = seenN > 0 ? seenSpeed / float(seenN) : AiMax(1.f, Director::allSpeed);
-	const float dist = AiEnemyBasePos().distance2D(p);
+	// where it is: with their seen units, not at home - the hidden part of an army moves with the part we see. Placed
+	// at their base, unseen Thuds and Mists 1400-1800 out read no danger and killed the commander at 14:22 and
+	// 15:08 (cmd_m79, cmd_m81). The known enemy nearest the spot, else their base.
+	const float dist = AiMin(AiEnemyBasePos().distance2D(p), commNearestEnemy);
 	return dist / AiMax(1.f, sp) <= tHome ? hidden : 0.f;
 }
+float commNearestEnemy = 1e9f;  // distance from the measured spot to the nearest known armed enemy mobile (CommForces)
 float commDanger = 0.f, commCover = 0.f, commDps = 0.f;
 float commEnemyHp = 0.f, commOurDps = 0.f;
 float commInFire = 0.f, commERange = 0.f;  // our power standing in the reaching enemies' range now; their longest range  // the reaching enemies' health, our dps there (how long the fight lasts)
@@ -4768,6 +4772,9 @@ void CommForces(const AIFloat3& in p, float tHome)
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
 	commDanger = 0.f; commDps = 0.f; commEnemyHp = 0.f; commOurDps = 0.f; commInFire = 0.f; commERange = 0.f;
+	commNearestEnemy = 1e9f;
+	for (uint i = 0; i < n; ++i)
+		if (ed[i] !is null && ed[i].IsMobile() && ed[i].surfThrDmg > 0.f) commNearestEnemy = AiMin(commNearestEnemy, ep[i].distance2D(p));
 	for (uint i = 0; i < n; ++i) {
 		CCircuitDef@ d = ed[i];
 		if (d is null || d.threat <= 0.f || (ef[i] & 4) != 0) continue;

@@ -235,3 +235,7 @@ The latest batch (D-gun and strength fixes) is being played.
   artillery that outranges our sight - the unseen danger (CommFog places it at their base). Next, in order: the
   unseen artillery around the front (where enemies were last seen, not their base); the composition against
   Levelers (130 Pawns lost to splash in cmd_m75).
+- **Unseen enemy placed with the seen ones (cmd_m83):** CommFog measures the hidden army's distance from the known enemy
+  nearest the spot (was their base). Kills/losses 78/79, the best trade yet; the commander died at home at 14:00 in a
+  base overrun (15 Grunts + 7 Rogues; the army 500 away, strength 84 vs 25) - every safe place was in the fight. Next:
+  the escape goes away from the danger (behind the army), not to the nearest factory when the factory is the fight.
