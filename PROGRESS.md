@@ -662,3 +662,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
 - **Energy need counts the bank (en4, mechanism not confirmed):** a gap needs a plant only if it would empty the bank
   before one comes online. en4 still reached 1020 E/s with 3230 banked at 12:00 - plants also come from the builders'
   own picks (payback at the energy price), not only the need trigger; to trace next. Lost at 14:00 (army 1824 vs 6615).
+- **Bank energy bounded by the plant (en5):** a plant for the bank's extra spending pays only while the bank lasts, so
+  the extra energy is at most bank x the best plant's make per metal. en5: energy with BARb to 8:00 (427 vs 486), army
+  1479 vs 1890 at 8:00 (closest yet); but the plan still climbed 330 -> 800-900 E/s and energy reached 1342 with 3860
+  banked at 12:00, army 603 - lost at 14:00. Suspected loop: the plan's E/M ratio is measured from what we pull, and
+  building energy-costly plants (advanced solars) raises it - more plants raise the plan that orders plants. Next: the
+  ratio from what spending the metal produces (factory and builder output), not from the pull that includes the plants.
