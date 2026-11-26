@@ -597,3 +597,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   far more cautious (206-591 skipped fights a game, 31-82 pull-backs) and traded worse: 0.57 / 0.50 / 0.64 against
   0.76-0.92 committed. The model's numbers are not calibrated to what fights actually cost: the next step is to check
   the per-fight estimate against measured fight outcomes ([ANV-FIGHT] lost vs killed per op) before it decides.
+- **Owner's game fixes on Comet Catcher (cc1-2):** no lab/builder energy waits, energy planned for lulls, one energy price
+  for plants, radar warning value, T2 lab job carries the gate's return, spare-constructor rule reverted. cc2: no energy
+  stall, 18 advanced solars, 4 radars, T2 lab 13:03, extractors 24 and 66 M/s at 12:00 (the owner's game: 8-10 and 20).
+  cc1: raided from the start, extractors 2-5, energy stalls at 4 and 16 min. Both lost on points (buildings 0.5-11k vs
+  34-40k); trades 0.63 / 0.61. Next: Defend (answer raids, #106) and towers at our far extractors (BARb's 13.5k defence).
