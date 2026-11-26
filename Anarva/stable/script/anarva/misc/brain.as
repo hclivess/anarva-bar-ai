@@ -3942,7 +3942,9 @@ void Update()
 			// spot during our whole march (60 s+) put BARb's whole army, commander included, on every lone raider: no op
 			// was ever made, defend=0 while Favs and Flashes killed 13 producers (Eye of Horus 1v1, 2026-11-25).
 			const float tFight = chp[i] / AiMax(1e-3f, freeDps);
-			dfc[i] = Cover(cp[i], tFight);
+			// the same test a running op must keep passing (what can reach the squad on its way, not only at the
+			// target): launched on the target alone, 269 of 292 raids pulled back at once (Canis 2026-11-26)
+			dfc[i] = AiMax(Cover(cp[i], tFight), Cover(fc, t));
 			score[i] = cv[i] / AiMax(1.f, t);
 		}
 		while (freeUnits.length() > 0) {
@@ -4521,7 +4523,11 @@ void BuilderSafeUpdate()
 		// builder run: 134 evacuations in 5 minutes on Avalanche, 1-2 extractors standing, 2026-11-25). A job that builds
 		// nothing (reclaim, resurrect, repair, waiting) is worth what its decision gave it: skipped before, rez bots
 		// stood in the open and died (owner, 2026-11-25: "standing with rezbots letting them die").
-		const float jobV = (bt !is null && bt.buildDef !is null) ? Brain::Economist::AssetValue(bt.buildDef) : ((bt !is null) ? bt.value : 0.f);
+		// a job that builds nothing is worth its decision's value, or what it brings back (a reclaim: the wreck's metal
+		// and energy - the script couldn't read it and rez bots' jobs counted 0: SCRIPT_SIGHT.md)
+		float jobV = (bt !is null && bt.buildDef !is null) ? Brain::Economist::AssetValue(bt.buildDef) : 0.f;
+		if (bt !is null && bt.buildDef is null)
+			jobV = AiMax(bt.value, bt.GetCostM() + bt.GetCostE() / AiMax(1e-3f, Brain::Economist::energyPerMetal));
 		const float own = Brain::Economist::MetalValue(d);
 		// the job is at risk too (owner: kept upgrading a mex with 4 pawns on it): if the structure dies before it is
 		// finished, the metal sunk into it is lost (bounded by its full value; progress isn't visible to the script)

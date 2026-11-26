@@ -3931,7 +3931,7 @@ index 2baf4ae9..641575f7 100644
  
  CEconomyScript::~CEconomyScript()
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..74c8113f 100644
+index c3aaefe5..41ff55bb 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -4415,15 +4415,17 @@ index c3aaefe5..74c8113f 100644
  void CInitScript::Update()
  {
  	if (mainInfo.update == nullptr) {
-@@ -859,6 +1245,7 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
+@@ -859,6 +1245,9 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
  	r = engine->RegisterObjectProperty(cls, "CCircuitDef@ const buildDef", asOFFSET(T, buildDef)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "CCircuitUnit@ const target", asOFFSET(T, target)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "bool canAutoAbort", asOFFSET(T, canAutoAbort)); ASSERT(r >= 0);
 +	r = engine->RegisterObjectProperty(cls, "float value", asOFFSET(T, anarvaValue)); ASSERT(r >= 0);  // Anarva
++	r = engine->RegisterObjectMethod(cls, "float GetCostM() const", asMETHOD(T, GetCostM), asCALL_THISCALL); ASSERT(r >= 0);  // Anarva: a job's metal (a wreck's, for reclaim)
++	r = engine->RegisterObjectMethod(cls, "float GetCostE() const", asMETHOD(T, GetCostE), asCALL_THISCALL); ASSERT(r >= 0);
  }
  
  template <class T>
-@@ -920,22 +1307,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1309,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  

@@ -61,6 +61,12 @@ IMPROVEMENT ONLY THEN YOU CAN TEST."
 - **Every rule is suspect, including your own.** A comparison against a literal, a priority band or a gate is a
   frozen decision whoever wrote it. Never add one; when you find one, replace it with a computed value.
 
+- **Cover script blindness when you meet it** (owner, 2026-11-26: "cover any gaps you may come in contact with -
+  you already did 3 rounds, always finding more script blindness"). When a decision needs a fact the script can't
+  see, expose it then (bridge or `gen_facts.py`) instead of estimating it from a proxy, and record it in
+  [SCRIPT_SIGHT.md](SCRIPT_SIGHT.md) (exposed and still-blind lists; `tools/sight_audit.py` lists unexposed core
+  getters). Every decision logs its inputs, so a blind input shows up as a `0` or `-` in the log.
+
 - **No substitutes for decisions.** A rotation, a fixed range middle or a "more likely than not" cutoff is not a
   decision; derive the choice from value.
 
