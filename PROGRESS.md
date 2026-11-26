@@ -744,3 +744,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   40 vs 261 - the fighting gap (#116) stays. A points win, not a kill. Next: repeat it, other maps.
 - **Repeats of pk3's build (rp1-3):** rp1 Comet loss at 13:00, rp2 Comet points loss, rp3 Canis loss at 17:00. 1 win in
   4 games on this build: pk3 was not yet a repeatable result.
+- **rp2 deaths traced (#116):** BARb has more army AND more buildings with about our income: we lose 3-5x the units.
+  Pawns die to Incisors (39: fast raiders they chase) and Pounders (26: splash on clumped Pawns - our splash term read
+  1.00 for Pawns); 40 deaths at 2500-3000 from base in ops of up to 46 units pushing into their side. Next: splash
+  counted per enemy type against our spacing, no chasing what outruns us, and pushes valued with the defence they meet.
