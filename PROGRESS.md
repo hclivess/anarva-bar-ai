@@ -659,3 +659,6 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   8:00, army 378 vs 2485). en3: energy 387 vs 408 at 8:00, bank 127/33/22/11 at 4/6/8/12 min (was 500+), metal 31.8 vs
   27.2 at 8:00. Army still behind (679 vs 2176 at 8:00, 3266 vs 5570 at 12:00); energy high mid-game (886 vs 688, 2942
   banked at 12:00). Points loss.
+- **Energy need counts the bank (en4, mechanism not confirmed):** a gap needs a plant only if it would empty the bank
+  before one comes online. en4 still reached 1020 E/s with 3230 banked at 12:00 - plants also come from the builders'
+  own picks (payback at the energy price), not only the need trigger; to trace next. Lost at 14:00 (army 1824 vs 6615).
