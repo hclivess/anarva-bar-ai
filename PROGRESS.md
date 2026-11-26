@@ -501,3 +501,8 @@ The latest batch (D-gun and strength fixes) is being played.
   extractors then the lab at ~134 s (worse than the committed opener's lab at ~52 s). The plan value counts resources
   gathered and nothing of the army needed by the earliest raid, so more extractors always beat the lab. The opener
   plan value must count the army the raid needs (#41 just in time) before a sequence search can help.
+- **#103 raid term (dr1-4):** producers beyond the commander's defence reach (its speed x the producer's health over a
+  raider's dps + its range) meet the raid with only the lab's units. Start picks: the two triangle centres Canis
+  winners use ((1627,5323), (2528,5877)). The re-applied plan search still chose four extractors and the lab at ~108 s
+  (these spots are within reach, so the term charges nothing): planner dropped again, the term kept. What stops
+  players at three extractors is the army needed by the first raid, not losses beyond reach.

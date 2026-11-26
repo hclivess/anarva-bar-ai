@@ -3304,6 +3304,7 @@ class Sim {
 	float realized = 0.f;                // metal-eq spent productively from now to t
 	float nProd = 0.f, prodYield = 0.f;  // producers the plan built and their metal-eq/s: what a raid can take
 	float prodHp = 0.f, prodCost = 0.f;
+	float nFar = 0.f, farYield = 0.f, farHp = 0.f, farCost = 0.f;  // producers beyond the commander's defence reach (#103)
 }
 
 // a lab we can build: what it fields against a raid and how fast it spends
@@ -3638,6 +3639,23 @@ float Value(const Sim@ s, float now, float H)
 		const float k = AiMin(s.nProd, dmg / AiMax(1.f, s.prodHp / s.nProd));
 		// each lost one costs its metal and its yield for about half the window (they die across it)
 		v -= k * (s.prodCost / s.nProd + s.prodYield / s.nProd * window / 2.f);
+		// the far ones meet the raid without the commander: the same, with only the lab's units against it (#103: the
+		// commander's strength counted for every producer closed the window and over-expansion cost nothing)
+		if (s.nFar > 0.f) {
+			float wF = 0.f;
+			array<float> ts = {raidArrive, AiMax(raidArrive, AiMin(tU, end)), end};
+			for (uint seg = 0; seg + 1 < ts.length(); ++seg) {
+				const float t0 = ts[seg], t1 = ts[seg + 1];
+				if (t1 <= t0) continue;
+				const float f0 = oursRate * AiMax(0.f, t0 - tU) - raidStrength * (1.f + rate * (t0 - raidArrive));
+				const float f1 = oursRate * AiMax(0.f, t1 - tU) - raidStrength * (1.f + rate * (t1 - raidArrive));
+				if (f0 < 0.f && f1 < 0.f) wF += t1 - t0;
+				else if (f0 < 0.f || f1 < 0.f) wF += (t1 - t0) * ((f0 < 0.f) ? f0 : f1) / (f0 - f1) * ((f0 < 0.f) ? 1.f : -1.f);
+			}
+			const float dF = raidDps * (wF + rate * wF * wF / 2.f);
+			const float kF = AiMin(s.nFar, dF / AiMax(1.f, s.farHp / s.nFar));
+			v -= kF * (s.farCost / s.nFar + s.farYield / s.nFar * wF / 2.f);
+		}
 	}
 	return v;
 }
@@ -3649,6 +3667,11 @@ float Walk(const AIFloat3& in a, const AIFloat3& in b, float speed)
 {
 	CCircuitDef@ d = ai.GetCircuitDef(ComDef().GetName());
 	return AiPathLength(d, a, b) / AiMax(1.f, speed);
+}
+float DefenceReach(const CCircuitDef@ d)
+{
+	const CCircuitDef@ c = ComDef();
+	return c.speed * d.health / AiMax(1e-3f, raidDps) + c.GetMaxRange();
 }
 // do o from state s (walk + build at bp, waiting for missing resources)
 void Apply(Sim@ s, const Opt@ o, float bp, float speed)
@@ -3668,6 +3691,12 @@ void Apply(Sim@ s, const Opt@ o, float bp, float speed)
 	if (o.kind <= 1) {  // what a raid kills (Favs and Flashes killed turbines as often as extractors)
 		s.nProd += 1.f; s.prodYield += o.yieldM + o.yieldE / AiMax(1e-3f, Economist::energyPerMetal);
 		s.prodHp += o.def.health; s.prodCost += Economist::MetalValue(o.def);
+		// beyond where the commander can arrive before a raider kills it (its speed x the producer's health over a
+		// raider's dps, plus its range; unit facts), the producer faces the raid without the commander (#103)
+		if (Home().distance2D(o.pos) > DefenceReach(o.def)) {
+			s.nFar += 1.f; s.farYield += o.yieldM + o.yieldE / AiMax(1e-3f, Economist::energyPerMetal);
+			s.farHp += o.def.health; s.farCost += Economist::MetalValue(o.def);
+		}
 	}
 	if (o.kind == 2) { s.lab = o.lab; s.labAt = s.t; }
 }
@@ -3707,6 +3736,7 @@ Sim@ Copy(const Sim@ a)
 	b.t = a.t; b.M = a.M; b.E = a.E; b.mInc = a.mInc; b.eInc = a.eInc; b.labAt = a.labAt; b.lab = a.lab; b.pos = a.pos;
 	b.usedSpot = a.usedSpot; b.realized = a.realized;
 	b.nProd = a.nProd; b.prodYield = a.prodYield; b.prodHp = a.prodHp; b.prodCost = a.prodCost;
+	b.nFar = a.nFar; b.farYield = a.farYield; b.farHp = a.farHp; b.farCost = a.farCost;
 	return b;
 }
 
