@@ -475,3 +475,9 @@ The latest batch (D-gun and strength fixes) is being played.
 - **Outranged units close or leave, reverted (or1-3):** a unit inside a visible enemy's reach but out of its own
   closed on it if faster, else left its reach. Outranged hits 5-14%, standing still under fire 9-12% of contacts
   (before 5-23% / 5-15%): no measurable change; trades 0.83 / 0.52 / 0.87, all lost (or1 buildings 10850 vs 24830).
+- **Early army gap (replays.db, 107 1v1 winners):** army 602 / 1110 / 2010 at 4 / 6 / 8 min vs ours 108-267 / 270-324
+  / 486-810; income 19 / 31 / 41 vs ~10 / 16-23 / 29-33. Winners lose ~2 extractors by 12:00 (ours 14-23); only 40% of
+  theirs have a tower within 400 - the army holds them. Their commanders REPAIR (assist) 33-39% of minutes 1-5.
+- **Commander assists the lab, reverted (ca1-3):** valued at its build power x the lab's metal per build-second, capped
+  by spare metal, x production's value per metal. It took the commander off expansion (3-4 extractors at 4:00), all lost
+  at 13-17 min, commander dead in all three. Assisting only pays with the income to feed it; ours is half the winners'.
