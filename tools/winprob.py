@@ -269,3 +269,79 @@ def plot(game_dir, out=None):
 
 if __name__ == "__main__" and len(sys.argv) > 2 and sys.argv[1] == "plot":
     plot(sys.argv[2])
+
+
+def boosted(out_png=None):
+    """Gradient boosting vs logistic regression on the relative state (all six features), pooled over minutes 3-16 with
+    the minute as a feature; held-out AUC (games grouped in folds) and permutation importance. Writes docs/winprob_boost.png."""
+    from sklearn.ensemble import HistGradientBoostingClassifier
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import GroupKFold
+    from sklearn.metrics import roc_auc_score
+    from sklearn.inspection import permutation_importance
+    from PIL import Image, ImageDraw, ImageFont
+    db = sqlite3.connect(DB)
+    won = {(r, t): w for r, t, w in db.execute(
+        "select t.replay_id, t.team, t.won from teams t join replays r on r.id=t.replay_id where r.format='1v1' and r.status='done'")}
+    st = {}
+    for rid, team, m, *v in db.execute("select s.replay_id, s.team, s.minute, " + ", ".join("s." + f for f in FEATURES) +
+                                         " from stats s join replays r on r.id=s.replay_id where r.format='1v1' and r.status='done'"):
+        if all(x is not None for x in v) and 3 <= m <= 16:
+            st.setdefault((rid, m), {})[team] = transform([float(x) for x in v])
+    X, y, g = [], [], []
+    for (rid, m), teams in st.items():
+        if len(teams) != 2:
+            continue
+        a, b = list(teams.keys())
+        if won.get((rid, a)) not in (0, 1):
+            continue
+        for p_, q_ in ((a, b), (b, a)):
+            X.append(list(np.array(teams[p_]) - np.array(teams[q_])) + [m]); y.append(won[(rid, p_)]); g.append(rid)
+    X, y, g = np.array(X), np.array(y), np.array(g)
+    names = [LABELS[f] + " lead" for f in FEATURES] + ["minute"]
+    res = {"boost": [], "logit": []}
+    imps = np.zeros(X.shape[1])
+    for tr, te in GroupKFold(n_splits=5).split(X, y, g):
+        hb = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, early_stopping=True, validation_fraction=0.2, random_state=0).fit(X[tr], y[tr])
+        lr = LogisticRegression(max_iter=2000).fit(X[tr], y[tr])
+        res["boost"].append(roc_auc_score(y[te], hb.predict_proba(X[te])[:, 1]))
+        res["logit"].append(roc_auc_score(y[te], lr.predict_proba(X[te])[:, 1]))
+        pi = permutation_importance(hb, X[te], y[te], scoring="roc_auc", n_repeats=10, random_state=0)
+        imps += pi.importances_mean
+    imps /= 5
+    auc_b, auc_l = float(np.mean(res["boost"])), float(np.mean(res["logit"]))
+    print(f"held-out AUC, minutes 3-16 pooled: gradient boosting {auc_b:.3f}, logistic regression {auc_l:.3f}")
+    order = np.argsort(-imps)
+    for i in order:
+        print(f"  {names[i]:24s} importance {imps[i]:+.3f}")
+    # figure
+    SURFACE, INK, INK2, GRID, BLUE = (252, 252, 251), (11, 11, 11), (82, 81, 78), (229, 228, 223), (42, 120, 214)
+
+    def font(size, bold=False):
+        for nm in (("segoeuib.ttf" if bold else "segoeui.ttf"), ("arialbd.ttf" if bold else "arial.ttf"), "DejaVuSans.ttf"):
+            try:
+                return ImageFont.truetype(nm, size)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+    W, H = 1200, 150 + 34 * len(names)
+    img = Image.new("RGB", (W, H), SURFACE)
+    d = ImageDraw.Draw(img)
+    d.text((40, 22), "What decides a 1v1: gradient boosting on the replays", font=font(24, True), fill=INK)
+    d.text((40, 56), f"Gradient-boosted trees on the lead over the opponent, minutes 3-16 pooled. Held-out AUC {auc_b:.2f} "
+                     f"(logistic regression {auc_l:.2f}).", font=font(15), fill=INK2)
+    d.text((40, 78), "Permutation importance: how much AUC drops when that feature is shuffled.", font=font(15), fill=INK2)
+    x0, y0, bw, bh = 260, 120, W - 420, 34
+    vmax = max(1e-6, float(imps.max()))
+    for r, i in enumerate(order):
+        yy = y0 + r * bh
+        d.text((40, yy + 8), names[i], font=font(14), fill=INK)
+        w = bw * max(0.0, imps[i]) / vmax
+        d.rounded_rectangle([x0, yy + 7, x0 + max(4, w), yy + bh - 7], radius=4, fill=BLUE)
+        d.text((x0 + w + 8, yy + 8), f"{imps[i]:+.3f} AUC", font=font(13), fill=INK2)
+    img.save(out_png or os.path.join(ROOT, "docs", "winprob_boost.png"))
+    print("wrote docs/winprob_boost.png")
+
+
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "boost":
+    boosted()

@@ -167,6 +167,15 @@ is chosen by cross-validation, with both players of a game kept in the same fold
 - **Energy income lead weighs most at most minutes.** With all six features (extractors, factories and
   constructors too), the extractor lead follows it at minutes 4–8.
 
+**Gradient boosting** asks the same question of a model that can learn interactions:
+
+![Gradient boosting: what decides a 1v1](docs/winprob_boost.png)
+
+It does no better (held-out AUC 0.79 against 0.80 for the logistic regression), so a 1v1's outcome follows a simple
+weighted sum of leads. Two leads carry it: **energy income** and **extractors**. Army and constructors add a little.
+Metal income adds almost nothing once extractors are known, since the two move together. Factory count adds nothing.
+Run with `python tools/winprob.py boost`.
+
 `tools/check_game.py` scores each of our games against BARb with it, using what the harness logs for both teams. For
 each minute it shows our win chance and the gap that costs the most points. In the game above the first big cost
 is metal income at minute 3: 6/s against BARb's 12, 23 points of win chance. Refit with `python tools/winprob.py fit`.
