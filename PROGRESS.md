@@ -126,3 +126,11 @@ The latest batch (D-gun and strength fixes) is being played.
   minute 12. The start model is wrong: it still scores the central-forward start 1.5% higher. Suspect raid exposure
   (a forward start is nearer the enemy; the model counts only the first raid). Next: value repeated raid exposure in
   the start choice, then re-run the comparison.
+- **Fixed matchup (Anarva Armada vs BARb Cortex, Canis River, one game each):** the commander now judges catch time
+  by the enemy's current speed (a raider shooting buildings stands still). Extractors lost before minute 8: 8 -> 1;
+  lab lost at 13.6 min instead of 3.4; minute 12: 16 extractors, 4 factories, energy 734, army 3321 (winners 26.6 /
+  2.5 / 1021 / 5027). Lost at minute 14 to BARb's push (Pounders, Incisors, Brutes, Mist).
+- **Next:** (1) scouts overbuilt - 52 Fleas from minute 8 to 14 (winners build ~1 per game); a scout's value must
+  count its expected life and the scouts already out. (2) against Cortex's splash and fast raiders the lab still picks
+  Pawns (78); Hammer/Rocko land 15-28% of shots on fast raiders. Check what Armada players field against Cortex in
+  the replays (unit time map by matchup) for the reason, then the decision.
