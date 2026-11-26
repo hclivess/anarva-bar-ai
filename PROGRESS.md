@@ -641,3 +641,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   BARb towers its own from 2:06. swing.py now counts energy as a gap only when our bank is empty and theirs isn't.
 - **it1 -> it2:** a boost (assisting the lab) ended only when energy bound; the first constructor boosted 37 s instead of claiming. Now it ends on any better non-boost pick: first constructor's extractor at 107 s (was 157), the 2:00 swing gone; next swing 3:00 army 162 vs 386.
 - **Fighter valued against the enemy at its ready time (it3):** measured growth of the strongest enemy surface strength seen x (build + walk). it3 stopped at 2:00 on buildings 565 vs 640 (one solar; the opening varies by seconds run to run) before any growth was measured (grow 1.00) - not yet judged.
+- **fg1 (full game, all of today):** ready-time growth 1.02-1.07 (small). The lab swung to the army: 91 Pawns, 6
+  constructors; army 2104 vs 2938 at 12:00 (fb3: 1188 vs 5745) but metal 6.6 vs 15.8 at 4:00 and 20.4 vs 55.5 at 12:00,
+  banks 1000-1500 unspent from 12:00. Points loss. Between fb3 and fg1 the same lab choice (constructor vs fighter) swings
+  the whole game from economy to army: the two values come from different models (claim schedule vs win share) and
+  their balance, not either one, is what decides. Next: one model for both - each unit's value as the metal it adds or
+  saves over the horizon in the same simulation (claims that survive the measured raids vs raid losses it prevents).
