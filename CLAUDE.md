@@ -164,6 +164,10 @@ is a decision nobody made.
 - **One install only: `Anarva`.** No side-by-side copies in the owner's BAR (owner: "why do you keep multiple
   copies"). Install only while the owner is not playing (the installer refuses while BAR holds the DLL), then verify
   with a short headless game before saying it is ready.
+- **Every game: a spectator AND an early stop when outplayed** (owner, 2026-11-26: "always spec + early game stop on
+  being outplayed"; "keep to the rules"). No game runs without both: `tools/swing.py` stops it at the swing, a spectator
+  agent writes `docs/spectator/<run>.md` as it plays, and after each stop the decision that caused it is reworked before
+  the next game - never several games back to back without that rework. Hunting for a result is no exception.
 - **End a game the moment we are outplayed** (owner, 2026-11-26: "monitor every stat - energy, metal, army, damage
   taken vs dealt. the moment it swings in the enemy player, you should resign and rework yourself"; "end the spectated
   games early ... when outplayed"). Run games through `tools/swing.py` (it stops the game when a stat favours BARb by more
