@@ -668,3 +668,6 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   banked at 12:00, army 603 - lost at 14:00. Suspected loop: the plan's E/M ratio is measured from what we pull, and
   building energy-costly plants (advanced solars) raises it - more plants raise the plan that orders plants. Next: the
   ratio from what spending the metal produces (factory and builder output), not from the pull that includes the plants.
+- **Plant construction out of the energy ratio (en6):** no overshoot (485 E/s vs BARb's 818 at 12:00; plan 177-719).
+  The game went another way: metal 4.3-11.2 M/s from 6:00 (extractors lost to raids), lost at 16:00 - one game, the
+  energy mechanism judged on its own. Games swing between economy and army losses run to run.
