@@ -618,3 +618,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   one group, so no change (groups 73-93 vs per-type 113-144). Swing moved to 3:00 on buildings (820 vs 1430) with metal
   income equal (11.2): we bank 808 vs 580 at 1:00 and 507 vs 142 at 3:00 - BARb's commander spends ~600 in the first
   minute (2 extractors + 3 solars), ours ~370 (2 + 2).
+- **Losses fed back (fb1, owner: "ignores losses? is there no feedback loop?"):** a claimed extractor yields until the
+  horizon or its measured life (no floor); the producer metal lost per second, over the horizon, joins the stake an
+  army defends. fb1: metal 15.8 = BARb at 4:00, 68.6 vs 43.3 at 12:00 (best yet); but bank 2643 vs 1 and army 1966 vs
+  5330 at 12:00; army 11844 vs 7685 at 20:00 with kills 22/141 - it doesn't engage. Points loss.

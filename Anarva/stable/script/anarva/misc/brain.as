@@ -446,11 +446,14 @@ void Update()
 		for (uint b = a + 1; b < spWork.length(); ++b)
 			if (spWork[b] < spWork[a]) { const float tw = spWork[a]; spWork[a] = spWork[b]; spWork[b] = tw; const float ty = spYield[a]; spYield[a] = spYield[b]; spYield[b] = ty; }
 	const float Hc = AiMax(1.f, Economist::Horizon());
+	// feedback (owner: "ignores losses? is there no feedback loop?"): a claimed extractor yields until the horizon or
+	// until it dies, whichever comes first - its measured life once producers have been lost (no horizon floor)
+	const float Lm = (Economist::producerLosses > 0) ? Economist::MeasuredLife() : 1e30f;
 	float vN = 0.f, vN1 = 0.f, cum = 0.f;
 	for (uint j = 0; j < spWork.length(); ++j) {
 		cum += spWork[j];
-		vN += spYield[j] * AiMax(0.f, Hc - cum / N);
-		vN1 += spYield[j] * AiMax(0.f, Hc - cum / (N + 1.f));
+		vN += spYield[j] * AiMin(Lm, AiMax(0.f, Hc - cum / N));
+		vN1 += spYield[j] * AiMin(Lm, AiMax(0.f, Hc - cum / (N + 1.f)));
 	}
 	const float saved = (vN1 - vN) * Economist::MetalShare();
 	// A constructor without a building job proves the work we can claim now is covered: one more saves nothing (25
@@ -2428,7 +2431,8 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// metal alone the lab made 19 constructors and 86 army by minute 8 vs the winners' 10.8 and 2036, Feast 2026-11-25)
 	const float H0 = AiMax(1.f, Economist::Horizon());
 	const float flow = (aiEconomyMgr.metal.income + aiEconomyMgr.energy.income / AiMax(1e-3f, Economist::energyPerMetal)) * H0;
-	const float stake = Strategic::ownedMetal + Assess::EnemyValue() + flow;
+	// feedback: what raids have been taking, at the measured rate over the horizon, is what an army stops
+	const float stake = Strategic::ownedMetal + Assess::EnemyValue() + flow + Economist::LossRate() * H0;
 	const float eAll = AiMax(1e-3f, eAir + eSurf);
 	const float stakeAir = stake * eAir / eAll, stakeSurf = stake * eSurf / eAll;
 	const float H = AiMax(1.f, Economist::Horizon());
@@ -2887,9 +2891,12 @@ void UpdateProducerLife()
 	}
 	producerFrame = f;
 }
+float producerLostMetal = 0.f;  // metal of producers the enemy killed (feedback: what raids take, measured)
+float LossRate() { return producerLostMetal / AiMax(1.f, float(ai.frame) / SECOND); }
 void OnProducerLost(CCircuitUnit@ u)
 {
 	++producerLosses;
+	producerLostMetal += MetalValue(u.circuitDef);
 	if (Covered(u.GetPos(ai.frame), AiGetTeamUnits())) ++coveredLosses; else ++uncoveredLosses;
 }
 float CoveredLife() { return (coveredLosses > 0) ? coveredExposure / float(coveredLosses) : AiMax(coveredExposure, ProducerLife()); }
