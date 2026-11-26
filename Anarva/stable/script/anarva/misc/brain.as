@@ -4763,9 +4763,13 @@ void CommForces(const AIFloat3& in p, float tHome)
 		if (dist <= commERange) commInFire += d.power;  // standing in their fire with it now: shares it
 	}
 }
-float RiskPDeath(const AIFloat3& in p, float tHome)
+float RiskPDeath(const AIFloat3& in p, float tHome0)
 {
-	CommForces(p, tHome);
+	CommForces(p, tHome0);
+	// escaping is getting out of their reach, not reaching a factory: at home the factory is 0 s away and the risk
+	// read 0 while the enemy stood at the factory - the commander fought at stake-risk 30 and 245 in a base fight and
+	// died at 18:29, 196 from base (cmd_m63). At least their longest range over its speed.
+	const float tHome = AiMax(tHome0, commERange / AiMax(1.f, riskUnit.circuitDef.speed));
 	const float d2 = commDanger * commDanger, c2 = commCover * commCover;
 	const float lose = d2 / AiMax(1e-3f, d2 + c2);  // the fight there goes against us
 	// ...and it can't walk out: time to burn through its health vs time back to cover
@@ -4781,7 +4785,9 @@ float RiskPDeath(const AIFloat3& in p, float tHome)
 	// fire is split among what stands in it now, not what could arrive: counted over all cover, an army on its way made
 	// the commander's share ~0 and it took 54 fights, dying at 14:16; winners' commanders have an enemy within 600 only
 	// 4-9% of the time at minutes 4-14 (replays.db comm table, 1v1 winners, 660-1284 samples per minute)
-	const float share = riskUnit.circuitDef.power / AiMax(1e-3f, commInFire);
+	// ...except where it is the prize: the enemy shoots what is worth most in its reach, and for the commander that is
+	// the game - its share is all of it (P read 0.00 with a Leveler 238 away and the army around; it died at 14:45, cmd_m65)
+	const float share = (riskUnit is commander) ? 1.f : riskUnit.circuitDef.power / AiMax(1e-3f, commInFire);
 	const float tExposed = AiMin(tHome, commEnemyHp / AiMax(1e-3f, commOurDps));
 	const float pFocus = AiMin(1.f, commDps * share * tExposed / health);
 	return 1.f - (1.f - pLose) * (1.f - pFocus);
@@ -5065,6 +5071,9 @@ float CommNet(uint i, const AIFloat3& in c, const CCircuitDef@ cd, const array<A
 void CommDefendUpdate()
 {
 	if (commander is null || !Opening::done || !HasBase()) return;
+	// escaping is its job while builder safety has it on a safe task: a fight started from the escape route undid it
+	// (left at 14:00, sent at a Raider 1 s later, dead at 14:05 - cmd_m67)
+	if (commander.task !is null && safeTasks.findByRef(commander.task) >= 0) return;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef, ids;
 	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);

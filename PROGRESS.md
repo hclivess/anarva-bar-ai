@@ -215,3 +215,12 @@ The latest batch (D-gun and strength fixes) is being played.
   (~9 M/s here) - what it adds is army, and the army is what holds extractors and wins fights. Value production
   capacity by what its units are worth to us (the Production fight value of its output over the horizon), the same
   measure the lab's units are chosen by, instead of the overflow alone.
+- **Second factory and the commander (cmd_m61-69):**
+  - The factory choice returned the advanced lab whenever tech allowed it (2247-3620 metal, value -1154..-3378 at the
+    builders' prices), so no second T1 factory came. It now competes on that value: 3-4 bot labs per game.
+  - Commander risk: escape is getting out of the enemies' reach (at home the factory was 0 s away, risk 0 in a base
+    fight); the commander draws all the fire in reach (the enemy shoots the game); no fights while it escapes.
+    Deaths moved but remain (14:45, 14:05, 15:44): the last one walked 1194 out to a build job - the core picks the
+    commander's jobs without risk; builder safety acts only once danger is there. Next: the commander's job pick must
+    weigh the risk at the job site (P(death there) x the game) before it walks, as players keep it within reach of
+    the army and away from enemies (enemy within 600 only 4-9% of the time, replays.db comm).
