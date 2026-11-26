@@ -4114,7 +4114,15 @@ void Update()
 		{
 			const float lostM = AiMax(0.f, op.startMetal - opMetal);
 			const float killedM = Assess::killedTotal - op.killedAtStart;
-			if (lostM > 0.f) op.defence = AiMax(op.defence, S * lostM / AiMax(1.f, killedM));
+			// ...once the fight has had time to kill anything: kills lag losses by the target's health over our dps. Read
+			// from the first second, one loss over ~0 kills gave defence 57227-90056 and the army pulled back and
+			// relaunched 8 times in 10 s in our own base while Mists killed the commander (cmd_m73, 14:12-14:42)
+			float dps = 0.f;
+			for (uint k = 0; k < op.units.length(); ++k) dps += op.units[k].circuitDef.GetSustainedDps();
+			float tgtHp = (Economist::mexT1 !is null) ? Economist::mexT1.health : 1.f;
+			for (uint i = 0; i < n; ++i) if (eIds[i] == op.enemyId && eDef[i] !is null) { tgtHp = eDef[i].health * eHp[i]; break; }
+			const float age = float(ai.frame - op.startFrame) / SECOND;
+			if (lostM > 0.f && age >= tgtHp / AiMax(1e-3f, dps)) op.defence = AiMax(op.defence, S * lostM / AiMax(1.f, killedM));
 		}
 		if (!alive || op.units.length() == 0 || FightGain(op.value, S, op.defence, opMetal) <= 0.f) {
 			if (alive && op.units.length() > 0) {
@@ -4612,7 +4620,15 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 	++commRedirects;
 	AiLog("[ANV] CommRedirect: " + bt.buildDef.GetName() + " gain " + int(lastGain) + " < risk " + int(lastRisk) + " (danger " + F1(commDanger) + " cover " + F1(commCover) + ")");
 	IUnitTask@ safe = CommSafeJob(comm.GetPos(ai.frame));
-	return safe is null ? task : safe;
+	if (safe is null) return task;
+	// the safe job holds until the place it left is safe, like any builder's escape (it carries the game's value, and
+	// builder safety ends it): without, the core re-offered a forward job each second and the commander was
+	// redirected 50 times in 50 s 1242 from base, never going home, until it died at 13:35 (cmd_m71)
+	IBuilderTask@ sbt = cast<IBuilderTask>(safe);
+	if (sbt !is null) sbt.value = GameValue();
+	safeTasks.insertLast(safe);
+	leftAt.set("" + comm.id, bt.GetBuildPos());
+	return safe;
 }
 
 /*
@@ -5066,7 +5082,9 @@ float CommNet(uint i, const AIFloat3& in c, const CCircuitDef@ cd, const array<A
 	pD = AiMax(pD, CommPDeath(mid, EscapeTime(mid)));
 	pD = AiMax(pD, CommPDeath(c, EscapeTime(c)));
 	const float risk = pD * V;
-	return stake * marginal - risk - (t + tFight) * commRate;  // its time is our best builder's time
+	// what it saves only counts if it lives: dead, the game is lost and the stake with it. Counted in full whatever P,
+	// a Gator near the base read 5186-10544 and the commander died in the fight 3 s later (cmd_m69, 15:44)
+	return (1.f - pD) * stake * marginal - risk - (t + tFight) * commRate;  // its time is our best builder's time
 }
 void CommDefendUpdate()
 {
