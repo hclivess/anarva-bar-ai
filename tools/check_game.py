@@ -342,6 +342,64 @@ def opening_vs_winners(game_dir, db_path, mapname, until_s=180):
     print("    " + "  ".join(f"{u}={ours[u]}/{theirs[u] / n:.1f}" for u in units if u != "com"))
 
 
+def win_chance_report(game_dir, me):
+    """Win chance against this opponent by minute, from the replay model (tools/winprob.py; relative to the opponent:
+    metal income, energy income, army - what the harness logs for both teams), and the gap that costs the most."""
+    import importlib.util
+    log = os.path.join(game_dir, "infolog.txt")
+    spec_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "winprob.py")
+    if me is None or not os.path.exists(log) or not os.path.exists(spec_path):
+        return
+    spec = importlib.util.spec_from_file_location("winprob", spec_path)
+    wp = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wp)
+    per = {}
+    for m in re.finditer(r"\[HARNESS\] stats f=(\d+) dead=\w+ team=(\d+) [^\n]*?army_m=([\d.]+)[^\n]*?m_inc=([\d.]+) e_inc=([\d.]+)",
+                         open(log, encoding="utf-8", errors="replace").read()):
+        f, team = int(m.group(1)), int(m.group(2))
+        if f % 1800 == 0:
+            per.setdefault(f // 1800, {})[team] = [float(m.group(4)), float(m.group(5)), float(m.group(3))]
+    rows = []
+    for minute in sorted(per):
+        teams = per[minute]
+        if me not in teams or len(teams) != 2:
+            continue
+        other = [t for t in teams if t != me][0]
+        g = wp.relative_gaps(minute, teams[me], teams[other])
+        if g is None:
+            continue
+        p, auc, costs = g
+        informative = json_info(wp, minute)
+        best = costs[0]
+        rows.append((minute, p, auc, informative, best))
+    if not rows:
+        return
+    print("  win chance vs this opponent (replay model, relative metal income / energy income / army; AUC = trust):")
+    names = {"m_inc": "metal income", "e_inc": "energy income", "army": "army"}
+    for minute, p, auc, informative, (dp, f, ours, theirs) in rows:
+        if not informative:
+            print(f"    min {minute:2d}: model has no information at this minute")
+            continue
+        gap = f"biggest cost: {names[f]} {ours:,.0f} vs {theirs:,.0f} (+{dp * 100:.0f} points if matched)" if dp > 0.005 else "no gap that costs"
+        print(f"    min {minute:2d}: {p * 100:3.0f}%  (AUC {auc:.2f})  {gap}")
+
+
+def json_info(wp, minute):
+    import json as _json
+    try:
+        return bool(_json.load(open(wp.REL_MODEL))["minutes"][str(minute)].get("informative", True))
+    except (OSError, KeyError):
+        return False
+
+
+def json_coef(wp, minute):
+    import json as _json
+    try:
+        return _json.load(open(wp.REL_MODEL))["minutes"][str(minute)]["coef"]
+    except (OSError, KeyError):
+        return []
+
+
 def frac(a, b):
     try:
         return int(a) / max(1, int(b))
@@ -361,6 +419,7 @@ def report(game_dir, db_path, maps_json):
     curve, basis = winners_curve(db_path, mapname, maps_json, pair, sides)
     print(f"\n=== {game_dir}  (Anarva team {me})")
     opening_vs_winners(game_dir, db_path, mapname)
+    win_chance_report(game_dir, me)
     if not checks:
         print("  no [ANV-CHECK] lines: the AI build predates the self-assessment")
         return

@@ -155,6 +155,24 @@ itself.
 These are counts from this set of games, not a balance verdict: players who pick random may differ in skill from
 those who pick a faction.
 
+**A win-probability model** (machine learning, used for measurement only: the AI never reads it):
+
+![Win-probability model: accuracy by minute, and one Anarvā game](docs/winprob.png)
+
+A logistic regression per minute, fitted on the 107 top-player 1v1 games, predicts the winner. Its regularisation
+is chosen by cross-validation, with both players of a game kept in the same fold.
+- **From a player's own state alone it barely can:** held-out AUC 0.54–0.69. Top players' economies look alike.
+- **From the state relative to the opponent it predicts well:** AUC 0.67–0.87 from minute 3, peaking at minute 8.
+  Here relative means the difference in metal income, energy income and army.
+- **Energy income lead weighs most at most minutes.** With all six features (extractors, factories and
+  constructors too), the extractor lead follows it at minutes 4–8.
+
+`tools/check_game.py` scores each of our games against BARb with it, using what the harness logs for both teams. For
+each minute it shows our win chance and the gap that costs the most points. In the game above the first big cost
+is metal income at minute 3: 6/s against BARb's 12, 23 points of win chance. Refit with `python tools/winprob.py fit`.
+At minutes where cross-validation shrinks the model to its prior (its probabilities collapse to 50%), the report
+says so instead of showing a number.
+
 Most 1v1 games are decided at T1: only 41 of 107 winners build a T2 factory. Expansion, the first construction
 turret by about five minutes, and the T1 army decide them. By 3:00 the winners average 8.4 wind turbines,
 5 extractors, about 6 fighters and 0.2 towers.
