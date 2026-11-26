@@ -4564,7 +4564,9 @@ void Pickets(array<CCircuitUnit@>@ freeUnits)
 		if (prev != key) AiLog("[ANV-PICKET] " + ud.GetName() + " -> (" + key + "): losses there " + int(bestL) + " over " + int(tGame) + " s, x H " + int(H)
 			+ " x win " + F2(bestW) + " = " + int(bestV) + " > its value in the army " + int(bestC) + " (kill time " + int(bestT) + " s)");
 		now.set("" + u.id, key);
-		if (u.GetPos(ai.frame).distance2D(site[bs]) > ud.GetMaxRange()) u.CmdFightTo(site[bs]);
+		// a picket holds its post: on attack-move it chased fast raiders away from it (Pawns killed chasing Incisors, 39 in
+		// rp2); standing, it fires at what enters its reach
+		if (u.GetPos(ai.frame).distance2D(site[bs]) > ud.GetMaxRange()) u.CmdMoveTo(site[bs]);
 	}
 	picketAt = now;
 	for (int i = int(freeUnits.length()) - 1; i >= 0; --i) if (used[i]) freeUnits.removeAt(i);

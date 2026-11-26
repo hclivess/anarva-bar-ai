@@ -748,3 +748,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   Pawns die to Incisors (39: fast raiders they chase) and Pounders (26: splash on clumped Pawns - our splash term read
   1.00 for Pawns); 40 deaths at 2500-3000 from base in ops of up to 46 units pushing into their side. Next: splash
   counted per enemy type against our spacing, no chasing what outruns us, and pushes valued with the defence they meet.
+- **Pickets hold their posts (pc1-2):** on attack-move they chased Incisors away (39 Pawn deaths to Incisors in rp2); plain move to the post: 15-18. Both games lost (18:00, 15:00). Record on the pk3-line builds: 1 win in 6.
