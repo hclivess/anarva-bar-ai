@@ -2935,10 +2935,24 @@ void UpdateProducerLife()
 }
 float producerLostMetal = 0.f;  // metal of producers the enemy killed (feedback: what raids take, measured)
 float LossRate() { return producerLostMetal / AiMax(1.f, float(ai.frame) / SECOND); }
+// where producers die: position, metal, and the raiders there (strength sqrt(dps x hp) and dps of the enemies in reach)
+array<AIFloat3> lossPos; array<float> lossM, lossE, lossD;
 void OnProducerLost(CCircuitUnit@ u)
 {
 	++producerLosses;
 	producerLostMetal += MetalValue(u.circuitDef);
+	{
+		const AIFloat3 p = u.GetPos(ai.frame);
+		float E = 0.f, D = 0.f;
+		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+		for (uint i = 0; i < ne; ++i) {
+			const CCircuitDef@ d = ed[i];
+			if (d is null || !d.IsMobile() || d.GetSustainedDps() <= 0.f || ep[i].distance2D(p) > d.GetMaxRange() + d.GetRadius() + u.circuitDef.GetRadius()) continue;
+			E += sqrt(d.GetSustainedDps() * AiMax(1.f, eh[i] * d.health)); D += d.GetSustainedDps();
+		}
+		lossPos.insertLast(p); lossM.insertLast(MetalValue(u.circuitDef)); lossE.insertLast(E); lossD.insertLast(D);
+	}
 	if (Covered(u.GetPos(ai.frame), AiGetTeamUnits())) ++coveredLosses; else ++uncoveredLosses;
 }
 float CoveredLife() { return (coveredLosses > 0) ? coveredExposure / float(coveredLosses) : AiMax(coveredExposure, ProducerLife()); }
@@ -4402,6 +4416,71 @@ void CheckFailedSpot()
  *  Free units wait at home. Every decision is logged ([ANV-CMD]).
  */
 namespace Command {
+/*
+ * Pickets (owner's winners: singles spread early across their half, then one main squad; ~2 extractors lost by 12:00 vs
+ * our 12-19 - replays.db): a lone raider kills a far extractor in seconds and the army needs 30-50 s to walk there (rv1:
+ * nearly every loss a single Grunt 640-1920 from base). A unit stationed by an extractor answers in time. A site is worth
+ * the losses measured around it (metal lost there per second of game, over the horizon) x the share of the fight our unit
+ * wins against the raiders that killed there (as seen at each loss), where the main army can't arrive before an extractor
+ * dies (its health over their dps); the unit is worth what it adds to the main fights instead (its metal at the lab's
+ * value per metal of army now). Nearest free unit to the best site while that beats it; one unit covers what lies within
+ * its reach in that kill time.
+ */
+dictionary picketAt;  // unit id -> "x,z"
+void Pickets(array<CCircuitUnit@>@ freeUnits)
+{
+	if (Economist::lossPos.length() == 0 || freeUnits.length() == 0) return;
+	const float tGame = AiMax(1.f, float(ai.frame) / SECOND);
+	const float H = AiMax(1.f, Economist::Horizon());
+	AIFloat3 ac(0.f, 0.f, 0.f); float aSpeed = 1e9f; uint na = 0;
+	for (uint i = 0; i < freeUnits.length(); ++i) { ac = ac + freeUnits[i].GetPos(ai.frame); aSpeed = AiMin(aSpeed, freeUnits[i].circuitDef.speed); ++na; }
+	ac = ac / float(AiMax(1, int(na)));
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	array<AIFloat3> site; array<float> siteHp;
+	for (uint i = 0; i < mine.length(); ++i)
+		if (!mine[i].circuitDef.IsMobile() && Facts::ExtractsMetal(mine[i].circuitDef.GetName()) > 0.f) { site.insertLast(mine[i].GetPos(ai.frame)); siteHp.insertLast(mine[i].circuitDef.health); }
+	array<bool> used(freeUnits.length(), false), covered(site.length(), false);
+	dictionary now;
+	while (true) {
+		int bs = -1, bu = -1; float bestNet = 0.f, bestV = 0.f, bestC = 0.f, bestT = 0.f, bestL = 0.f, bestW = 0.f;
+		for (uint k = 0; k < site.length(); ++k) {
+			if (covered[k]) continue;
+			int nu = -1; float nd = 1e30f;
+			for (uint i = 0; i < freeUnits.length(); ++i) if (!used[i]) { const float d = freeUnits[i].GetPos(ai.frame).distance2D(site[k]); if (d < nd) { nd = d; nu = int(i); } }
+			if (nu < 0) break;
+			const CCircuitDef@ ud = freeUnits[nu].circuitDef;
+			float lm = 0.f, le = 0.f, ld = 0.f, nl = 0.f;
+			for (uint j = 0; j < Economist::lossPos.length(); ++j) {
+				// a loss counts where this unit, standing here, could have reached it while the raider shot
+				const float tK = siteHp[k] / AiMax(1e-3f, Economist::lossD[j]);
+				if (Economist::lossPos[j].distance2D(site[k]) > ud.GetMaxRange() + ud.speed * tK) continue;
+				lm += Economist::lossM[j]; le += Economist::lossE[j]; ld += Economist::lossD[j]; nl += 1.f;
+			}
+			if (nl <= 0.f) continue;
+			const float eRaid = le / nl, tKill = siteHp[k] / AiMax(1e-3f, ld / nl);
+			if (ac.distance2D(site[k]) / AiMax(1.f, aSpeed) <= tKill) continue;  // the army gets there in time anyway
+			const float us = sqrt(AiMax(0.f, ud.GetSustainedDps()) * AiMax(1.f, ud.health));
+			const float win = Production::WinShare(us, eRaid);
+			const float V = lm / tGame * H * win;
+			const float C = ud.costM * AiMax(0.f, Production::lastBestRatio);
+			if (V - C > bestNet) { bestNet = V - C; bs = int(k); bu = nu; bestV = V; bestC = C; bestT = tKill; bestL = lm; bestW = win; }
+		}
+		if (bs < 0) break;
+		used[bu] = true;
+		CCircuitUnit@ u = freeUnits[bu];
+		const CCircuitDef@ ud = u.circuitDef;
+		for (uint k = 0; k < site.length(); ++k) if (site[k].distance2D(site[bs]) <= ud.GetMaxRange() + ud.speed * bestT) covered[k] = true;
+		const string key = int(site[bs].x) + "," + int(site[bs].z);
+		string prev = "";
+		if (!picketAt.get("" + u.id, prev)) prev = "";
+		if (prev != key) AiLog("[ANV-PICKET] " + ud.GetName() + " -> (" + key + "): losses there " + int(bestL) + " over " + int(tGame) + " s, x H " + int(H)
+			+ " x win " + F2(bestW) + " = " + int(bestV) + " > its value in the army " + int(bestC) + " (kill time " + int(bestT) + " s)");
+		now.set("" + u.id, key);
+		if (u.GetPos(ai.frame).distance2D(site[bs]) > ud.GetMaxRange()) u.CmdMoveTo(site[bs]);
+	}
+	picketAt = now;
+	for (int i = int(freeUnits.length()) - 1; i >= 0; --i) if (used[i]) freeUnits.removeAt(i);
+}
 class Op {
 	float wpDist = 1e30f;  // the squad's summed distance to its current waypoint at the last update (progress test)
 	int enemyId = -1;  // -1: a place (expected economy)
@@ -4841,6 +4920,7 @@ void Update()
 	array<CCircuitUnit@> freeUnits;
 	for (uint i = 0; i < force.length(); ++i)
 		if (!assigned.exists("" + force[i].id)) freeUnits.insertLast(force[i]);
+	Pickets(freeUnits);
 	// concentration: free units reinforce the most valuable defended fight already running (the square law rewards
 	// every unit added there); undefended raids keep their single unit
 	{

@@ -687,3 +687,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   ~2 extractors lost by 12:00 vs our 12-19. Next: pickets - a unit stationed by each outer extractor group, worth the
   raid losses it prevents there (measured loss rate at that group x how much sooner it arrives than the main army)
   against what it adds to the main squad's fights.
+- **Pickets (pk1):** a unit stationed by an extractor where losses were measured and the army can't arrive before one
+  dies; worth losses there per second x H x its win share against the raiders seen there, against its metal at the lab's
+  value per metal of army. pk1: 229 assignments (e.g. Pawn -> (624,4160): 1620 lost in 391 s, win 0.77, 487 > 27); 28
+  extractors lost; army ahead at 12:00 (1857 vs 1231), kills 116/208. But metal stalls at ~20 M/s from 8:00 while BARb's
+  grows (50.4 at 12:00): expansion after 8:00 is the gap now. Points loss.
