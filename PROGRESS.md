@@ -252,3 +252,10 @@ The latest batch (D-gun and strength fixes) is being played.
   that isn't knowable from unit facts. Next: measure each of our types' hit rate taken from each enemy type live in
   this game (the damage events), and let it replace the modelled HitChance once there are hits to count. Live game
   data, not a replay table. Script blindness to add to SCRIPT_SIGHT.md: per-shot hit/miss by attacker and victim type.
+- **Live trade (committed c87b9db) and the conversion gap:** unit choice corrected by each type's live damage dealt /
+  taken (Pawns x0.13 vs Levelers): the lab builds Warriors and Hammers; two games (cmd_m89, cmd_m92) with the
+  commander alive at 20:00, army 14080 / 10102 (winners 12967), ratio 3-17x - both lost on points: BARb's buildings
+  29343-29651 vs ours 850-1720 and its metal income 87-154/s vs ours 20-22 (winners ~37). The army never ends the game.
+  Enemy base as a target, now six games with every gate tried (seen / judged / peak / win gate / their commander):
+  all six weaker than the build without it - reverted for good. A base we can't see can't be judged; the army needs
+  to see it (scouting, or the army's own advance as a scout) and our late economy must grow past ~20 M/s.
