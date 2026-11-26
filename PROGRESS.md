@@ -323,3 +323,10 @@ The latest batch (D-gun and strength fixes) is being played.
   vs 152 s, cmd_m125), so the one-order-at-a-time tower gate was dropped: two games, trade 0.49 / 0.47 (the build
   before: 0.85 / 0.95), the first lost at 16:30 with 2 extractors at 8:00; towers 5 / 16. Builders on towers are
   builders off extractors early; the tower rate needs the builder's time weighed, not just the site's value.
+- **Tech 2 (cmd_m129-m132) - reverted:** BARb's income runs 87-239/s on upgraded extractors, ours 20-40; we never build
+  the advanced lab. Its tech gate wants the lab's cost banked (it costs more than our whole storage) or moho payback
+  under the next extractor's (always 28 s, raided spots reopen). Affordability over the build time and the moho
+  upgrades in the factory value: the gate passed once (payback 68 s vs horizon 153 s) but no advanced lab was built,
+  and the two games traded 0.63 / 0.51 (vs 0.85 / 0.95) - reverted. The core's factory job ranks the lab by
+  build-power value only (negative), so even an approved T2 lab loses every builder pick: the core needs the same
+  upgrade value the script computes.
