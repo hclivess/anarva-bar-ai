@@ -3614,8 +3614,9 @@ CCircuitDef@ BestLabVsEnemy()
 			if (!mine[i].circuitDef.IsMobile() && mine[i].circuitDef.buildSpeed > 0.f && Facts::BuildOptions(mine[i].circuitDef.GetName()).length() > 0)
 				owned.insertLast(mine[i].circuitDef.GetName());
 	}
+	array<float> labV(labs.length(), 0.f);
+	float ownedBest = 0.f;
 	for (uint k = 0; k < labs.length(); ++k) {
-		if (owned.find(labs[k].def.GetName()) >= 0 && owned.length() < labs.length()) continue;  // a duplicate: unless we have every kind
 		const array<string> opts = Facts::BuildOptions(labs[k].def.GetName());
 		float lv = 0.f; string lu = "-";
 		for (uint o = 0; o < opts.length(); ++o) {
@@ -3626,8 +3627,16 @@ CCircuitDef@ BestLabVsEnemy()
 			if (v > lv) { lv = v; lu = u.GetName(); }
 		}
 		why += " " + labs[k].def.GetName() + "(" + lu + ")=" + F2(lv);
+		labV[k] = lv;
+		if (owned.find(labs[k].def.GetName()) >= 0) { ownedBest = AiMax(ownedBest, lv); continue; }  // a duplicate brings no new units
 		if (lv > bv) { bv = lv; @best = labs[k].def; }
 	}
+	// each kind we don't have: the share by which its best unit beats the best we can build now - the core values the
+	// factory by the metal it turns into those units (#116; tr1: the vehicle plant valued as build power only)
+	for (uint k = 0; k < labs.length(); ++k)
+		if (owned.find(labs[k].def.GetName()) < 0)
+			aiMilitaryMgr.SetFactoryEdge(labs[k].def, (labV[k] > 0.f) ? AiMax(0.f, labV[k] - ownedBest) / labV[k] : 0.f);
+	if (best is null) { for (uint k = 0; k < labs.length(); ++k) if (labV[k] > bv) { bv = labV[k]; @best = labs[k].def; } }  // we have every kind
 	AiLog("[ANV] LabVsEnemy: enemy speed " + F1(eSpeed) + " |" + why);
 	return (best !is null) ? best : BestLab();
 }
