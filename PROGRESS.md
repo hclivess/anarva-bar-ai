@@ -207,3 +207,11 @@ The latest batch (D-gun and strength fixes) is being played.
   weak (cmd_m51/53/55/58: army 918-1836 at 12:00) vs both without (m49/m56: 4212-5578): early base attacks of 4-13
   units at 1:46-8:17 spent the army before it grew - early on even the peak seen is small. Their base needs to be
   seen (scouting) before it can be judged; Fleas are at 0 since the per-cell scout survival.
+- **Commander in builder safety (cmd_m60):** its build jobs are weighed like any builder's with its loss priced at the
+  game; it survived the game (4 retreats). The game was lost to a single lab: one factory all game (0:50) with 12-13
+  builders, income 21-23 M/s and the bank at 1100-1400 from minute 10; the army collapsed at 11-14 (Rogues, Grunts,
+  Thuds). A second lab scored 34-637 builder-ms per metal vs extractors 57-173 and towers 11-97 and lost every pick
+  (winners: 2nd factory at a median 7:29, 94 of 103 games). Next: a factory is valued only by the overflow it absorbs
+  (~9 M/s here) - what it adds is army, and the army is what holds extractors and wins fights. Value production
+  capacity by what its units are worth to us (the Production fight value of its output over the horizon), the same
+  measure the lab's units are chosen by, instead of the overflow alone.
