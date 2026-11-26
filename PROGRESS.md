@@ -440,3 +440,9 @@ The latest batch (D-gun and strength fixes) is being played.
   BARb's goal build time (config constant) - no T1 constructor ever joined a T2 extractor upgrade. Removed; the join value
   (W/B - W/(B+b) at the job's yield) decides. An upgrade's yield is now the extra over the extractor it replaces (was its
   whole output, ~4/3 too much).
+- **Tier 2, staggered upgrades at all build power (as1-6):** as1-3 (before) never opened: the payback counted all n
+  upgrades by one constructor before any earned (1251-1820 s). Now upgrade k earns from k x tau, tau at all our build
+  power (#102 assists). as4-6: gate opens again, labs at - / 14:56 / 7:34, still no upgrade by the end; all lost (0.82 /
+  0.75 / 0.43). as6: income 75.6 at 12:00 (our highest) with an army of 162. **Next:** ProducerLife is floored by
+  Horizon() (the earliest the enemy could take all we own), which is huge early: the gate read 36x vs the army's 24x and
+  opened at 1:48 (as4). The floor must not make an early life look long.

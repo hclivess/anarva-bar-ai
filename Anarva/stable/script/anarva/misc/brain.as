@@ -2885,7 +2885,11 @@ float MohoPayback(const CCircuitDef@ lab)
 		if (conCost == 0.f || MetalValue(c) < conCost) {
 			conCost = MetalValue(c);
 			conTime = c.buildTime / AiMax(1.f, lab.buildSpeed);
-			mohoTime = n * mexT2.buildTime / AiMax(1.f, c.buildSpeed);
+			// each upgrade earns from when it stands: the k-th at k x tau, on average (n+1)/2 x tau; and every builder joins
+			// them (#102, owner: "assisted by every t1 con and tower"), so tau is its build time at all our build power.
+			// (All n done by one constructor before any earned read 1251-1820 s and returns 0.00x all game, as2/as3.)
+			const float tau = mexT2.buildTime / AiMax(c.buildSpeed, aiBuilderMgr.GetBuildPower());
+			mohoTime = 0.5f * (n + 1.f) * tau;
 		}
 	}
 	mohoReady = lab.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower()) + conTime + mohoTime;
