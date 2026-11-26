@@ -832,8 +832,30 @@ void Init()
 		if (cheapest is null || sc[i].costM < cheapest.costM) @cheapest = sc[i];
 }
 
+// What scouting finds, measured: enemy metal first seen within a scout's sight, per scout-second (#116: valued on
+// a model alone, Ticks as scouts at 1.57 per metal crowded out Centurions - the only unit trading above 1, fe4)
+dictionary seenIds;
+float foundMetal = 0.f, scoutSeconds = 0.f; int foundFrame = -1;
+void TrackFinds()
+{
+	if (foundFrame >= 0) scoutSeconds += float(scouts.length()) * float(ai.frame - foundFrame) / SECOND;
+	foundFrame = ai.frame;
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef, ids;
+	const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	AiGetEnemyIds(ids);
+	for (uint i = 0; i < ne && i < ids.length(); ++i) {
+		const string key = "" + ids[i];
+		if (seenIds.exists(key) || (ef[i] & 2) == 0) continue;  // known, or only a radar blip
+		seenIds.set(key, true);
+		for (uint k = 0; k < scouts.length(); ++k)
+			if (scouts[k].GetPos(ai.frame).distance2D(ep[i]) <= scouts[k].circuitDef.losRadius) { foundMetal += ec[i]; break; }
+	}
+}
+// measured worth of one more scout: metal found per scout-second x the scouts' life; -1 until scouts have served
+float MeasuredWorth() { return (scoutSeconds > 0.f) ? foundMetal / scoutSeconds * Life() : -1.f; }
 void Update()
 {
+	TrackFinds();
 	const int n = Intel::gw * Intel::gh;
 	if (int(lastSeen.length()) != n) Init();
 	for (int c = 0; c < n; ++c)
@@ -2664,7 +2686,11 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		}
 		// information is worth what we can do with it: the share of a fight our forces could contest (a warning saves
 		// nothing when the army can't answer - 29 Fleas and 3 fighters at our 25 strength against 3789, round 20)
-		vScout = Scout::NextValue(d) * WinShare(sSurf + sAir, eSurf + eAir);
+		{
+			// measured once scouts have served (what they found per second over their life), the model before
+			const float mw = Scout::MeasuredWorth();
+			vScout = ((mw >= 0.f) ? AiMin(mw, Scout::NextValue(d)) : Scout::NextValue(d)) * WinShare(sSurf + sAir, eSurf + eAir);
+		}
 		const float v = AiMax(vFight, AiMax(vBuild, vScout));
 		const float ratio = v / AiMax(1.f, Economist::CostNow(d));  // energy at its price now (binding or not)
 		if (v == vBuild && vBuild > 0.f) conRatioNow = ratio;
