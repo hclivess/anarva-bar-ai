@@ -653,3 +653,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   constructors, army 150. Winners don't tower early; they build MORE of both economy and army - we are not choosing badly
   between them, we spend too slowly (the 2:00-3:00 swings: commander, lab, constructors idle or late, bank standing).
   Next: spending throughput from the first minute, not towers.
+- **Energy planned for the bank we can spend (en1-3):** winners make 174 E/s at 2:00 vs our 70 with the same metal, and
+  spend their bank (214 vs our 562). Our plan spread the bank over the planning horizon (10711 s early: 0.05 M/s). Now
+  the bank adds bank / job window, at most the idle build power's pull (en2 asked full capacity for any bank: 673 E/s at
+  8:00, army 378 vs 2485). en3: energy 387 vs 408 at 8:00, bank 127/33/22/11 at 4/6/8/12 min (was 500+), metal 31.8 vs
+  27.2 at 8:00. Army still behind (679 vs 2176 at 8:00, 3266 vs 5570 at 12:00); energy high mid-game (886 vs 688, 2942
+  banked at 12:00). Points loss.
