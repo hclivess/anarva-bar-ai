@@ -8,34 +8,45 @@ Purāṇa (6.10), Anarvā is one of the generals who served under Vṛtrāsura, 
 design. BARb plays by arbitrary constraints: hand-tuned cutoffs, fixed timers, dice rolls, a build order
 from a table. Anarvā removes them. Every choice is argued from the situation in front of it.
 
-## Status (2026-11-25)
+## Status (2026-11-26)
 
-**Anarvā does not beat BARb yet.** It is being rebuilt from BARb's logic into its own decisions, and
-since that rework it has not won a full-length 1v1 against BARb hard. Earlier results ("9–4 vs BARb
-hard") came from a build that still ran BARb's logic underneath. They are history, not the current
-state.
+![What 1v1 winners have by each minute, and where Anarvā stands](docs/replay_research.gif)
 
-**What changed in the rework:**
-- Every random number and hand-picked constant in the scripts, configs and the C++ core became a computed
-  decision ([AUDIT.md](AUDIT.md) lists each one and what replaced it).
-- The feature flags were folded into the code.
-- The first games after the rework exposed a series of economy and strength-estimation bugs, which have
-  been fixed (issues #81–#88).
+*1v1 winners from top-player replays (blue: median, band: middle half) against one Anarvā game versus BARb hard
+(orange). Regenerate with `python tools/viz_replays.py --game runs/<batch>/gNN`.*
 
-**Where it stands against top players.** The yardstick is the best players' replays, not BARb. These
-are the average winners of 61 top-player 1v1 games in the replay database, against Anarvā in its latest
-1v1 tests against BARb hard:
+**Anarvā does not beat BARb yet.** It has not won a full-length 1v1 against BARb hard since it was rebuilt from
+BARb's logic into its own decisions. The closest round so far (round 32) went to the 20-minute limit in three of
+four games and lost them on points.
 
-| Minute | Extractors | Constructors | Factories | Army (metal) | Anarvā (latest tests) |
-|---|---|---|---|---|---|
-| 2 | 3.4 | 3.7 | 1.0 | 102 | 2–3 extractors, 1 constructor |
-| 4 | 9.0 | 7.3 | 1.0 | 593 | 3–4 extractors |
-| 6 | 14.1 | 12.7 | 1.4 | 1185 | 4–9 extractors |
-| 8 | 20.1 | 20.2 | 2.0 | 2756 | 5–12 extractors, 1 factory, army 1300–2900 |
-| 10 | 23.6 | 29.4 | 2.7 | 4460 | |
+**What the chart shows:** Anarvā keeps pace with the winners for the first seven minutes:
+- extractors, energy and its first lab come on the winners' curve;
+- it builds a second factory before they do.
 
-The gap is expansion and production capacity: winners keep about one constructor per extractor and add a
-second factory by minutes 6–8. This is the current work.
+Then BARb's raiders take its extractors and its army never grows past a fraction of theirs. Holding the map and
+building production capacity, starting with the first construction turret that winners build at 4.7 minutes, is
+the current work.
+
+**Recent changes, most from watching games against BARb** (each is a computed decision, see below):
+- **Energy before the lab:** the opener builds whichever of metal and energy limits the lab's production.
+  It used to build three extractors and the lab before any energy.
+- **Pricing:**
+  - an extractor is worth what it extracts minus its upkeep;
+  - energy is priced by what it lets us spend;
+  - wind is valued as it blows, lulls included.
+- **Commander:** it no longer chases raiders it can't catch, and its build time counts as a cost.
+- **Builders:**
+  - they finish their jobs;
+  - they leave a job when energy runs short and switch to energy, boosting the factory included;
+  - they reclaim what blocks their way.
+- **Towers:**
+  - they compete with other jobs on the loss they prevent;
+  - a choke tower is built only where its fire covers the whole choke.
+- **Rez bots** are built only for actual wrecks.
+- **Fights:** taken on expected value: what the fight keeps against what it risks.
+- **Engine and lobby:**
+  - it reports ready at the start screen and says which team it is in chat;
+  - two Anarvās in one game no longer crash.
 
 **Goal:** first 100% of 1v1 games against BARb hard, then one Anarvā against six BARbs on every map type.
 
@@ -82,6 +93,22 @@ everything in SQLite (`runs/replays.db`), so no replay is ever played twice:
 
 1v1 is parsed first. Progress: `python tools/replay_db.py status`.
 
+**Milestones of the 1v1 winners** (107 winning players; when each first appears, and how many get there):
+
+| Milestone | Games | Median | Middle half |
+|---|---|---|---|
+| First lab or plant | 103 | 1.1 min | 0.9–1.2 |
+| First construction turret | 102 | 4.7 min | 3.7–5.7 |
+| First T2 factory | 41 | 12.7 min | 9.7–16.0 |
+| First T2 extractor | 34 | 14.9 min | 11.1–17.2 |
+| First fusion | 24 | 16.6 min | 13.2–20.7 |
+| First T3 gantry | 12 | 26.3 min | 24.3–30.8 |
+| Juggernaut / Behemoth / Titan | 1 each | 41 / 46 / 33 min | |
+
+Most 1v1 games are decided at T1: only 41 of 107 winners build a T2 factory. Expansion, the first construction
+turret by about five minutes, and the T1 army decide them. By 3:00 the winners average 8.4 wind turbines,
+5 extractors, about 6 fighters and 0.2 towers.
+
 ## The C++ core
 
 The scripts see the battlefield through a bridge the patch adds:
@@ -124,13 +151,17 @@ You need Beyond All Reason installed and started at least once (so it has downlo
 Remove it with `install.cmd -Uninstall` / `./install.sh --uninstall`; `-DryRun` / `--dry-run` shows what
 would happen without changing anything.
 
-The last release (v0.1.0) predates the rework. A new release follows once Anarvā wins its 1v1s.
+The last release (v0.1.0) predates the rework. A new release follows once Anarvā wins its 1v1s; until then,
+build from source.
 
 ### From source (developers)
 
 - Build the core under MSYS2 MinGW64 (`tools/build_dll.sh`, or `ninja -C ref/build BARb`).
-- Deploy with `tools/install.ps1 -Name AnarvaDev -Dll <built SkirmishAI.dll>`, which makes a side-by-side
-  test copy.
+- Deploy with `tools/install.ps1 -Name Anarva -Dll <built SkirmishAI.dll>`. It refuses, changing nothing, while
+  a running BAR holds the library.
+- Test one game at a time: `python tools/batch.py runs/<name> --games 1 --par 1 --me Anarva:anarva --opp BARb:hard
+  --maps "<map>"`, then `python tools/check_game.py runs/<name>/g00`. That compares the game with the 1v1 winners,
+  including the 3:00 build on the same map.
 - `python build.py` self-tests the configs and writes the release archives to `dist/`.
 
 ### Windows says the script is not safe
