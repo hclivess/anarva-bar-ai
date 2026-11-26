@@ -2110,21 +2110,23 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// it closes the gap: its health in the fight is less that damage (range, speed and dps from the unit defs). Without
 	// it, sqrt(dps x health) per metal made the Flea - a scout with a needle gun - our best fighter: 14-16 per game
 	// and the extractors raided away (short test s32, 2026-11-25).
-	array<float> mixDps, mixRange, mixW;
+	array<float> mixDps, mixRange, mixW, mixAoe, mixShot, mixSpeed, mixRad;
 	{
 		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
 		for (uint i = 0; i < ne; ++i) {
 			const CCircuitDef@ d = ed[i];
 			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
-			mixDps.insertLast(d.GetSustainedDps()); mixRange.insertLast(d.GetMaxRange());
+			mixDps.insertLast(d.GetSustainedDps()); mixRange.insertLast(d.GetMaxRange()); mixAoe.insertLast(d.GetAoe());
+			mixShot.insertLast(d.GetShotSpeed()); mixSpeed.insertLast(d.speed); mixRad.insertLast(d.GetRadius());
 			mixW.insertLast(sqrt(d.GetSustainedDps() * AiMax(1.f, d.health)));
 		}
 		if (mixW.length() == 0) {
 			for (uint i = 0; i < opts.length(); ++i) {
 				CCircuitDef@ d = ai.GetCircuitDef(opts[i]);
 				if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
-				mixDps.insertLast(d.GetSustainedDps()); mixRange.insertLast(d.GetMaxRange()); mixW.insertLast(1.f);
+				mixDps.insertLast(d.GetSustainedDps()); mixRange.insertLast(d.GetMaxRange()); mixAoe.insertLast(d.GetAoe());
+				mixShot.insertLast(d.GetShotSpeed()); mixSpeed.insertLast(d.speed); mixRad.insertLast(d.GetRadius()); mixW.insertLast(1.f);
 			}
 		}
 	}
@@ -2156,6 +2158,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			if (!reach) continue;
 		}
 		float vFight = 0.f, vBuild = 0.f, vScout = 0.f;
+		string terms = "";  // the fight terms, logged with each candidate
 		if (d.IsRoleAny(Unit::Role::BUILDER.mask) && d.buildSpeed > 0.f) {
 			// the value is claiming free spots: only for a builder that can build an extractor
 			if (Economist::mexT1 !is null && d.CanBuild(Economist::mexT1)) vBuild = EcoPos::constructorValue;
@@ -2167,8 +2170,29 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				wSum += mixW[k];
 			}
 			if (wSum > 0.f) gapDmg /= wSum;
-			const float hpSurf = AiMax(1.f, hp - gapDmg);
-			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp), us = sqrt(AiMax(0.f, d.surfThrDmg) * hpSurf);
+			// Splash: a shot with area of effect hits every unit of ours within its radius. Units in a squad stand about
+			// a body apart (two of their radii), so one shot hits ~(aoe / that spacing)^2 of them, at least one - a small
+			// unit massed takes each splash shot several times over (44 Pawns lost to Pounders in one minute, Canis
+			// 2026-11-26). Its health in the fight is divided by the hits a shot makes, averaged over the enemy mix.
+			float hitsW = 0.f;
+			for (uint k = 0; k < mixW.length(); ++k) {
+				const float spacing = AiMax(1.f, 2.f * d.GetRadius());
+				hitsW += mixW[k] * AiMax(1.f, (mixAoe[k] / spacing) * (mixAoe[k] / spacing));
+			}
+			const float hits = (wSum > 0.f) ? hitsW / wSum : 1.f;
+			// Dodging: a shell fired at range R with speed v lands R/v later; a target of radius r moving at u has moved
+			// u*R/v by then, so it is hit with chance ~ r / max(r, u*R/v) (instant weapons always hit). Our damage counts
+			// the hits we land on the units we'll meet; our health, the hits theirs land on us (unit facts).
+			float landW = 0.f, takenW = 0.f;
+			for (uint k = 0; k < mixW.length(); ++k) {
+				landW += mixW[k] * HitChance(d.GetShotSpeed(), d.GetMaxRange(), mixSpeed[k], mixRad[k]);
+				takenW += mixW[k] * HitChance(mixShot[k], mixRange[k], d.speed, d.GetRadius());
+			}
+			const float land = (wSum > 0.f) ? landW / wSum : 1.f;
+			const float taken = (wSum > 0.f) ? AiMax(1e-3f, takenW / wSum) : 1.f;
+			const float hpSurf = AiMax(1.f, (hp - gapDmg) / hits / taken);
+			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp), us = sqrt(AiMax(0.f, d.surfThrDmg) * land * hpSurf);
+			terms = "(hits " + F2(land) + " taken " + F2(taken) + " splash " + F1(hits) + " gapDmg " + int(gapDmg) + ")";
 			vFight = stakeAir * (WinShare(sAir + ua, eAir) - WinShare(sAir, eAir))
 				+ stakeSurf * (WinShare(sSurf + us, eSurf) - WinShare(sSurf, eSurf));
 			vFight *= AiMax(0.f, 1.f - dist / AiMax(1.f, d.speed) / H);
@@ -2178,7 +2202,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		vScout = Scout::NextValue(d) * WinShare(sSurf + sAir, eSurf + eAir);
 		const float v = AiMax(vFight, AiMax(vBuild, vScout));
 		const float ratio = v / AiMax(1.f, Economist::CostNow(d));  // energy at its price now (binding or not)
-		why += " " + d.GetName() + "=" + F2(ratio);
+		why += " " + d.GetName() + "=" + F2(ratio) + terms;
 		if (ratio > bestRatio) {
 			bestRatio = ratio; @bestDef = d; bestV = v;
 			bestJob = (v == vScout) ? 2 : ((v == vBuild) ? 1 : 0);
@@ -2219,6 +2243,14 @@ float ArmyControl(bool home = false)
 // where each unit adds in proportion (Lanchester's linear law); the square law over one big battle made a small army
 // worth nothing at the margin exactly when it was behind (S 56 vs E 364: 39 Fleas instead of fighters, Eye of Horus
 // 2026-11-25). The square law still decides whether a fight is taken (Command).
+// Chance a shot lands on a moving target: instant weapons (shot speed 0) always; else the target's radius over how far it
+// moves while the shot flies the weapon's range (unit facts: shot speed, range, target speed and size).
+float HitChance(float shotSpeed, float range, float targetSpeed, float targetRadius)
+{
+	if (shotSpeed <= 0.f) return 1.f;
+	const float drift = targetSpeed * range / shotSpeed;
+	return AiMin(1.f, AiMax(1.f, targetRadius) / AiMax(AiMax(1.f, targetRadius), drift));
+}
 float WinShare(float S, float E) { return (S + E > 0.f) ? S / (S + E) : 0.f; }
 
 string Status() { return "moho=" + mohoCons + "(" + mohoWhy + ") prod=" + choices + "/b" + builders + " rez=" + rezBots.length() + "/" + rezOrders + " last=" + last; }
@@ -3607,6 +3639,9 @@ class Op {
 	bool arrived = false;
 	AIFloat3 routeTo;
 	uint leg = 0;
+	float startMetal = 0.f;  // for the outcome log
+	int startFrame = 0;
+	float killedAtStart = 0.f;
 }
 array<Op@> ops;
 
@@ -3846,6 +3881,13 @@ void Update()
 					+ F1(trade) + " <= defence " + F1(op.defence));
 				for (uint k = 0; k < op.units.length(); ++k) Order(op.units[k], "home", 0, basePos, -1);
 			}
+			{  // outcome: what the op cost and what was killed meanwhile (all kills, our whole army's)
+				float left = 0.f;
+				for (uint k = 0; k < op.units.length(); ++k) left += op.units[k].circuitDef.costM;
+				AiLog("[ANV-FIGHT] f=" + ai.frame + " op " + (op.enemyId < 0 ? "raid spot" : ("enemy " + op.enemyId)) + " at (" + int(op.pos.x) + "," + int(op.pos.z)
+					+ ") ended after " + ((ai.frame - op.startFrame) / SECOND) + " s: " + (alive ? (op.units.length() == 0 ? "squad lost" : "pulled back") : "target gone")
+					+ ", metal sent " + int(op.startMetal) + " left " + int(left) + ", enemy metal killed meanwhile " + int(Assess::killedTotal - op.killedAtStart));
+			}
 			ops.removeAt(o);
 			continue;
 		}
@@ -3974,6 +4016,7 @@ void Update()
 			}
 			Op op;
 			op.enemyId = cid[best]; op.pos = cp[best]; op.value = cv[best]; op.defence = dfc[best]; op.engaged = dfc[best] <= 0.f;
+			op.startMetal = metal; op.startFrame = ai.frame; op.killedAtStart = Assess::killedTotal;
 			for (uint k = 0; k < pick.length(); ++k) op.units.insertLast(pick[k]);
 			ops.insertLast(op);
 			++created;
@@ -4160,6 +4203,20 @@ void Update()
 		}
 		string line = "";
 		for (uint i = 0; i < jk.length(); ++i) line += " " + jk[i] + ":" + jn[i];
+		{  // the enemy's army as seen, by unit type (what our unit choices were made against)
+			array<AIFloat3> ep2, ev2; array<CCircuitDef@> ed2; array<float> ec2, eh2, eb2; array<int> ef2;
+			const uint ne2 = AiGetEnemies(ep2, ev2, ed2, ec2, ef2, eh2, eb2);
+			array<string> ek; array<int> en;
+			for (uint i = 0; i < ne2; ++i) {
+				if (ed2[i] is null || !ed2[i].IsMobile() || ed2[i].GetSustainedDps() <= 0.f) continue;
+				const string nm = ed2[i].GetName();
+				const int at = ek.find(nm);
+				if (at < 0) { ek.insertLast(nm); en.insertLast(1); } else ++en[at];
+			}
+			string el = "";
+			for (uint i = 0; i < ek.length(); ++i) el += " " + ek[i] + ":" + en[i];
+			AiLog("[ANV-ENEMY] t=" + Minute() + "m armed mobile enemies seen:" + (el.length() == 0 ? " none" : el));
+		}
 		AiLog("[ANV-JOBS] t=" + Minute() + "m" + line + " | metal income " + F1(aiEconomyMgr.metal.income) + " pull " + F1(aiEconomyMgr.metal.pull)
 			+ " bank " + int(aiEconomyMgr.metal.current) + "/" + int(aiEconomyMgr.metal.storage) + " | producer life " + int(Economist::ProducerLife()) + " s (threat floor " + int(Economist::Horizon())
 			+ ", lost " + Economist::producerLosses + ")");
