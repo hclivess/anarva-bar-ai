@@ -2612,6 +2612,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	string kLog = "";
 	for (uint k = 0; k < kE.length(); ++k) kLog += " " + kName[k] + " " + int(kS[k]) + "/" + int(kE[k]);
 	CCircuitDef@ bestDef = null; float bestRatio = 0.f, bestV = 0.f; int bestJob = -1;  // 0 fight, 1 build, 2 scout
+	float conRatioNow = 0.f;  // the constructor's value per metal this pick
 	string why = "";
 	for (uint i = 0; i < opts.length(); ++i) {
 		CCircuitDef@ d = ai.GetCircuitDef(opts[i]);
@@ -2666,6 +2667,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		vScout = Scout::NextValue(d) * WinShare(sSurf + sAir, eSurf + eAir);
 		const float v = AiMax(vFight, AiMax(vBuild, vScout));
 		const float ratio = v / AiMax(1.f, Economist::CostNow(d));  // energy at its price now (binding or not)
+		if (v == vBuild && vBuild > 0.f) conRatioNow = ratio;
 		why += " " + d.GetName() + "=" + F2(ratio) + terms;
 		if (ratio > bestRatio) {
 			bestRatio = ratio; @bestDef = d; bestV = v;
@@ -2681,6 +2683,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	++built[bestDef.id];
 	last = bestDef.GetName();
 	if (bestJob == 0) lastBestRatio = bestRatio;
+	if (conRatioNow > 0.f || lastBestRatio > 0.f) aiMilitaryMgr.SetValuePerMetal(lastBestRatio, conRatioNow);  // lab build power (core)
 	AiLog("[ANV-PROD] " + fdef.GetName() + " -> " + bestDef.GetName() + " as " + (bestJob == 2 ? "scout" : (bestJob == 1 ? "constructor" : "fighter"))
 		+ " (value " + int(bestV) + " per metal " + F2(bestRatio) + "; S air/surf " + int(sAir) + "/" + int(sSurf) + " E " + int(eAir) + "/" + int(eSurf) + "; per type ours/theirs" + kLog + ")" + " |" + why);
 	return aiFactoryMgr.Enqueue(TaskS::Recruit(bestJob == 1 ? Task::RecruitType::BUILDPOWER : Task::RecruitType::FIREPOWER,
