@@ -628,3 +628,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
 - **Producer job value capped by measured life (fb3):** the core's extractor/plant value runs to the horizon or the
   measured producer life x the spot's keep against our producers' mean keep (SetProducerLife). fb3: 40 extractors, 3
   constructor deaths, metal 57.1 vs 38.9 at 12:00 and the bank spent; but army 1188 vs 5745 - lost at 14:00.
+- **Reverted: unseen enemy army from its estimated economy (fb4).** Earned (estimated income integrated) - killed -
+  buildings at our static per extractor read 60-113k strength against BARb's real 5-12k army metal: unscouted spots
+  count as possibly theirs and integrate into an army that doesn't exist; fighters looked useless against it, the
+  bank sat at 1030-1403. The unseen army needs sight (scouting), not a prior.
