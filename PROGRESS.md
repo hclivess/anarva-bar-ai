@@ -409,3 +409,10 @@ The latest batch (D-gun and strength fixes) is being played.
   9:23 / 11:57, first upgraded extractors 13:15 / 13:52, 6 and 3 by 15-18 min (t2f/g) - replays.db 1v1 winners: lab
   10%/50% at 8.4/12.7 min, first upgrade 9.8/14.8 min (107 winners, 34 ever upgrade). Both games lost (trade 0.52 /
   0.69), the commander dead at 18:32 and 15:33.
+- **Where the army dies (t2e-g):** mostly within 1000 of our base after 12:00 (t2e: 13571 of ~15000), while ops lost
+  ~1000 a game. Command sent every free unit to any defended target: all 66 units to a raid spot worth 614 at defence
+  2.5, five times in 8 s (t2e 12:56). **Tried and reverted (tm1-2):** a unit joins an op only while its added gain beats
+  its metal x time away / horizon - ops shrank to 1.1 units per raid and 5.6-8.9 per enemy op, but trades 0.43 / 0.64,
+  income 12-20 at 8:00, both lost: units left out of ops get no defending orders, so the army only fought in smaller
+  pieces. The gap is that idle units at home don't hold a position or gather; that needs a defence posture, not
+  smaller ops. #60 (retreat at 50% health) checked: already live in the core (ShouldRetreat), config ignored.
