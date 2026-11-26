@@ -314,3 +314,8 @@ The latest batch (D-gun and strength fixes) is being played.
   average made every defence larger; the army avoided fights, the base fell, lost at 11:35 (trade 0.37). The tallies
   stay exposed (AiDamageFrom/To). Of the last 20 tries, the changes that held were fixes of inconsistent or inherited
   logic (reclaim 1000, keep vs launch tests, rez pool, escape time); every change of how bold the army is regressed.
+- **Fire order by dps per remaining health (cmd_m124, cmd_m125, two like-for-like games):** units shoot the armed enemy
+  in reach with the most dps per health left (Lanchester's order), buildings after; was metal value per health.
+  Trade 0.85 and 0.95 (the five games before: 0.45-0.89), commander alive in both, army 5846 / 13390 at 20:00 -
+  both points losses (their buildings 27465-31728 vs ours 3605-4072). The trade is now near even; the economy gap
+  (our extractors fall to 7-9 by 20:00, their income 87-239/s) decides the points.

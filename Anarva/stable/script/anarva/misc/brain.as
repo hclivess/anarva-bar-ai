@@ -4414,19 +4414,25 @@ void Update()
 			CCircuitUnit@ u = op.units[k];
 			const AIFloat3 p = u.GetPos(ai.frame);
 			const float reach = AiMax(1.f, u.circuitDef.GetMaxRange());
-			int bi = -1, ni = -1;
-			float bv = 0.f, nd = 1e9f;
+			int bi = -1, ni = -1, ai2 = -1;  // best unarmed, nearest armed, best armed
+			float bv = 0.f, nd = 1e9f, av = 0.f;
 			for (uint i = 0; i < n; ++i) {
 				if (eDef[i] is null || eDef[i].IsAbleToFly()) continue;
 				const float dd = ePos[i].distance2D(p);
 				if (eDef[i].threat > 0.f && dd < nd) { nd = dd; ni = int(i); }
 				if (dd > reach) continue;
-				const float v = EnemyValue(i, H) / AiMax(1.f, eHp[i] * eDef[i].health);
-				if (bi < 0 || v > bv) { bv = v; bi = int(i); }
+				// fire order: what removes the most of their damage per damage we spend - dps over remaining health
+				// (Lanchester's optimal order). By metal value, high-dps Levelers and Thuds ranked below dearer units while
+				// they dealt us most of our losses (trade 0.45-0.89 every game, cmd_m89-m118). Targets that don't shoot
+				// back (buildings) rank after every armed one, by value per health.
+				const float hpLeft = AiMax(1.f, eHp[i] * eDef[i].health);
+				const float dps = eDef[i].GetSustainedDps();
+				if (dps > 0.f) { const float v = dps / hpLeft; if (ai2 < 0 || v > av) { av = v; ai2 = int(i); } }
+				else { const float v = EnemyValue(i, H) / hpLeft; if (bi < 0 || v > bv) { bv = v; bi = int(i); } }
 			}
 			// focus fire without stopping: set target (the unit keeps following its moves; plain moves still shoot
 			// whatever is in reach). Owner: attack orders and attack-moves stand still and don't dodge.
-			const int tgt = (bi >= 0) ? bi : ni;
+			const int tgt = (ai2 >= 0) ? ai2 : ((bi >= 0) ? bi : ni);
 			if (tgt >= 0) {
 				string pt;
 				if (!lastTarget.get("" + u.id, pt) || pt != ("" + eIds[tgt])) {
