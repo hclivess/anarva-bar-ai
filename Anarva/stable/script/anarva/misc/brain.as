@@ -4716,14 +4716,19 @@ void Update()
 	}
 
 	// new ops, best first, while the free units can win them
-	if (freeUnits.length() > 0) {
+	// Targets are weighed even when no unit is free: with the whole army out on an op, Grunts killing our extractors were
+	// never looked at, so nothing was ever detached to them (spectator, spec1 3:44: the army, 2.5x the enemy known, on a
+	// raid at their corner; cc1: 27 extractors lost, the army 740-3420 away each time). The pool measured is then the army.
+	array<CCircuitUnit@> pool = freeUnits;
+	if (pool.length() == 0) for (uint o = 0; o < ops.length(); ++o) for (uint k = 0; k < ops[o].units.length(); ++k) pool.insertLast(ops[o].units[k]);
+	if (pool.length() > 0) {
 		AIFloat3 fc(0.f, 0.f, 0.f);
 		float fSpeed = 1e9f;
-		for (uint i = 0; i < freeUnits.length(); ++i) { fc = fc + freeUnits[i].GetPos(ai.frame); fSpeed = AiMin(fSpeed, freeUnits[i].circuitDef.speed); }
-		fc = fc / float(freeUnits.length());
+		for (uint i = 0; i < pool.length(); ++i) { fc = fc + pool[i].GetPos(ai.frame); fSpeed = AiMin(fSpeed, pool[i].circuitDef.speed); }
+		fc = fc / float(pool.length());
 		fSpeed = AiMax(1.f, fSpeed);
 		float freeDps = 0.f;
-		for (uint i = 0; i < freeUnits.length(); ++i) freeDps += freeUnits[i].circuitDef.GetSustainedDps();
+		for (uint i = 0; i < pool.length(); ++i) freeDps += pool[i].circuitDef.GetSustainedDps();
 		array<AIFloat3> cp; array<float> cv; array<int> cid; array<float> chp; array<float> cspd; array<int> cix;
 		for (uint i = 0; i < n; ++i) {
 			if (eDef[i] is null || eDef[i].IsAbleToFly() || (eFlags[i] & 2) == 0) continue;
@@ -4743,8 +4748,8 @@ void Update()
 			cix.insertLast(-1);
 		}
 		float fRange = 0.f;
-		for (uint i = 0; i < freeUnits.length(); ++i) fRange += freeUnits[i].circuitDef.GetMaxRange();
-		fRange /= AiMax(1.f, float(freeUnits.length()));
+		for (uint i = 0; i < pool.length(); ++i) fRange += pool[i].circuitDef.GetMaxRange();
+		fRange /= AiMax(1.f, float(pool.length()));
 		array<float> score(cp.length());
 		array<float> dfc(cp.length());
 		// An unscouted spot isn't undefended: expect the enemy's towers per extractor among what we've seen, at their mean
@@ -4804,7 +4809,7 @@ void Update()
 			}
 			score[i] = (t >= 1e8f) ? 0.f : cv[i] / AiMax(1.f, t);  // uncatchable: not a target
 		}
-		while (freeUnits.length() > 0) {
+		while (true) {
 			int best = -1;
 			float bestScore = 0.f;
 			for (uint i = 0; i < cp.length(); ++i)
@@ -4843,31 +4848,46 @@ void Update()
 			// is hit: on Feast of Hades our Grunts raided far spots one by one while Gators killed our extractors and
 			// Command skipped them, strength 1.1 vs 4.3, round 20).
 			if (S <= need && cid[best] >= 0 && Assess::OnOurSide(cp[best])) {
-				// any op worth less than this defence can give units (only raids could be recalled, and the whole army
-				// stayed on an attack while the commander died at home)
-				array<int> raidOps;
-				for (uint o = 0; o < ops.length(); ++o) if (ops[o].enemyId < 0 || ops[o].value < cv[best]) raidOps.insertLast(int(o));
-				// least valuable first
-				for (uint a2 = 0; a2 < raidOps.length(); ++a2)
-					for (uint b2 = a2 + 1; b2 < raidOps.length(); ++b2)
-						if (ops[raidOps[b2]].value < ops[raidOps[a2]].value) { const int tmp = raidOps[a2]; raidOps[a2] = raidOps[b2]; raidOps[b2] = tmp; }
-				float S2 = S, given = 0.f;
-				array<int> take;
-				for (uint q = 0; q < raidOps.length() && S2 <= need; ++q) {
-					for (uint k = 0; k < ops[raidOps[q]].units.length(); ++k) S2 += EffThreat(ops[raidOps[q]].units[k].circuitDef);
-					given += ops[raidOps[q]].value;
-					take.insertLast(raidOps[q]);
-				}
-				if (FightGain(cv[best], S2, dfc[best], metal) > FightGain(cv[best], S, dfc[best], metal) + given) {
-					take.sortDesc();  // remove from the highest index down (earlier removals shift the later ones)
-					for (int q = 0; q < int(take.length()); ++q) {
-						for (uint k = 0; k < ops[take[q]].units.length(); ++k) { pick.insertLast(ops[take[q]].units[k]); metal += ops[take[q]].units[k].circuitDef.costM; }
-						ops.removeAt(take[q]);
+				// A detachment, not whole ops: the units nearest the raid, from ops worth less than what it threatens, one
+				// by one until they beat it; the rest keep their task (owner, 2026-11-26: the cheapest units that beat the
+				// raider). Each op gives up its value in the share of strength it loses.
+				array<CCircuitUnit@> du; array<int> dop; array<float> dd;
+				for (uint o = 0; o < ops.length(); ++o) {
+					if (ops[o].enemyId >= 0 && ops[o].value >= cv[best]) continue;
+					for (uint k = 0; k < ops[o].units.length(); ++k) {
+						du.insertLast(ops[o].units[k]); dop.insertLast(int(o)); dd.insertLast(ops[o].units[k].GetPos(ai.frame).distance2D(cp[best]));
 					}
-					S = S2;
-					AiLog("[ANV-CMD] recall " + take.length() + " raid ops to defend (" + int(cp[best].x) + "," + int(cp[best].z) + "): strength " + F1(S) + " > " + F1(need));
+				}
+				array<float> opS(ops.length());
+				for (uint o = 0; o < ops.length(); ++o) { opS[o] = 0.f; for (uint k = 0; k < ops[o].units.length(); ++k) opS[o] += EffThreat(ops[o].units[k].circuitDef); }
+				array<bool> du2(du.length());
+				float S2 = S, given = 0.f, metal2 = metal;
+				array<int> takeIdx;
+				while (S2 <= need) {
+					int nk = -1;
+					for (uint k = 0; k < du.length(); ++k) if (!du2[k] && (nk < 0 || dd[k] < dd[nk])) nk = int(k);
+					if (nk < 0) break;
+					du2[nk] = true;
+					const float e = EffThreat(du[nk].circuitDef);
+					S2 += e; metal2 += du[nk].circuitDef.costM;
+					given += ops[dop[nk]].value * e / AiMax(1e-3f, opS[dop[nk]]);
+					takeIdx.insertLast(nk);
+				}
+				if (takeIdx.length() > 0 && FightGain(cv[best], S2, dfc[best], metal2) > FightGain(cv[best], S, dfc[best], metal) + given) {
+					for (uint q = 0; q < takeIdx.length(); ++q) {
+						CCircuitUnit@ u = du[takeIdx[q]];
+						Op@ src = ops[dop[takeIdx[q]]];
+						const int at = src.units.findByRef(u);
+						if (at >= 0) src.units.removeAt(at);
+						pick.insertLast(u);
+					}
+					for (int o = int(ops.length()) - 1; o >= 0; --o) if (ops[o].units.length() == 0) ops.removeAt(o);
+					S = S2; metal = metal2;
+					AiLog("[ANV-CMD] detach " + takeIdx.length() + " units to defend (" + int(cp[best].x) + "," + int(cp[best].z) + ") value " + int(cv[best])
+						+ ": strength " + F1(S) + " > " + F1(need) + ", ops give up " + int(given));
 				}
 			}
+			if (pick.length() == 0) continue;
 			const float gain = FightGain(cv[best], S, dfc[best], metal);
 			const float loss = cv[best] - gain;  // for the log
 			if (gain <= 0.f) {  // what it keeps doesn't beat what it risks

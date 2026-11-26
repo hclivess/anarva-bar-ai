@@ -602,3 +602,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   stall, 18 advanced solars, 4 radars, T2 lab 13:03, extractors 24 and 66 M/s at 12:00 (the owner's game: 8-10 and 20).
   cc1: raided from the start, extractors 2-5, energy stalls at 4 and 16 min. Both lost on points (buildings 0.5-11k vs
   34-40k); trades 0.63 / 0.61. Next: Defend (answer raids, #106) and towers at our far extractors (BARb's 13.5k defence).
+- **Detachments and caretakers (df4-5, Comet Catcher, Armada vs Cortex):** threats are weighed with no free units (the
+  whole army out on a raid never looked at Grunts at our extractors) and answered by the nearest units detached from
+  lower-value ops; caretakers offered whenever none is queued and valued by the builders (BARb's quota built 0 all game).
+  df4: 13 detachments, 1 lab 0 caretakers, bank 1068-1399, army 367 vs 2894 at 12:00, lost at 15:25. df5: 97 detachments,
+  10 caretakers, army 4195 vs 6055 at 20:00, kills 114/145, points loss; but 43 extractors lost, metal 52 -> 18 M/s from
+  12 to 20 min (BARb 40 -> 105). Next: towers at raided extractors.

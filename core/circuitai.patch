@@ -1522,7 +1522,7 @@ index 559a0abf..90335c82 100644
  	CCircuitDef* terraDef = nullptr;
  	std::unordered_map<IBuilderTask::BT, std::unordered_map<CCircuitDef*, SBuildChain*>> buildChains;  // owner
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..b1168f81 100644
+index 6e5da8b6..e8be8b5b 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,8 @@
@@ -2345,6 +2345,17 @@ index 6e5da8b6..b1168f81 100644
  		return nullptr;
  	}
  
+@@ -1486,8 +1709,8 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
+ 	 * check assist
+ 	 */
+ 	CFactoryManager* factoryMgr = circuit->GetFactoryManager();
+-	const bool isSwitchTime = factoryMgr->IsSwitchTime();
+-	if (!isSwitchTime) {
++	const bool isSwitchTime = factoryMgr->IsSwitchTime();  // still read by the factory gate below
++	{  // Anarva: no switch-time clock in front of the caretaker
+ 		IBuilderTask* task = nullptr;
+ 		if (CheckAssistRequired(position, unit, task)) {
+ 			return task;
 @@ -1498,11 +1721,13 @@ IBuilderTask* CEconomyManager::UpdateFactoryTasks(const AIFloat3& position, CCir
  	 * check factory
  	 */
@@ -2613,7 +2624,24 @@ index 6e5da8b6..b1168f81 100644
  	return false;
  }
  
-@@ -1965,7 +2118,7 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -1953,7 +2106,15 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+ 	CBuilderManager* builderMgr = circuit->GetBuilderManager();
+ 	const int nanoQueued = builderMgr->GetTasks(IBuilderTask::BuildType::NANO).size();
+ 	CFactoryManager* factoryMgr = circuit->GetFactoryManager();
+-	CCircuitUnit* factory = factoryMgr->NeedUpgrade(nanoQueued);
++	// Anarva: a caretaker job is offered whenever none is queued, at the factory with the fewest; whether it is built is
++	// the builders' value of build power (the metal it lets us spend that would sit idle, over the horizon, against its
++	// cost). BARb's quota (caretakers < factories x a config weight) and income gate built none all game: 1 lab and 0
++	// caretakers while 1068-1399 metal sat banked and the army was a fifth of BARb's (1 lab + 7 caretakers; df4,
++	// Comet Catcher; owner: "why do you need two labs when you dont even have 1 conturret?")
++	if (nanoQueued > 0) {
++		return false;
++	}
++	CCircuitUnit* factory = factoryMgr->FewestNanos();
+ 	if (factory == nullptr) {
+ 		return false;
+ 	}
+@@ -1965,7 +2126,7 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  		return cdef->IsAvailable(frame) && terrainMgr->CanBeBuiltAt(cdef, buildPos);
  	});
  	if (assistDef == nullptr) {
@@ -2622,7 +2650,7 @@ index 6e5da8b6..b1168f81 100644
  	}
  
  	/*
-@@ -1989,30 +2142,30 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -1989,30 +2150,25 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  	eiRequire += assistDef->GetUpkeepE();
  	// FIXME: Mex and other buildings have energy upkeep that's not counted.
  	//        It also doesn't count mobile buildpower
@@ -2631,18 +2659,16 @@ index 6e5da8b6..b1168f81 100644
 -	}
 -	if ((GetAvgEnergyIncome() < factoryMgr->GetEnergyRequire() * factoryMgr->GetFacModE() + (nanoQueued + 1) * eiRequire)
 -		|| IsEnergyStalling())
-+	// Anarva: when we can't afford one more caretaker, skip the caretaker, don't block the factory decision behind it
-+	// (returning "assist required" here ended every UpdateFactoryTasks call: one factory all game on every map,
-+	// checklist 2026-11-25); energy for it is planned like any other need, no "energy required" latch
-+	if ((GetAvgMetalIncome() < factoryMgr->GetMetalRequire() * factoryMgr->GetFacModM() + (nanoQueued + 1) * miRequire)
-+		|| (GetAvgEnergyIncome() < factoryMgr->GetEnergyRequire() * factoryMgr->GetFacModE() + (nanoQueued + 1) * eiRequire))
- 	{
+-	{
 -		isEnergyRequired = true;  // enough metal, request energy
 -		UpdateEnergyTasks(position, unit);
 -		return true;
-+		return false;
- 	}
- 
+-	}
+-
++	// Anarva: when we can't afford one more caretaker, skip the caretaker, don't block the factory decision behind it
++	// (returning "assist required" here ended every UpdateFactoryTasks call: one factory all game on every map,
++	// checklist 2026-11-25); energy for it is planned like any other need, no "energy required" latch
++	(void)miRequire; (void)eiRequire;  // the value of its build power decides (BuilderManager), not an income gate
 +	// Anarva: the caretaker stands behind the factory by the factory's half-length plus its own radius (no 64 elmos)
 +	const float nanoGap = std::max(facDef->GetDef()->GetXSize(), facDef->GetDef()->GetZSize()) * SQUARE_SIZE / 2.f + assistDef->GetRadius();
  	switch (factory->GetUnit()->GetBuildingFacing()) {
@@ -2665,7 +2691,7 @@ index 6e5da8b6..b1168f81 100644
  			break;
  	}
  	CTerrainManager::CorrectPosition(buildPos);
-@@ -2029,6 +2182,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -2029,6 +2185,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  	return false;
  }
  
@@ -2683,7 +2709,7 @@ index 6e5da8b6..b1168f81 100644
  float CEconomyManager::GetStorage(Resource* res)
  {
  	return economy->GetStorage(res) - HIDDEN_STORAGE;
-@@ -2096,15 +2260,6 @@ void CEconomyManager::UpdateEconomy()
+@@ -2096,15 +2263,6 @@ void CEconomyManager::UpdateEconomy()
  		buildDelay = int(bdInfo.fraction * (ecoFrame - bdInfo.startFrame)) + bdInfo.startDelay;
  	}
  
@@ -2699,7 +2725,7 @@ index 6e5da8b6..b1168f81 100644
  	pullMtoS *= circuit->GetMilitaryManager()->ClampMobileCostRatio();
  }
  
-@@ -2133,78 +2288,14 @@ bool CEconomyManager::HasNoPurpose(const CCircuitDef::Id defId) const
+@@ -2133,78 +2291,14 @@ bool CEconomyManager::HasNoPurpose(const CCircuitDef::Id defId) const
  
  void CEconomyManager::ReclaimOldConvert(const SConvertExt* convertExt)
  {
@@ -2868,7 +2894,7 @@ index 733f7a43..42240221 100644
  	bool IsAllyOpenMexSpot(int spotId) const;
  	bool IsOpenMexSpot(int spotId) const;
 diff --git a/src/circuit/module/FactoryManager.cpp b/src/circuit/module/FactoryManager.cpp
-index 54fef916..780da7ec 100644
+index 54fef916..3b4fbec7 100644
 --- a/src/circuit/module/FactoryManager.cpp
 +++ b/src/circuit/module/FactoryManager.cpp
 @@ -6,6 +6,8 @@
@@ -3082,7 +3108,22 @@ index 54fef916..780da7ec 100644
  								circuit->GetSkirmishAIId() * WATCHDOG_COUNT + 11);
  	};
  
-@@ -1043,10 +931,13 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+@@ -917,6 +805,14 @@ CCircuitUnit* CFactoryManager::NeedUpgrade(unsigned int nanoQueued)
+ 	return nullptr;
+ }
+ 
++CCircuitUnit* CFactoryManager::FewestNanos() const
++{
++	const SFactory* best = nullptr;
++	for (const SFactory& fac : factories)
++		if ((best == nullptr) || (fac.nanoSize < best->nanoSize)) best = &fac;
++	return (best != nullptr) ? best->unit : nullptr;
++}
++
+ CCircuitUnit* CFactoryManager::GetClosestFactory(const AIFloat3& position)
+ {
+ 	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
+@@ -1043,10 +939,13 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const float metalIncome = std::min(economyMgr->GetAvgMetalIncome(), economyMgr->GetAvgEnergyIncome());
@@ -3100,7 +3141,7 @@ index 54fef916..780da7ec 100644
  		return nullptr;
  	}
  
-@@ -1063,10 +954,10 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
+@@ -1063,10 +962,10 @@ CRecruitTask* CFactoryManager::UpdateBuildPower(CCircuitUnit* unit, bool isActiv
  			return nullptr;
  		}
  #ifdef FACTORY_CHOICE
@@ -3114,7 +3155,7 @@ index 54fef916..780da7ec 100644
  	}
  	return nullptr;
  }
-@@ -1116,11 +1007,9 @@ void CFactoryManager::DelFactory(const CCircuitDef* cdef)
+@@ -1116,11 +1015,9 @@ void CFactoryManager::DelFactory(const CCircuitDef* cdef)
  
  bool CFactoryManager::IsT1Factory(const CCircuitDef* cdef)
  {
@@ -3129,7 +3170,7 @@ index 54fef916..780da7ec 100644
  }
  
  CCircuitDef* CFactoryManager::GetRoleDef(const CCircuitDef* facDef, CCircuitDef::RoleT role) const
-@@ -1151,7 +1040,7 @@ CCircuitDef* CFactoryManager::GetRepresenter(const CCircuitDef* facDef) const
+@@ -1151,7 +1048,7 @@ CCircuitDef* CFactoryManager::GetRepresenter(const CCircuitDef* facDef) const
  			CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  			SArea* area = terrainMgr->GetMobileTypeById(landDef->GetMobileId())->areaLargest;
  			// FIXME: area->percentOfMap < 40.0 doesn't seem right as water identifier
@@ -3138,7 +3179,7 @@ index 54fef916..780da7ec 100644
  		}
  	} else {
  		return GetWaterDef(facDef);
-@@ -1229,7 +1118,7 @@ void CFactoryManager::EnableFactory(CCircuitUnit* unit)
+@@ -1229,7 +1126,7 @@ void CFactoryManager::EnableFactory(CCircuitUnit* unit)
  	std::map<CCircuitDef*, SAssistant> nanos;
  	const AIFloat3& pos = unit->GetPos(circuit->GetLastFrame());
  	COOAICallback* clb = circuit->GetCallback();
@@ -3147,7 +3188,7 @@ index 54fef916..780da7ec 100644
  	int teamId = circuit->GetTeamId();
  	for (Unit* nano : units) {
  		int unitId = nano->GetUnitId();
-@@ -1359,7 +1248,7 @@ void CFactoryManager::DisableFactory(CCircuitUnit* unit)
+@@ -1359,7 +1256,7 @@ void CFactoryManager::DisableFactory(CCircuitUnit* unit)
  				// queue new factory with builder
  				CCircuitDef* facDef = GetFactoryToBuild(-RgtVector, true, true);
  				if (facDef != nullptr) {
@@ -3156,7 +3197,7 @@ index 54fef916..780da7ec 100644
  				}
  			}
  		}
-@@ -1465,7 +1354,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1465,7 +1362,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  			if (validAir.find(unit) != validAir.end()) {
  				DisableFactory(unit);
  			}
@@ -3165,7 +3206,7 @@ index 54fef916..780da7ec 100644
  		}
  	}
  
-@@ -1478,11 +1367,11 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1478,11 +1375,11 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	const bool isStalling = economyMgr->IsMetalEmpty() &&
@@ -3179,7 +3220,7 @@ index 54fef916..780da7ec 100644
  	}
  
  	task = UpdateFirePower(unit, isActive);
-@@ -1490,7 +1379,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
+@@ -1490,7 +1387,7 @@ IUnitTask* CFactoryManager::CreateFactoryTask(CCircuitUnit* unit)
  		return task;
  	}
  
@@ -3188,7 +3229,7 @@ index 54fef916..780da7ec 100644
  }
  
  IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
-@@ -1508,7 +1397,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
+@@ -1508,7 +1405,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
  	float curCost = std::numeric_limits<float>::max();
  	circuit->UpdateFriendlyUnits();
  	// NOTE: OOAICallback::GetFriendlyUnitsIn depends on unit's radius
@@ -3197,7 +3238,7 @@ index 54fef916..780da7ec 100644
  	for (Unit* u : units) {
  		auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
  		if ((cand == nullptr) || (cand == unit)
-@@ -1558,7 +1447,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
+@@ -1558,7 +1455,7 @@ IUnitTask* CFactoryManager::CreateAssistTask(CCircuitUnit* unit)
  		}
  	}
  
@@ -3206,7 +3247,7 @@ index 54fef916..780da7ec 100644
  }
  
  void CFactoryManager::Watchdog()
-@@ -1625,7 +1514,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1625,7 +1522,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  
  	const int iS = terrainMgr->GetSectorIndex(pos);
  	auto isEnemyInArea = [&](CCircuitDef* bd) {
@@ -3215,7 +3256,7 @@ index 54fef916..780da7ec 100644
  			return true;
  		}
  		SArea* area;
-@@ -1634,7 +1523,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1634,7 +1531,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  		return isValid && ((area == nullptr) || terrainMgr->IsEnemyInArea(area));
  	};
  	auto isAvailableDef = [&](CCircuitDef* bd) {
@@ -3224,7 +3265,7 @@ index 54fef916..780da7ec 100644
  			&& bd->IsAvailable(frame)
  			&& (isActive || bd->IsAttrRare())
  			&& terrainMgr->CanBeBuiltAt(bd, pos, range)
-@@ -1651,13 +1540,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1651,13 +1548,7 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  #endif
  	CCircuitDef* buildDef = nullptr;
  	bool isResponse = false;
@@ -3239,7 +3280,7 @@ index 54fef916..780da7ec 100644
  
  	struct SCandidate {
  		CCircuitDef* cdef;
-@@ -1667,9 +1550,6 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1667,9 +1558,6 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  	std::vector<SCandidate> candidates;
  	candidates.reserve(facDef.buildDefs.size());
  
@@ -3249,7 +3290,7 @@ index 54fef916..780da7ec 100644
  	for (unsigned i = 0; i < facDef.buildDefs.size(); ++i) {
  		CCircuitDef* bd = facDef.buildDefs[i];
  		if (!isAvailableDef(bd)) {
-@@ -1691,42 +1571,23 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
+@@ -1691,42 +1579,23 @@ CFactoryManager::SRecruitDef CFactoryManager::RequiredFireDef(CCircuitUnit* buil
  			continue;
  		}
  
@@ -3302,7 +3343,7 @@ index 54fef916..780da7ec 100644
  			}
  		}
  	}
-@@ -1799,19 +1660,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
+@@ -1799,19 +1668,12 @@ CCircuitDef* CFactoryManager::GetFacRoleDef(CCircuitDef::RoleT role, const SFact
  	}
  
  	CCircuitDef* buildDef = nullptr;
@@ -3329,7 +3370,7 @@ index 54fef916..780da7ec 100644
  	}
  	candidates.clear();
 diff --git a/src/circuit/module/FactoryManager.h b/src/circuit/module/FactoryManager.h
-index 21985146..3c6273cb 100644
+index 21985146..0b7562cb 100644
 --- a/src/circuit/module/FactoryManager.h
 +++ b/src/circuit/module/FactoryManager.h
 @@ -157,6 +157,11 @@ public:
@@ -3344,6 +3385,14 @@ index 21985146..3c6273cb 100644
  	int GetNoT1FacCount() const { return noT1FacCount; }
  	float GetMetalRequire() const { return metalRequire; }
  	float GetEnergyRequire() const { return energyRequire; }
+@@ -172,6 +177,7 @@ public:
+ 	void RaiseSwitchTime() { isSwitchTime = true; }
+ 	bool IsSwitchAllowed(CCircuitDef* facDef) const;
+ 	CCircuitUnit* NeedUpgrade(unsigned int nanoQueued);
++	CCircuitUnit* FewestNanos() const;  // Anarva: the factory with the fewest caretakers assisting it
+ 	CCircuitUnit* GetClosestFactory(const springai::AIFloat3& position);
+ //	CCircuitDef* GetClosestDef(springai::AIFloat3& position, CCircuitDef::RoleT role);
+ 
 diff --git a/src/circuit/module/MilitaryManager.cpp b/src/circuit/module/MilitaryManager.cpp
 index 719442f0..b8f801e8 100644
 --- a/src/circuit/module/MilitaryManager.cpp
