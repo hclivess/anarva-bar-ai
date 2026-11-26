@@ -4149,7 +4149,7 @@ index 2baf4ae9..641575f7 100644
  
  CEconomyScript::~CEconomyScript()
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..93252c1b 100644
+index c3aaefe5..de2f92fd 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -10,6 +10,12 @@
@@ -4165,16 +4165,18 @@ index c3aaefe5..93252c1b 100644
  #include "scheduler/Scheduler.h"
  #include "setup/SetupManager.h"
  #include "terrain/TerrainManager.h"
-@@ -21,6 +27,8 @@
+@@ -21,6 +27,10 @@
  #include "util/MaskHandler.h"
  #include "util/ExtAS.h"
  #include "util/Utils.h"
 +#include "Weapon.h"
++#include "MoveData.h"
++#include "Pathing.h"
 +#include "util/AnarvaSwitches.h"
  
  #include "angelscript/include/angelscript.h"
  #include "angelscript/add_on/scriptarray/scriptarray.h"
-@@ -30,7 +38,12 @@
+@@ -30,7 +40,12 @@
  //#include "asbind20/operators.hpp"  // _this, const_this, param<T>, ->return<T>()
  
  #include "spring/SpringMap.h"
@@ -4187,7 +4189,7 @@ index c3aaefe5..93252c1b 100644
  #include "Log.h"
  #include "Drawer.h"
  #include "Game.h"
-@@ -255,6 +268,21 @@ static const std::string CCircuitDef_GetName(CCircuitDef* cdef)
+@@ -255,6 +270,21 @@ static const std::string CCircuitDef_GetName(CCircuitDef* cdef)
  	return cdef->GetDef()->GetName();
  }
  
@@ -4209,7 +4211,7 @@ index c3aaefe5..93252c1b 100644
  static float CCircuitUnit_GetRulesParamFloat(CCircuitUnit* unit, const std::string& key, float defVal)
  {
  	return unit->GetUnit()->GetRulesParamFloat(key.c_str(), defVal);
-@@ -574,13 +602,11 @@ void CInitScript::RegisterCore()
+@@ -574,13 +604,11 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterGlobalFunction("void AiDelPoint(const AIFloat3& in)", asMETHOD(CInitScript, DelPoint), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
  	r = engine->RegisterGlobalFunction("void AiAddLine(const AIFloat3& in, const AIFloat3& in)", asMETHOD(CInitScript, AddLine), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
  	r = engine->RegisterGlobalFunction("void AiPause(bool, const string& in)", asMETHOD(CInitScript, Pause), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
@@ -4223,7 +4225,7 @@ index c3aaefe5..93252c1b 100644
  	r = engine->RegisterGlobalFunction("void AiSendMessage(const string& in, int = -1)", asMETHOD(CInitScript, SendMessage), asCALL_THISCALL_ASGLOBAL, this); ASSERT(r >= 0);
  	r = engine->RegisterFuncdef("void AiOnFinish(dictionary@+)"); ASSERT(r >= 0);
  	r = engine->RegisterFuncdef("AiOnFinish@+ AiExec(dictionary@+)"); ASSERT(r >= 0);
-@@ -702,17 +728,32 @@ void CInitScript::RegisterCore()
+@@ -702,17 +730,32 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float pwrDmg", asOFFSET(CCircuitDef, pwrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float airThrDmg", asOFFSET(CCircuitDef, airThrDmg)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "const float surfThrDmg", asOFFSET(CCircuitDef, surfThrDmg)); ASSERT(r >= 0);
@@ -4257,7 +4259,7 @@ index c3aaefe5..93252c1b 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +776,308 @@ void CInitScript::RegisterCore()
+@@ -735,9 +778,321 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -4439,6 +4441,19 @@ index c3aaefe5..93252c1b 100644
 +	if (area == nullptr) return tm->GetCurrentMapArea(d, from).second;  // (second: the whole map is one area for it)
 +	return tm->CanMobileReachAt(area, to, 0.f);
 +}
++// Anarva: the walk a unit of this type has from one point to another (the engine's path length; the straight line if
++// it has none) - a straight-line walk priced the commander's third extractor at 9 s when it took 20+ (Canis spot 49)
++static float Bridge_PathLength(CCircuitDef* d, const AIFloat3& from, const AIFloat3& to)
++{
++	const float straight = from.distance2D(to);
++	if ((d == nullptr) || d->IsAbleToFly() || (d->GetDef() == nullptr)) return straight;
++	springai::MoveData* md = d->GetDef()->GetMoveData();
++	if (md == nullptr) return straight;
++	const int pathType = md->GetPathType();
++	delete md;
++	const float len = bridgeAI->GetPathing()->GetApproximateLength(from, to, pathType, 0.0f);
++	return (len > 0.f) ? std::max(len, straight) : straight;
++}
 +// Can this building (a factory, say) stand here (its terrain type: a shipyard needs water)?
 +static bool Bridge_CanBeBuiltAt(CCircuitDef* d, const AIFloat3& pos)
 +{
@@ -4566,7 +4581,7 @@ index c3aaefe5..93252c1b 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +1107,57 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +1122,58 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -4599,6 +4614,7 @@ index c3aaefe5..93252c1b 100644
 +	r = engine->RegisterGlobalFunction("uint AiDrainKills(array<AIFloat3>@+, array<float>@+)", asFUNCTION(Bridge_DrainKills), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiDefCanReach(CCircuitDef@, const AIFloat3& in, const AIFloat3& in)", asFUNCTION(Bridge_DefCanReach), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("bool AiCanBeBuiltAt(CCircuitDef@, const AIFloat3& in)", asFUNCTION(Bridge_CanBeBuiltAt), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterGlobalFunction("float AiPathLength(CCircuitDef@, const AIFloat3& in, const AIFloat3& in)", asFUNCTION(Bridge_PathLength), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiSetupNumber(const string& in, float)", asFUNCTION(Bridge_SetupNumber), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("AIFloat3 AiEnemyBasePos()", asFUNCTION(Bridge_EnemyBasePos), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("void AiSay(const string& in)", asFUNCTION(Bridge_Say), asCALL_CDECL); ASSERT(r >= 0);
@@ -4624,7 +4640,7 @@ index c3aaefe5..93252c1b 100644
  }
  
  bool CInitScript::Init()
-@@ -782,6 +1173,7 @@ bool CInitScript::Init()
+@@ -782,6 +1189,7 @@ bool CInitScript::Init()
  	mainInfo.receiveMessage = script->GetFunc(mod, "void AiMessage(const string& in, int)");
  	mainInfo.unitFinished = script->GetFunc(mod, "void AiUnitFinished(CCircuitUnit@)");
  	mainInfo.unitDestroyed = script->GetFunc(mod, "void AiUnitDestroyed(CCircuitUnit@)");
@@ -4632,7 +4648,7 @@ index c3aaefe5..93252c1b 100644
  	asIScriptFunction* main = script->GetFunc(mod, "void AiMain()");
  	if (main == nullptr) {
  		return false;
-@@ -793,6 +1185,19 @@ bool CInitScript::Init()
+@@ -793,6 +1201,19 @@ bool CInitScript::Init()
  	return true;
  }
  
@@ -4652,7 +4668,7 @@ index c3aaefe5..93252c1b 100644
  void CInitScript::Update()
  {
  	if (mainInfo.update == nullptr) {
-@@ -859,6 +1264,9 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
+@@ -859,6 +1280,9 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
  	r = engine->RegisterObjectProperty(cls, "CCircuitDef@ const buildDef", asOFFSET(T, buildDef)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "CCircuitUnit@ const target", asOFFSET(T, target)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "bool canAutoAbort", asOFFSET(T, canAutoAbort)); ASSERT(r >= 0);
@@ -4662,7 +4678,7 @@ index c3aaefe5..93252c1b 100644
  }
  
  template <class T>
-@@ -920,22 +1328,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1344,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  

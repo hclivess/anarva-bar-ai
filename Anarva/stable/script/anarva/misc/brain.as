@@ -3642,10 +3642,18 @@ float Value(const Sim@ s, float now, float H)
 	return v;
 }
 
+// The commander's walk: the engine's path length for its move type over its speed (a straight line priced the third
+// extractor - spot 49 on Canis, behind a detour - at 9 s; it took 20+, and the lab came at 86-101 s against the
+// winners' ~61; minute-1 checklist gap: no factory, 50 energy vs 0.9 and 79)
+float Walk(const AIFloat3& in a, const AIFloat3& in b, float speed)
+{
+	CCircuitDef@ d = ai.GetCircuitDef(ComDef().GetName());
+	return AiPathLength(d, a, b) / AiMax(1.f, speed);
+}
 // do o from state s (walk + build at bp, waiting for missing resources)
 void Apply(Sim@ s, const Opt@ o, float bp, float speed)
 {
-	const float walk = s.pos.distance2D(o.pos) / AiMax(1.f, speed);
+	const float walk = Walk(s.pos, o.pos, speed);
 	const float build = o.def.buildTime / AiMax(1.f, bp);
 	const float wM = AiMax(0.f, o.def.costM - s.M - s.mInc * (walk + build)) / AiMax(1e-3f, s.mInc);
 	const float wE = AiMax(0.f, o.def.costE - s.E - s.eInc * (walk + build)) / AiMax(1e-3f, s.eInc);
@@ -4011,7 +4019,7 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 		Sim@ t = Copy(s0);
 		const float t0 = t.t;
 		Apply(t, opts[lab], bp, speed);
-		const float walkBuild = s0.pos.distance2D(opts[lab].pos) / AiMax(1.f, speed) + opts[lab].def.buildTime / AiMax(1.f, bp);
+		const float walkBuild = Walk(s0.pos, opts[lab].pos, speed) + opts[lab].def.buildTime / AiMax(1.f, bp);
 		const bool noWait = (t.t - t0) <= walkBuild + 1e-3f;
 		needE = drawE - s0.eInc;
 		needM = drawM - s0.mInc;
@@ -4023,7 +4031,7 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 			float bestE = 0.f, bestM = 0.f;  // resource per second of commander time
 			for (uint a = 0; a < opts.length(); ++a) {
 				if (opts[a].kind == 2) continue;
-				const float tt = opts[a].def.buildTime / AiMax(1.f, bp) + t.pos.distance2D(opts[a].pos) / AiMax(1.f, speed);
+				const float tt = opts[a].def.buildTime / AiMax(1.f, bp) + Walk(t.pos, opts[a].pos, speed);
 				bestE = AiMax(bestE, opts[a].yieldE / AiMax(1e-3f, tt));
 				bestM = AiMax(bestM, opts[a].yieldM / AiMax(1e-3f, tt));
 			}
@@ -4044,7 +4052,7 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 			const float conSpeed = (L.con !is null) ? AiMax(1.f, L.con.speed) : AiMax(1.f, speed);
 			for (uint a = 0; a < opts.length(); ++a) {
 				if (opts[a].kind != 0) continue;
-				const float tt = s0.pos.distance2D(opts[a].pos) / AiMax(1.f, speed) + opts[a].def.buildTime / AiMax(1.f, bp);
+				const float tt = Walk(s0.pos, opts[a].pos, speed) + opts[a].def.buildTime / AiMax(1.f, bp);
 				const float tByCon = (t.t + tt) + L.conTime + opts[lab].pos.distance2D(opts[a].pos) / conSpeed;
 				const float gain = opts[a].yieldM * AiMax(0.f, tByCon - (s0.t + tt));
 				const float cost = tt * drawEq;
