@@ -749,3 +749,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   1.00 for Pawns); 40 deaths at 2500-3000 from base in ops of up to 46 units pushing into their side. Next: splash
   counted per enemy type against our spacing, no chasing what outruns us, and pushes valued with the defence they meet.
 - **Pickets hold their posts (pc1-2):** on attack-move they chased Incisors away (39 Pawn deaths to Incisors in rp2); plain move to the post: 15-18. Both games lost (18:00, 15:00). Record on the pk3-line builds: 1 win in 6.
+- **Op depth logged (dp1, `forward` in [ANV-FIGHT]):** all 32 ops were in our own third - 3938 metal lost, 0 killed;
+  lost at 15:00. Not deep pushes: fights at home. Micro totals: 292 contact-seconds, fired 185, outranged 103 (hit with
+  nothing in our reach), no reply 89. Pawns (range 180) are outranged by Incisors and Pounders. Next: the army's range
+  against what they field - the lab's per-type value with the range gap.

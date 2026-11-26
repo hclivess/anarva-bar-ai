@@ -5002,7 +5002,9 @@ void Update()
 				for (uint k = 0; k < op.units.length(); ++k) left += op.units[k].circuitDef.costM;
 				AiLog("[ANV-FIGHT] f=" + ai.frame + " op " + (op.enemyId < 0 ? "raid spot" : ("enemy " + op.enemyId)) + " at (" + int(op.pos.x) + "," + int(op.pos.z)
 					+ ") ended after " + ((ai.frame - op.startFrame) / SECOND) + " s: " + (alive ? (op.units.length() == 0 ? "squad lost" : "pulled back") : "target gone")
-					+ ", metal sent " + int(op.startMetal) + " left " + int(left) + ", enemy metal killed meanwhile " + int(Assess::killedTotal - op.killedAtStart));
+					+ ", metal sent " + int(op.startMetal) + " left " + int(left) + ", enemy metal killed meanwhile " + int(Assess::killedTotal - op.killedAtStart)
+					// where it was: share of the way to their base (0 ours, 1 theirs), to judge pushes by depth (#116)
+					+ ", forward " + F2(basePos.distance2D(op.pos) / AiMax(1.f, basePos.distance2D(AiEnemyBasePos()))));
 			}
 			ops.removeAt(o);
 			continue;
