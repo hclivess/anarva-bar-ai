@@ -139,10 +139,10 @@ index 40517444..74a337bf 100644
  		allyTeam->RegisterEnemyFake(defId, enemyPos, timeout);
  	} else if (enemy->IsBeingBuilt()) {
 diff --git a/src/circuit/CircuitAI.h b/src/circuit/CircuitAI.h
-index 18003828..8677301e 100644
+index 18003828..f3163a87 100644
 --- a/src/circuit/CircuitAI.h
 +++ b/src/circuit/CircuitAI.h
-@@ -120,6 +120,18 @@ private:
+@@ -120,6 +120,20 @@ private:
  	int UnitIdle(CCircuitUnit* unit);
  	int UnitMoveFailed(CCircuitUnit* unit);
  	int UnitDamaged(CCircuitUnit* unit, ICoreUnit::Id attackerId, int weaponId, springai::AIFloat3 dir);
@@ -155,13 +155,15 @@ index 18003828..8677301e 100644
 +	float GetAnvDealt(const std::string& n) const { auto it = anvDealt.find(n); return (it != anvDealt.end()) ? it->second : 0.f; }
 +	float GetAnvFrom(const std::string& n) const { auto it = anvFrom.find(n); return (it != anvFrom.end()) ? it->second : 0.f; }
 +	float GetAnvTo(const std::string& n) const { auto it = anvTo.find(n); return (it != anvTo.end()) ? it->second : 0.f; }
-+	float GetAnvFromAll() const { float s = 0.f; for (auto& kv : anvFrom) s += kv.second; return s; }
++	// all damage our units took, unseen attackers included (anvFrom only has the attackers we know: the trade read 1.6
++	// while the real exchange was 0.67, cmd_m138)
++	float GetAnvFromAll() const { float s = 0.f; for (auto& kv : anvReceived) s += kv.second; return s; }
 +	float GetAnvToAll() const { float s = 0.f; for (auto& kv : anvTo) s += kv.second; return s; }
 +private:
  	int UnitDestroyed(CCircuitUnit* unit, CEnemyInfo* attacker);
  	int UnitGiven(ICoreUnit::Id unitId, int oldTeamId, int newTeamId);
  	int UnitCaptured(ICoreUnit::Id unitId, int oldTeamId, int newTeamId);
-@@ -151,6 +163,7 @@ private:
+@@ -151,6 +165,7 @@ private:
  public:
  	void GiveUnits(std::vector<CCircuitUnit*>&& units, int newTeamId);
  	void Garbage(CCircuitUnit* unit, const char* reason);

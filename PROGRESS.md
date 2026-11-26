@@ -352,3 +352,7 @@ The latest batch (D-gun and strength fixes) is being played.
   damage dealt / taken from the per-type tallies shrunk by our army's health: two weak games (lost at 16:00; economy
   to 0 extractors by 16:00). The tallies are biased: damage from unseen attackers ('?') isn't counted, so the AI read
   1.6 while the real exchange was 0.67. A trade input needs all damage taken (the harness's dmg_in counts it).
+- **Honest trade, all damage counted (cmd_m140/m141) - reverted:** with all damage taken in the tally the AI read
+  0.6-0.7 (honest) and both games were lost at 13:00 (trade 0.47 / 0.31). Knowing it loses fights, the army waited
+  while BARb grew. The measurement is right; acting on it by caution alone doesn't win - the fights themselves must
+  get better. Core fix kept (AiDamageFromAll = all damage taken).
