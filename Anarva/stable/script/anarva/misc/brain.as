@@ -2771,6 +2771,16 @@ void FillMix(Mix@ m, const array<string>@ opts)
 // (Without these, sqrt(dps x health) per metal made the Flea our best fighter: 14-16 per game, short test s32.)
 float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 {
+	// #116 design (1): against an enemy that outranges us and is at least as fast, we never close - it backs off and
+	// fires; our power against it is nothing, not "a little less" (gapDmg). The share of the mix (by weight) we can
+	// reach scales our power. Pawns (180, speed 87) against Mists (700) and Wolverines (710) traded 0.31-0.65 (REPLAYS.md)
+	float reachW = 0.f, allW = 0.f;
+	for (uint k = 0; k < m.w.length(); ++k) {
+		allW += m.w[k];
+		if (!(m.range[k] > d.GetMaxRange() && m.speed[k] >= d.speed)) reachW += m.w[k];
+	}
+	const float reachShare = (allW > 0.f) ? reachW / allW : 1.f;
+	if (reachShare <= 0.f) { terms = "(unreachable: outranged and outrun)"; return 0.f; }
 	const float hp = AiMax(1.f, d.health);
 	float gapDmg = 0.f, wSum = 0.f, landW = 0.f, dpsW = 0.f, hitsW = 0.f, inW = 0.f;
 	const float spacing = AiMax(1.f, 2.f * d.GetRadius());
@@ -2809,8 +2819,8 @@ float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 		const float meas = dealt / rec;
 		if (model > 0.f) { power *= sqrt(meas / model); live = " live " + F2(meas) + "/" + F2(model) + " x" + F2(sqrt(meas / model)); }
 	}
-	terms = "(hits " + F2(land) + " taken " + F2(taken) + " splash " + F2(hits) + " gapDmg " + int(gapDmg) + live + ")";
-	return power;
+	terms = "(hits " + F2(land) + " taken " + F2(taken) + " splash " + F2(hits) + " gapDmg " + int(gapDmg) + live + (reachShare < 1.f ? " reach " + F2(reachShare) : "") + ")";
+	return power * reachShare;
 }
 float HitChance(float shotSpeed, float range, float targetSpeed, float targetRadius)
 {
