@@ -2723,11 +2723,29 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				// a raider's metal) - on build speed alone it read 6.3 raiders at ~2:00 against BARb's real 86 metal of army,
 				// and the lab made Ticks and no constructors (swe6: army 504 vs 215 but metal 8.9 vs 11.2 at 3:00)
 				const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
-				const float nR = AiMax(0.f, tUp - Opening::raidLabAt) * rate;
+				float nR = AiMax(0.f, tUp - Opening::raidLabAt) * rate;
+				// once raiders have been seen, how many there are is what scouting showed (Production's memory of enemy
+				// types, most seen at once), not the model - the model has them spend every metal on raiders and read dozens
+				// by 4:00: 12 Pawns in a row after two constructors, metal 6.6 vs 20.4 (swe10)
+				{
+					float seenArmed = 0.f;
+					const array<string>@ mk = memMax.getKeys();
+					for (uint q = 0; q < mk.length(); ++q) {
+						CCircuitDef@ md = ai.GetCircuitDef(mk[q]);
+						if (md is null || md.GetSustainedDps() <= 0.f) continue;
+						int c = 0; if (!memMax.get(mk[q], c)) c = 0;
+						seenArmed += float(c);
+					}
+					if (seenArmed > 0.f) nR = seenArmed;
+				}
 				if (nR > nOurs) {
 					// in the raider's own measure, sqrt(dps x health) both sides (SurfPower is on the core's threat scale: the
 					// duel read 0.01-0.02, swe5)
-					const float duel = WinShare(Opening::Strength(d), Opening::raidStrength);
+					// the square law, as every fight is judged (FightGain): at least as strong it stops the raider; weaker, it
+					// kills (s/R)^2 of it and dies. As a share s/(s+R) a Tick read half a Grunt's worth per far less metal and
+					// four Ticks died to Grunts at 3:33-3:53 beside the extractors they were meant to keep (swe9)
+					const float sR = Opening::Strength(d), R = AiMax(1e-3f, Opening::raidStrength);
+					const float duel = (sR >= R) ? 1.f : (sR / R) * (sR / R);
 					// a fighter now instead of later answers the raid one lab slot sooner (its build time): that is the loss it
 					// prevents, not the raid's damage over the whole horizon (10711 s early: 85492, the whole stake - the lab made
 					// no constructor in its first 12 units and the base fell behind, buildings 665 vs 850 at 3:00, swe7)
