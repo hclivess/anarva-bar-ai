@@ -245,3 +245,10 @@ The latest batch (D-gun and strength fixes) is being played.
   Escape-to-the-army (guard a soldier) took it to the front - reverted. Next: answer the push itself - see it coming
   (its direction and strength from the last-seen enemies) and meet it with the army and towers before it reaches the
   base, while the commander steps back from its path; and stop massing Pawns into splash (130 lost to Levelers).
+- **Pawns into splash (cmd_m75 minutes 15-17):** Production scored Pawn 0.36-0.47 per metal vs Warrior 0.24-0.29, Hammer
+  0.17-0.21, Rocko 0.11-0.14 against a mix with Levelers - the Pawn wins on dodging (enemy hit chance 0.41-0.52, as if
+  it moves at top speed under fire), yet Levelers killed 130 Pawns. The dodge term also rests on a measurement (Hammer/
+  Rocko 15-28% hits on fast raiders), so it is real for raiders on the move; whether massed Pawns in a fight move like
+  that isn't knowable from unit facts. Next: measure each of our types' hit rate taken from each enemy type live in
+  this game (the damage events), and let it replace the modelled HitChance once there are hits to count. Live game
+  data, not a replay table. Script blindness to add to SCRIPT_SIGHT.md: per-shot hit/miss by attacker and victim type.

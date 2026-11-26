@@ -34,6 +34,8 @@ and record it here. A blind spot is fixed when first met, not worked around.
 
 ## Still blind (open)
 
+- **hits taken by our unit types from each enemy type** (damage events: attacker def, victim def, damage) - to replace the modelled dodge (HitChance) with what this game shows; Levelers killed 130 Pawns the model said dodge half their shots (cmd_m75).
+
 | Fact | Where it would come from | Decision it would improve |
 |---|---|---|
 | armour classes and damage per armour type | unit files (`weapondefs.damage`), via gen_facts | matchups (light vs heavy vs air) |
