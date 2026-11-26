@@ -3825,7 +3825,18 @@ void Update()
 			alive = there;  // the place is in sight and holds nothing: nothing to raid there
 		}
 		const float S = Strength(op.units);
+		// What can fight this squad: at the target, and on its way there - enemies that can reach the squad where it is
+		// now within the time it still needs to arrive (raids were checked at the target only, at launch; single Grunts
+		// walked on into Blitzes and died 4000+ elmos from base, 7 kills for 71 losses on Canis, 2026-11-26).
 		op.defence = Cover(op.pos, 0.f);
+		if (op.units.length() > 0) {
+			AIFloat3 oc0(0.f, 0.f, 0.f);
+			float slow = 1e9f;
+			for (uint k = 0; k < op.units.length(); ++k) { oc0 = oc0 + op.units[k].GetPos(ai.frame); slow = AiMin(slow, op.units[k].circuitDef.speed); }
+			oc0 = oc0 / float(op.units.length());
+			const float tLeft = oc0.distance2D(op.pos) / AiMax(1.f, slow);
+			op.defence = AiMax(op.defence, Cover(oc0, tLeft));
+		}
 		float opMetal = 0.f;
 		for (uint k = 0; k < op.units.length(); ++k) opMetal += op.units[k].circuitDef.costM;
 		if (!alive || op.units.length() == 0 || FightGain(op.value, S, op.defence, opMetal) <= 0.f) {
