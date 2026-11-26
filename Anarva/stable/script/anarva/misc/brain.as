@@ -295,6 +295,44 @@ void Update()
 }  // namespace RezLab
 
 namespace EcoPos {
+/*
+ * How long an extractor at q lives (s from now): the raids the opener's model predicts (their earliest raider: arrival,
+ * speed, dps) against our answer there. Each raid comes back once per round trip from their base; it reaches q with
+ * the share of our sites it clears before our nearest fighter arrives (answer / (kill + walk to the next)), and kills q
+ * unless our answer comes within the kill time (hold = kill / answer). Expected raids until the loss 1/P, so the life is
+ * the time to the first raid plus (1/P - 1) round trips - at least the threat horizon, the earliest their whole army
+ * could take everything. (Every investment over the threat horizon alone, ~200 s early: a constructor scored 0.6-2.8
+ * per metal against a Rover's 5.9-10.8 and the plant's first constructor came at 125-158 s; winners 91 s, swe30-32.)
+ */
+float SpotLife(const AIFloat3& in q)
+{
+	const float floorH = AiMax(1.f, Economist::Horizon());
+	if (Opening::raidSpeed <= 0.f || Opening::raidDps <= 0.f || Economist::mexT1 is null) return floorH;
+	const float tNow = float(ai.frame) / SECOND;
+	const float tFirst = AiMax(0.f, Opening::raidArrive - tNow);
+	const float cycle = 2.f * AiEnemyBasePos().distance2D(q) / AiMax(1.f, Opening::raidSpeed);
+	const float tKill = Economist::mexT1.health / AiMax(1e-3f, Opening::raidDps);
+	float answer = 1e30f;
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	for (uint k = 0; k < mine.length(); ++k) {
+		const CCircuitDef@ kd = mine[k].circuitDef;
+		if (kd.IsMobile() && kd.surfThrDmg > 0.f && kd.buildSpeed <= 0.f)
+			answer = AiMin(answer, mine[k].GetPos(ai.frame).distance2D(q) / AiMax(1.f, kd.speed));
+	}
+	const float hold = (answer < 1e29f) ? AiMin(1.f, tKill / AiMax(1e-3f, answer)) : 0.f;
+	// sites one raid clears before the answer, out of ours (the new one included); no army: it clears them all
+	const float nSites = float(Economist::mexes.length() + 1);
+	float gap = 0.f;
+	for (uint k = 0; k < Economist::mexes.length(); ++k) {
+		const float dk = Economist::mexes[k].GetPos(ai.frame).distance2D(q);
+		if (gap == 0.f || dk < gap) gap = dk;
+	}
+	const float perSite = tKill + gap / AiMax(1.f, Opening::raidSpeed);
+	const float cleared = (answer < 1e29f) ? AiMax(1.f, answer / AiMax(1.f, perSite)) : nSites;
+	const float P = AiMin(1.f, cleared / nSites) * (1.f - hold);
+	if (P <= 0.f) return floorH;
+	return AiMax(floorH, tFirst + cycle * (1.f / P - 1.f));
+}
 bool wantConstructor = false;  // (kept for the status line)
 float constructorValue = 0.f; int conLogFrame = -100000;  // metal-eq one more constructor saves (Production compares it with every other unit)
 array<AIFloat3> raidPos; array<float> raidVal;  // expected enemy economy (Command objectives)
@@ -430,7 +468,7 @@ void Update()
 	// weaker than the known enemy army). "Enough to claim within the horizon" asked for 1-2 constructors early (the
 	// horizon is long while we own the commander's 2700 metal) while the winners run 7 by minute 4.
 	float claimWork = 0.f, claimYield = 0.f;  // constructor-seconds; metal/s the free spots would yield us
-	array<float> spWork, spYield;  // per free spot: walk + build seconds, metal/s kept
+	array<float> spWork, spYield, spLife;  // per free spot: walk + build seconds, metal/s kept, its life (SpotLife)
 	CCircuitDef@ conDef = CheapestConstructor();
 	if (conDef !is null && Economist::mexT1 !is null && HasBase()) {
 		const float conSpeed = AiMax(1.f, conDef.speed);
@@ -452,7 +490,7 @@ void Update()
 				keep *= (dThem < dUs) ? control : homeControl;
 				claimWork += keep * (dUs / conSpeed + conBuild);
 				claimYield += keep * msi2[i] * ext;
-				spWork.insertLast(dUs / conSpeed + conBuild); spYield.insertLast(keep * msi2[i] * ext);
+				spWork.insertLast(dUs / conSpeed + conBuild); spYield.insertLast(keep * msi2[i] * ext); spLife.insertLast(SpotLife(msp2[i]));
 			}
 	}
 	const float N = float(AiMax(1, int(aiBuilderMgr.GetWorkerCount())));
@@ -466,21 +504,18 @@ void Update()
 	// killed the extractors - metal 6.6 vs BARb 18.1 and army 270 vs 637 at 4:00, swing.py sw5)
 	for (uint a = 0; a < spWork.length(); ++a)
 		for (uint b = a + 1; b < spWork.length(); ++b)
-			if (spWork[b] < spWork[a]) { const float tw = spWork[a]; spWork[a] = spWork[b]; spWork[b] = tw; const float ty = spYield[a]; spYield[a] = spYield[b]; spYield[b] = ty; }
-	// over how long a claimed extractor pays: at least the threat horizon (the earliest they could take everything), and
-	// as long as our producers have survived so far - building-seconds survived / (losses + 1), the survival estimate
-	// that stays defined before the first loss. The threat horizon alone fell to 198 s once fast Blitzes raised the map
-	// crossing speed, a constructor scored 1.1-2.8 per metal against a Blitz's 3.5 and a Rover's 10.8, and the plant's
-	// first constructor came at 158 s (winners 91 s; extractors 6.6 vs BARb's 20.4 M/s at 4:00, swe30)
-	const float Hc = AiMax(AiMax(1.f, Economist::Horizon()), Economist::producerExposure / float(Economist::producerLosses + 1));
+			if (spWork[b] < spWork[a]) { const float tw = spWork[a]; spWork[a] = spWork[b]; spWork[b] = tw; const float ty = spYield[a]; spYield[a] = spYield[b]; spYield[b] = ty; const float tl = spLife[a]; spLife[a] = spLife[b]; spLife[b] = tl; }
+	// each claimed extractor pays for its own life (SpotLife: the raids against our answer there); Hc for the log
+	const float Hc = AiMax(1.f, Economist::Horizon());
 	// feedback (owner: "ignores losses? is there no feedback loop?"): a claimed extractor yields until the horizon or
 	// until it dies, whichever comes first - its measured life once producers have been lost (no horizon floor)
 	const float Lm = (Economist::producerLosses > 0) ? Economist::MeasuredLife() : 1e30f;
 	float vN = 0.f, vN1 = 0.f, cum = 0.f;
 	for (uint j = 0; j < spWork.length(); ++j) {
 		cum += spWork[j];
-		vN += spYield[j] * AiMin(Lm, AiMax(0.f, Hc - cum / N));
-		vN1 += spYield[j] * AiMin(Lm, AiMax(0.f, Hc - cum / (N + 1.f)));
+		const float Lj = AiMin(Lm, spLife[j]);  // measured life, once producers have died, bounds the model's
+		vN += spYield[j] * AiMax(0.f, Lj - cum / N);
+		vN1 += spYield[j] * AiMax(0.f, Lj - cum / (N + 1.f));
 	}
 	const float saved = (vN1 - vN) * Economist::MetalShare();
 	// A constructor without a building job proves the work we can claim now is covered: one more saves nothing (25
@@ -509,7 +544,7 @@ void Update()
 		conLogFrame = ai.frame;
 		AiLog("[ANV-CONVAL] spots " + spWork.length() + " unclaimed " + unclaimed + " unemployed " + unemployed + " N " + int(N) + " H " + int(Hc)
 			+ " Lm " + (Lm > 1e20f ? "-" : ("" + int(Lm))) + " vN " + int(vN) + " vN1 " + int(vN1) + " share " + F2(Economist::MetalShare())
-			+ " first work " + (spWork.length() > 0 ? int(spWork[0]) : -1) + " yield " + (spYield.length() > 0 ? F2(spYield[0]) : "-") + " -> " + int(constructorValue));
+			+ " first work " + (spWork.length() > 0 ? int(spWork[0]) : -1) + " life " + (spLife.length() > 0 ? int(spLife[0]) : -1) + " yield " + (spYield.length() > 0 ? F2(spYield[0]) : "-") + " -> " + int(constructorValue));
 	}
 	wantConstructor = work;
 	aiFactoryMgr.buildpowerRatio = 0.f;  // the core never asks for constructors itself: Production weighs constructorValue (#96)
@@ -3898,6 +3933,8 @@ bool PlaceNextTo(CCircuitDef@ d, const AIFloat3& in at, AIFloat3& out p)
 		for (uint L = 0; L < labs.length() && !onLab; ++L)
 			if (labs[L].def !is null && labs[L].def !is d && q.distance2D(labs[L].pos) < labs[L].def.GetRadius() + d.GetRadius()) onLab = true;
 		if (onLab) continue;
+		// (by the commander's path time instead: 23 failed orders and the first extractor at 16 s, swe34 - the failures
+		// are the engine refusing the order, not the site: reverted)
 		const float dh = q.distance2D(h);
 		if (dh < best) { best = dh; p = q; ok = true; }
 	}
@@ -6670,12 +6707,23 @@ bool CommWorth(const AIFloat3& in p, float gain, float tJob = 0.f)
 	// Before the earliest enemy raid can arrive nothing of theirs can be there, watched or not (refusing unwatched ground
 	// from the start left 4 extractors at 8:00 in two of three games, ck2/ck3: no radar yet, spots out of sight).
 	const bool knownEmpty = float(ai.frame) / SECOND + tJob < Opening::raidArrive;
-	if (commander !is null && !knownEmpty && !Watched(p) && p.distance2D(commander.GetPos(ai.frame)) > commander.circuitDef.GetBuildDistance()) {
-		lastV = GameValue(); lastRisk = lastV; lastGain = gain;
-		return false;
-	}
 	lastV = GameValue();
 	lastRisk = CommPDeath(p, EscapeTime(p) + tJob) * lastV;
+	// Out of sight the risk is what could be there unseen: the raiders the opener's model gives them by now (their lab
+	// time, rate, income-capped), all assumed at p. The commander dies there only if they outfight it (square law on
+	// unit facts), and then with their damage over the job and its escape against its health. (Refused outright as the
+	// whole game: every solar at base read risk 4166 at danger 0.0 and the commander built none from 48 s to 184 s -
+	// energy flat at 50 E/s, the plant's constructor took 59 s, swe32.)
+	if (commander !is null && !knownEmpty && !Watched(p) && p.distance2D(commander.GetPos(ai.frame)) > commander.circuitDef.GetBuildDistance()) {
+		const float tNow = float(ai.frame) / SECOND;
+		const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
+		const float nR = AiMax(0.f, tNow - Opening::raidLabAt) * rate;
+		const float Sc = Opening::Strength(commander.circuitDef);
+		float Pu = 0.f;
+		if (nR * Opening::raidStrength > Sc)
+			Pu = AiMin(1.f, nR * Opening::raidDps * (EscapeTime(p) + tJob) / AiMax(1.f, commander.circuitDef.health));
+		lastRisk = AiMax(lastRisk, Pu * lastV);
+	}
 	lastGain = gain;
 	return gain >= lastRisk;  // a tie (e.g. idle, out of danger) stays and looks for its best job
 }
