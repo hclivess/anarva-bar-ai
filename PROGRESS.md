@@ -708,3 +708,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   of extractors in ca1 (assisting builds too?).
 - **Pickets from seen raiders (pk2):** before any measured loss, each seen raider's reachable sites (it gets there and kills before our army arrives) carry 1/n of it. pk2: 2 extractors lost before 6:00 (rv1/ca1: 3-5), army 2417 vs 3024 at 12:00; but extractors stayed at 4-6 (metal 15.8 vs 45.6 at 12:00). Points loss.
 - **One op per raid spot (rs1):** raid spots carry no id, so the same corner was picked each update ([ANV-AWARE] aw1: ops [1@6800,752 1@6800,752 2@6800,752]). Now an op's spot is taken. rs1: distinct targets; but army 108 at 3:00 and 2 extractors at 4:00 - the opening again; lost at 18:00.
+- **Opening replay view (24 Armada bot-lab 1v1 wins vs rs1):** winners place the lab at 58 s (46-65); its first 3 minutes
+  make 4 constructors and 12 combat units, mostly Ticks (armflea), e.g. "ck ck flea flea flea pw flea flea flea pw".
+  rs1: lab at 128 s; 8 of its first 12 units constructors, 4 combat units. The opening plan to build as one decision:
+  lab by ~1:00 (what delays ours past 2:00), then the Tick's value - it is a raider and scout at 1/4 of a Pawn's cost,
+  valued by us as a scout only - and constructors only while a spot can be claimed before the raids we see.
