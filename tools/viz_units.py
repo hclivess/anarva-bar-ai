@@ -203,3 +203,67 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def winners_vs_losers(db, out=None):
+    """Median extractors, metal income and army by minute: 1v1 winners against losers."""
+    won = {(r, t): w for r, t, w in db.execute("select t.replay_id, t.team, t.won from teams t join replays r on r.id=t.replay_id "
+                                                "where r.format='1v1' and r.status='done'")}
+    MAXM = 16
+    series = {}
+    for key in ("mex", "m_inc", "army"):
+        series[key] = {1: [[] for _ in range(MAXM + 1)], 0: [[] for _ in range(MAXM + 1)]}
+    for rid, team, minute, mex, minc, army in db.execute(
+            "select s.replay_id, s.team, s.minute, s.mex, s.m_inc, s.army from stats s join replays r on r.id=s.replay_id "
+            "where r.format='1v1' and r.status='done'"):
+        w = won.get((rid, team))
+        if w in (0, 1) and minute <= MAXM:
+            for key, v in (("mex", mex), ("m_inc", minc), ("army", army)):
+                if v is not None:
+                    series[key][w][minute].append(v)
+    W, H = 1200, 460
+    img = Image.new("RGB", (W, H), SURFACE)
+    d = ImageDraw.Draw(img)
+    LOSE = (235, 104, 52)
+    d.text((40, 22), "1v1 winners and losers: level at minute 5, apart by minute 10", font=font(26, True), fill=INK)
+    d.text((40, 58), "Median by minute over all top-player 1v1 replays. Winners pull ahead by out-expanding, not by the opening.",
+           font=font(16), fill=INK2)
+    d.rectangle([40, 92, 66, 100], fill=BLUE); d.text((74, 86), "winners", font=font(13), fill=INK2)
+    d.rectangle([160, 92, 186, 100], fill=LOSE); d.text((194, 86), "losers", font=font(13), fill=INK2)
+    titles = [("mex", "Metal extractors"), ("m_inc", "Metal income (per s)"), ("army", "Army value (metal)")]
+    pw, ph = (W - 120) // 3, 280
+    for i, (key, title) in enumerate(titles):
+        cx, cy = 40 + i * (pw + 20), 130
+        ax_l, ax_r, ax_t, ax_b = cx + 50, cx + pw, cy + 26, cy + ph
+        d.text((cx, cy), title, font=font(15, True), fill=INK)
+        med = {w: [(st_median(series[key][w][m]) if len(series[key][w][m]) >= 4 else None) for m in range(MAXM + 1)] for w in (1, 0)}
+        top = max(v for w in (1, 0) for v in med[w] if v is not None)
+        raw = top / 4.0
+        e = 10 ** int(np.floor(np.log10(raw)))
+        step = next(s_ * e for s_ in (1, 2, 5, 10) if raw <= s_ * e)
+        vmax = step * 4
+        for t in range(5):
+            y = ax_b - (ax_b - ax_t) * t / 4
+            d.line([ax_l, y, ax_r, y], fill=GRID, width=1)
+            d.text((cx, y - 8), f"{vmax * t / 4:,.0f}", font=font(12), fill=INK2)
+        for m in range(0, MAXM + 1, 4):
+            d.text((ax_l + (ax_r - ax_l) * m / MAXM - 5, ax_b + 4), str(m), font=font(12), fill=INK2)
+        for w, col in ((0, LOSE), (1, BLUE)):
+            pts = [(ax_l + (ax_r - ax_l) * m / MAXM, ax_b - (ax_b - ax_t) * med[w][m] / vmax) for m in range(MAXM + 1) if med[w][m] is not None]
+            if len(pts) >= 2:
+                d.line(pts, fill=col, width=3, joint="curve")
+        for m in (5, 10):
+            x = ax_l + (ax_r - ax_l) * m / MAXM
+            d.line([x, ax_t, x, ax_b], fill=(200, 199, 194), width=1)
+    img.save(out or os.path.join(OUT, "winners_vs_losers.png"))
+
+
+def st_median(xs):
+    xs = sorted(xs)
+    n = len(xs)
+    return xs[n // 2] if n % 2 else 0.5 * (xs[n // 2 - 1] + xs[n // 2])
+
+
+if __name__ == "__main__" and os.environ.get("ANARVA_WVL"):
+    winners_vs_losers(sqlite3.connect(DB))
+    print("wrote winners_vs_losers.png")

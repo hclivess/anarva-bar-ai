@@ -135,6 +135,26 @@ the extractor fields.
 At T1 the Incisor (`corgator`), the Grunt (`corak`) and the Blitz (`armflash`) lead. The heavy units at the top come
 from the longer games. Regenerate all three with `python tools/viz_units.py [--map "<map>"]`.
 
+**Winners and losers** (median by minute, all top-player 1v1 replays):
+
+![1v1 winners and losers by minute](docs/winners_vs_losers.png)
+
+Winners and losers are level at minute 5: 12 vs 11 extractors, army 826 vs 817. By minute 10 the winners lead with
+24 extractors to 19 and 52.7 metal/s to 42.3. 1v1s are won by out-expanding after the opening, not by the opening
+itself.
+
+**More numbers from the 1v1 replays** (107 games, 214 players):
+
+| | |
+|---|---|
+| Game length | median 14.9 min (middle half 11.6–22.5) |
+| First factory, players / win rate | vehicle plant 76 / 55%, bot lab 130 / 48%, air plant 6 / 17% |
+| Faction chosen, players / win rate | Armada 123 / 52%, Cortex 53 / 34%, random 38 / 66% |
+| How games end | by a commander's death, in 105 of the 107 |
+
+These are counts from this set of games, not a balance verdict: players who pick random may differ in skill from
+those who pick a faction.
+
 Most 1v1 games are decided at T1: only 41 of 107 winners build a T2 factory. Expansion, the first construction
 turret by about five minutes, and the T1 army decide them. By 3:00 the winners average 8.4 wind turbines,
 5 extractors, about 6 fighters and 0.2 towers.
