@@ -146,3 +146,9 @@ The latest batch (D-gun and strength fixes) is being played.
   ([ANV-BUILDFAIL]); they expire untaken - a job's lifetime is the minimum walk + build, so a tower that loses a few
   job comparisons expires before a builder is free. Next: a valued tower keeps its claim for as long as the danger it
   answers lasts.
+- **Tower orders, traced with [ANV-TOWEREND]:** fixed three causes (pre-emptive orders live for the horizon; not
+  auto-aborted for an unsafe path - towers go where raids come; an untaken order yields to a better site). Still 1
+  tower by 8:00 against Cortex (players 6.2): the valuation itself. A site's expected loss = value x its share of all
+  exposed value x raids per horizon concentrates on the best site; others sit barely above a tower's cost and lose to
+  an extractor's horizon yield. Missing: what a tower kills (raiders' value) and the constructors it keeps alive.
+  Next: value a tower by the raiders it would kill over the horizon as well as the loss it prevents.

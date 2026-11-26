@@ -468,7 +468,17 @@ namespace MexPorc {
 int orders = 0;
 IUnitTask@ pending = null;  // the tower ordered last, until its job ends: one at a time, like a player (26 towers in
                             // 10 minutes when every update ordered another before the last one stood, Gasbag)
-void OnTaskRemoved(IUnitTask@ t) { if (t is pending) @pending = null; }
+int pendingFrame = 0;
+float pendingValue = 0.f;
+void OnTaskRemoved(IUnitTask@ t)
+{
+	if (t !is pending) return;
+	// why tower orders end (a log for each: 8 orders gave 1 tower and nothing said why)
+	IBuilderTask@ bt = cast<IBuilderTask>(t);
+	AiLog("[ANV-TOWEREND] f=" + ai.frame + " tower job ended after " + ((ai.frame - pendingFrame) / SECOND) + " s, builders "
+		+ t.GetUnits().length() + ", built " + ((bt !is null && bt.target !is null) ? "started" : "not started"));
+	@pending = null;
+}
 bool IsFactory(const CCircuitDef@ d) { return !d.IsMobile() && d.buildSpeed > 0.f && Facts::BuildOptions(d.GetName()).length() > 0; }
 float RaidLoss(CCircuitUnit@ u, const CCircuitDef@ con)
 {
@@ -507,7 +517,9 @@ dictionary guarded;  // mex id -> frame ordered
 void Update()
 {
 	if (!HasBase()) return;
-	if (pending !is null) return;  // the last tower first
+	// the last tower first - unless nobody has taken it and a better site appears: a barely-worth order (103 vs a 94
+	// turret) sat untaken all game and blocked every better tower (1 tower by minute 8 against Cortex)
+	if (pending !is null && pending.GetUnits().length() > 0) return;
 	CCircuitDef@ tur = Strategic::BestTurret();
 	if (tur is null || !tur.IsAvailable(ai.frame)) return;
 	const float cost = Economist::MetalValue(tur);
@@ -560,6 +572,12 @@ void Update()
 		}
 	}
 	if (best is null) return;
+	if (pending !is null) {
+		if (bestHeat <= pendingValue) return;  // the pending order is still the best site
+		AiLog("[ANV] MexPorc: untaken tower order (worth " + int(pendingValue) + ") replaced by a better site (" + int(bestHeat) + ")");
+		pending.Abort();
+		@pending = null;
+	}
 	const AIFloat3 p = best.GetPos(ai.frame);
 	if (!TurretSurvives(tur, p)) return;
 	guarded.set("" + best.id, ai.frame);
@@ -575,10 +593,20 @@ void Update()
 	// is expected to prevent and competes on that value with every other job: as NOW it skipped the comparison and
 	// took the commander off extractors and wind twice before minute 2.5 (Theta, round 29), while winners build 0.2
 	// towers by 3:00 against 8.4 turbines and 5 extractors (replays.db, 107 wins).
+	// a pre-emptive tower answers a danger that lasts the horizon: its claim lives that long (with the minimum walk +
+	// build as its life, 10 orders gave 1 tower by minute 8 - each expired untaken while builders were busy)
+	const int life = seen ? OrderLife(tur, p) : int(Economist::Horizon() * SECOND) + 1;
 	@pending = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::DEFENCE, seen ? Task::Priority::NOW : Task::Priority::NORMAL,
-		tur, p, around, true, OrderLife(tur, p)));
+		tur, p, around, true, life));
+	pendingFrame = ai.frame;
+	pendingValue = bestHeat;
 	IBuilderTask@ pbt = cast<IBuilderTask>(pending);
-	if (pbt !is null) pbt.value = bestHeat;
+	if (pbt !is null) {
+		pbt.value = bestHeat;
+		// a tower goes where raids come: the core's "abort when the path isn't safe" dropped exactly these (8 orders,
+		// 1 tower by minute 8 against Cortex); the builder's own evacuation still weighs its life
+		pbt.canAutoAbort = false;
+	}
 	AiLog("[ANV] MexPorc: " + tur.GetName() + (seen ? " NOW" : " valued") + " at extractor (loss there, seen or expected from the raid, " + int(bestHeat) + " > turret " + int(cost) + ")");
 }
 }  // namespace MexPorc
