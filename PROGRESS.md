@@ -364,3 +364,6 @@ The latest batch (D-gun and strength fixes) is being played.
   (all commander risk tests, the last factory, a threatened commander): the commander still died (15:20, 19:26),
   trades 0.75 / 0.60. Its deaths are not a pricing question at the margin - the commander is in the fight because the
   fight comes to it (base pushes) or because its jobs are where the fighting is.
+- **Against BARb as Armada (cmd_aa1, Canis):** lost at 13:13, trade 0.68, commander dead - the same failure as against
+  Cortex and on the other maps. Across three maps and both BARb factions the two decisive gaps are the same: fights
+  trade ~0.5-0.95 against us, and the commander dies when fighting reaches it (13-19 min).
