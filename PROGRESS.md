@@ -742,3 +742,5 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   they save: 351 picket assignments, 4 of 27 extractors lost 4-12 min (kt1: 15 of 22). Metal 59.4 vs 36.1 at 12:00,
   116 vs 50 at 16:00, 199 vs 94 at 20:00; buildings 81015 vs 25579. Armies close at 20:00 (5476 vs 6135) and kills
   40 vs 261 - the fighting gap (#116) stays. A points win, not a kill. Next: repeat it, other maps.
+- **Repeats of pk3's build (rp1-3):** rp1 Comet loss at 13:00, rp2 Comet points loss, rp3 Canis loss at 17:00. 1 win in
+  4 games on this build: pk3 was not yet a repeatable result.
