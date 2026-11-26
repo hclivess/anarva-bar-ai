@@ -534,3 +534,8 @@ The latest batch (D-gun and strength fixes) is being played.
   the lab assist. 4-minute checks: 11-13 units (was 8-9), 6 winds, but 3-4 extractors; full games cd5-7: extractors
   1-7 all game, trades 0.63 / 0.36 / 0.39, all lost (12, 15 min, pts). The redirect enqueued extractor jobs at the
   nearest open spot regardless of whether it could be held; outer spots died (10-18 lost) and income never grew.
+- **Plan over within-reach spots and plants, reverted (nr1-2):** restricting the commander's pre-lab plan to spots
+  within its build reach plus plants brought back "energy forever": solar after solar, no lab by 4:00 (re-planned each
+  step, "one more plant then the lab" always beat "the lab now"), and the start moved to a corner. The plan value
+  rates any producer before the lab above the lab: it must count what the lab's units are worth by when they are
+  needed (#103/#41) before any search over it can work - the core of the #105 design.
