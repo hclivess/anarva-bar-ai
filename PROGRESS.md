@@ -360,3 +360,7 @@ The latest batch (D-gun and strength fixes) is being played.
   trades 0.53 / 0.53. Their commander dealt our Pawns 163168 in one game (cmd_m144); its threat scaled by its live
   trade alone took it off the top of the damage log, but the trade stayed 0.56 / 0.46 and both games were lost -
   Grunts, Gators and Rogues took its place. Every single lever moves the losses to the next enemy unit.
+- **Game value = ours + theirs (cmd_m149/m150) - reverted:** pricing a lost game at what we own plus what we'd take
+  (all commander risk tests, the last factory, a threatened commander): the commander still died (15:20, 19:26),
+  trades 0.75 / 0.60. Its deaths are not a pricing question at the margin - the commander is in the fight because the
+  fight comes to it (base pushes) or because its jobs are where the fighting is.
