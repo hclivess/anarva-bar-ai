@@ -4485,7 +4485,10 @@ void Update()
 			float tgtHp = (Economist::mexT1 !is null) ? Economist::mexT1.health : 1.f;
 			for (uint i = 0; i < n; ++i) if (eIds[i] == op.enemyId && eDef[i] !is null) { tgtHp = eDef[i].health * eHp[i]; break; }
 			const float age = float(ai.frame - op.startFrame) / SECOND;
-			if (lostM > 0.f && age >= tgtHp / AiMax(1e-3f, dps)) op.defence = AiMax(op.defence, S * lostM / AiMax(1.f, killedM));
+			// square law: the loss ratio is the strength ratio squared (as FightGain prices it), so D = S x sqrt(lost/killed);
+			// linear, a pull-back with ~nothing killed read defence 34795 against our 129 and the army skipped every target
+			// for the rest of the game while 2.3x stronger (fr1, 16:07)
+			if (lostM > 0.f && age >= tgtHp / AiMax(1e-3f, dps)) op.defence = AiMax(op.defence, S * sqrt(lostM / AiMax(1.f, killedM)));
 		}
 		if (!alive || op.units.length() == 0 || FightGain(op.value, S, op.defence, opMetal) <= 0.f) {
 			if (alive && op.units.length() > 0) {
@@ -4599,8 +4602,11 @@ void Update()
 			const AIFloat3 midW = (fc + cp[i]) * 0.5f;
 			dfc[i] = AiMax(AiMax(Cover(cp[i], AiMax(tFight, t)), Cover(midW, t * 0.5f)), Cover(fc, 0.f));
 			if (cid[i] < 0) dfc[i] = AiMax(dfc[i], unseenDefence);
-			for (uint k = 0; k < shownPos.length(); ++k)
+			// what a fight revealed holds until we see the place again: then what we see there is the defence
+			for (int k = int(shownPos.length()) - 1; k >= 0; --k) {
+				if (AiIsInLOS(shownPos[k])) { shownPos.removeAt(k); shownDef.removeAt(k); shownReach.removeAt(k); continue; }
 				if (shownPos[k].distance2D(cp[i]) <= shownReach[k]) dfc[i] = AiMax(dfc[i], shownDef[k]);
+			}
 			// the fight is with every enemy the defence counts there, and winning it kills them all and saves what they
 			// threaten: its value is theirs together, as its defence is. Valued at the one target, our army (66-88) skipped
 			// every unit of a push (defence 41-66, gain -1000 to -3000 each) while it took the base and the commander

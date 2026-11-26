@@ -456,3 +456,7 @@ The latest batch (D-gun and strength fixes) is being played.
   remaining health (retreats excepted). Trades **1.23** / 0.92 / 0.75 - the first above 1; fr1 army 10685 vs 4590 and
   fr2 6909 vs 6341 at 20:00, commander alive in both, but both lost on points: their buildings 37785 / 28174 vs ours
   3968 / 2990. The stronger army never pressed their economy. Next: attack when ahead.
+- **Square-law defence memory (sd1-3):** a pull-back's revealed defence is S x sqrt(lost/killed) (square law, as
+  FightGain prices loss) and is forgotten when the place is in sight again; max skip defence 23-370 (was 34795, fr1).
+  Trades 0.78 / 0.97 / 0.78, armies near even at 20:00 (5543 vs 6141, 5747 vs 6711), but extractors fall 10-12 -> 3 and
+  buildings 1065-3880 vs 28-29k: the loss is now our economy, not the army.
