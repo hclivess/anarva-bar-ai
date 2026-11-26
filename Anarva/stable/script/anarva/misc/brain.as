@@ -4954,10 +4954,22 @@ float GameValue()
 	for (uint i = 0; i < all.length(); ++i) v += all[i].circuitDef.costM;
 	return v;
 }
+// Escaping is leaving the reach of the enemies that can hit p: for each armed enemy, the way still inside its range
+// over the commander's speed; the longest. (It was the walk to the nearest factory: a factory inside a base fight read
+// as the best escape and a quiet structure away from it as dangerous - the commander guarded a factory in the fight and
+// died at base at 17:52, cmd_m102.)
 float EscapeTime(const AIFloat3& in p)
 {
-	CCircuitUnit@ h = NearestFactory(p);
-	return h is null ? 0.f : MoveTime(commander.circuitDef, h.GetPos(ai.frame).distance2D(p));
+	if (commander is null) return 0.f;
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	float t = 0.f;
+	for (uint i = 0; i < n; ++i) {
+		if (ed[i] is null || ed[i].surfThrDmg <= 0.f) continue;
+		const float inside = ed[i].GetMaxRange() - ep[i].distance2D(p);
+		if (inside > 0.f) t = AiMax(t, inside / AiMax(1.f, commander.circuitDef.speed));
+	}
+	return t;
 }
 // A build job is worth what it builds. Any other job (assist, reclaim, repair) is worth the commander's
 // share of our build power applied to our income over the job's span: that's the spending it carries.
