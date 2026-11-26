@@ -807,3 +807,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   - swe7: raider rate capped by income - ahead on metal (11.2 vs 8.9) and army (442 vs 258), totals level (1107 vs 1108); swung on buildings (no constructor in 12 units: the value used the whole horizon, ~10700 s early).
   - swe8: value over one lab slot - too small (192): constructors first, army 0 vs 146 at 2:00.
   - The window is between one slot and the horizon: how long the raid goes unanswered if not now, which depends on the lab's next picks. Next: the unanswered time from the lab's own queue of values.
+- **swe9, unanswered-time window:** fighter value over the time the raid will have gone unanswered (>= one slot). Lab: Pawn, constructor, Pawn, constructor, Pawn, Pawn, then Ticks; at 4:00 army level (309 vs 301), buildings ahead (1455 vs 1280), total ahead (1764 vs 1581). Swing at 4:00 on metal (6.6 vs 18.1; damage share 0.19).

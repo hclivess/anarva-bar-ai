@@ -2731,8 +2731,12 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 					// a fighter now instead of later answers the raid one lab slot sooner (its build time): that is the loss it
 					// prevents, not the raid's damage over the whole horizon (10711 s early: 85492, the whole stake - the lab made
 					// no constructor in its first 12 units and the base fell behind, buildings 665 vs 850 at 3:00, swe7)
+					// ...and as long as the raid will have gone unanswered when it is ready: before the raid arrives a fighter one
+					// slot later is as good (one slot); after, each slot without one lets it go on. Over the whole horizon the
+					// lab made no constructor (swe7); over one slot alone it made only constructors, army 0 vs 146 at 2:00 (swe8).
 					const float slot = d.buildTime / AiMax(1.f, fdef.buildSpeed);
-					const float vRaid = AiMin(stakeSurf, Opening::raidDps * mPerHp * slot * duel);
+					const float unanswered = AiMax(slot, tUp - Opening::raidArrive);
+					const float vRaid = AiMin(stakeSurf, Opening::raidDps * mPerHp * unanswered * duel);
 					if (vRaid > vSurf) { vSurf = vRaid; terms += " firstRaid " + int(vRaid) + " (" + F1(nR) + " raiders, duel " + F2(duel) + ")"; }
 				}
 			}
