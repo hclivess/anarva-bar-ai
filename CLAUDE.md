@@ -119,6 +119,10 @@ is a decision nobody made.
 - **Only one game at any given time** (owner, 2026-11-26: "only run 1 game at any given time"). `tools/batch.py ...
   --games 1 --par 1`, one map per run; report each result as soon as it is in, then start the next. Never four in
   parallel (it lags the owner's machine and delays every result).
+- **Compare like with like: fix the factions** (`--side0 Armada --side1 Cortex`). BARb draws its faction at random,
+  and the matchup decides more than most changes do: the same start and build lost no extractor before minute 8
+  against Armada and lost 6-7 against Cortex's raiders (Canis, 2026-11-26). A comparison across random matchups
+  measures the draw.
 - **One install only: `Anarva`.** No side-by-side copies in the owner's BAR (owner: "why do you keep multiple
   copies"). Install only while the owner is not playing (the installer refuses while BAR holds the DLL), then verify
   with a short headless game before saying it is ready.

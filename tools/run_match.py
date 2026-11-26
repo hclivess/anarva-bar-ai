@@ -15,7 +15,7 @@ ENGINE = os.path.join(BAR_DATA, "engine", "recoil_2026.09.03", "spring-headless.
 GAME = "byar:test"
 
 
-def ai_block(idx, spec, ally=None):
+def ai_block(idx, spec, ally=None, side="Random"):
     short, profile = spec.split(":")
     opts = f"profile={profile};"
     if short == "BARb":
@@ -37,7 +37,7 @@ name={short}{idx};
 {{
 allyteam={idx if ally is None else ally};
 teamleader=0;
-side=Random;
+side={side};
 handicap=0;
 }}
 """
@@ -83,8 +83,8 @@ startrectleft={b0[0]}; startrectright={b0[1]}; startrecttop={b0[2]}; startrectbo
 {{
 startrectleft={b1[0]}; startrectright={b1[1]}; startrecttop={b1[2]}; startrectbottom={b1[3]}; numallies=0;
 }}
-{ai_block(0, args.ai0)}
-{"".join(ai_block(1 + k, args.ai1, 1) for k in range(args.n1))}
+{ai_block(0, args.ai0, side=args.side0)}
+{"".join(ai_block(1 + k, args.ai1, 1, side=args.side1) for k in range(args.n1))}
 [player0]
 {{
 name=Observer;
@@ -120,6 +120,8 @@ def main():
     ap.add_argument("--n1", type=int, default=1, help="number of ai1 copies (all allied)")
     ap.add_argument("--minutes", type=float, default=20.0, help="wall-clock limit")
     ap.add_argument("--game-minutes", type=float, default=30.0, help="game-time cap (harness widget)")
+    ap.add_argument("--side0", default="Random", help="faction of ai0: Armada, Cortex or Random (fix the matchup to compare)")
+    ap.add_argument("--side1", default="Random", help="faction of ai1")
     ap.add_argument("--startpostype", type=int, default=2, help="0 fixed, 2 choose in game (every 1v1 replay)")
     args = ap.parse_args()
     args.out = os.path.abspath(args.out)  # the engine runs inside out/, so a relative script path breaks
