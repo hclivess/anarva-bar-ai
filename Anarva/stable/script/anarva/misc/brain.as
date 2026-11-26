@@ -4429,16 +4429,39 @@ namespace Command {
 dictionary picketAt;  // unit id -> "x,z"
 void Pickets(array<CCircuitUnit@>@ freeUnits)
 {
-	if (Economist::lossPos.length() == 0 || freeUnits.length() == 0) return;
+	if (freeUnits.length() == 0) return;
 	const float tGame = AiMax(1.f, float(ai.frame) / SECOND);
 	const float H = AiMax(1.f, Economist::Horizon());
 	AIFloat3 ac(0.f, 0.f, 0.f); float aSpeed = 1e9f; uint na = 0;
 	for (uint i = 0; i < freeUnits.length(); ++i) { ac = ac + freeUnits[i].GetPos(ai.frame); aSpeed = AiMin(aSpeed, freeUnits[i].circuitDef.speed); ++na; }
 	ac = ac / float(AiMax(1, int(na)));
 	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
-	array<AIFloat3> site; array<float> siteHp;
+	array<AIFloat3> site; array<float> siteHp; array<float> siteLoss;
 	for (uint i = 0; i < mine.length(); ++i)
-		if (!mine[i].circuitDef.IsMobile() && Facts::ExtractsMetal(mine[i].circuitDef.GetName()) > 0.f) { site.insertLast(mine[i].GetPos(ai.frame)); siteHp.insertLast(mine[i].circuitDef.health); }
+		if (!mine[i].circuitDef.IsMobile() && Facts::ExtractsMetal(mine[i].circuitDef.GetName()) > 0.f) {
+			site.insertLast(mine[i].GetPos(ai.frame)); siteHp.insertLast(mine[i].circuitDef.health);
+			siteLoss.insertLast(MexPorc::RaidLoss(mine[i], EcoPos::CheapestConstructor()));
+		}
+	// Before any loss is measured: the raiders we see. Each seen armed enemy can reach some of our extractors before our
+	// army can (its walk + the kill time < the army's walk); it raids one at a time, so each such site carries 1/n of it.
+	// (rv1/ca1: the first raids at 3:00-5:00 came before pickets had a measured loss to place them by.)
+	array<float> seenLoss(site.length(), 0.f), seenE(site.length(), 0.f), seenD(site.length(), 0.f);
+	{
+		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+		for (uint e = 0; e < ne; ++e) {
+			const CCircuitDef@ d = ed[e];
+			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
+			array<int> reach;
+			for (uint k = 0; k < site.length(); ++k) {
+				const float tE = ep[e].distance2D(site[k]) / AiMax(1.f, d.speed) + siteHp[k] / AiMax(1e-3f, d.GetSustainedDps());
+				const float tA = ac.distance2D(site[k]) / AiMax(1.f, aSpeed);
+				if (tE < tA) reach.insertLast(int(k));
+			}
+			const float st = sqrt(d.GetSustainedDps() * AiMax(1.f, eh[e] * d.health));
+			for (uint r = 0; r < reach.length(); ++r) { seenLoss[reach[r]] += siteLoss[reach[r]] / float(reach.length()); seenE[reach[r]] = AiMax(seenE[reach[r]], st); seenD[reach[r]] = AiMax(seenD[reach[r]], d.GetSustainedDps()); }
+		}
+	}
 	array<bool> used(freeUnits.length(), false), covered(site.length(), false);
 	dictionary now;
 	while (true) {
@@ -4456,12 +4479,21 @@ void Pickets(array<CCircuitUnit@>@ freeUnits)
 				if (Economist::lossPos[j].distance2D(site[k]) > ud.GetMaxRange() + ud.speed * tK) continue;
 				lm += Economist::lossM[j]; le += Economist::lossE[j]; ld += Economist::lossD[j]; nl += 1.f;
 			}
-			if (nl <= 0.f) continue;
-			const float eRaid = le / nl, tKill = siteHp[k] / AiMax(1e-3f, ld / nl);
-			if (ac.distance2D(site[k]) / AiMax(1.f, aSpeed) <= tKill) continue;  // the army gets there in time anyway
 			const float us = sqrt(AiMax(0.f, ud.GetSustainedDps()) * AiMax(1.f, ud.health));
-			const float win = Production::WinShare(us, eRaid);
-			const float V = lm / tGame * H * win;
+			float V = 0.f, win = 0.f, tKill = 0.f;
+			if (nl > 0.f) {
+				const float eRaid = le / nl;
+				tKill = siteHp[k] / AiMax(1e-3f, ld / nl);
+				if (ac.distance2D(site[k]) / AiMax(1.f, aSpeed) > tKill) {  // else the army gets there in time anyway
+					win = Production::WinShare(us, eRaid);
+					V = lm / tGame * H * win;
+				}
+			}
+			if (seenLoss[k] > 0.f) {
+				const float w2 = Production::WinShare(us, seenE[k]);
+				if (seenLoss[k] * w2 > V) { V = seenLoss[k] * w2; win = w2; tKill = siteHp[k] / AiMax(1e-3f, seenD[k]); lm = seenLoss[k]; }
+			}
+			if (V <= 0.f) continue;
 			const float C = ud.costM * AiMax(0.f, Production::lastBestRatio);
 			if (V - C > bestNet) { bestNet = V - C; bs = int(k); bu = nu; bestV = V; bestC = C; bestT = tKill; bestL = lm; bestW = win; }
 		}
