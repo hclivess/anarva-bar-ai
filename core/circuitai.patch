@@ -5247,7 +5247,7 @@ index fcc4c984..71fead41 100644
  
  	float prevCost = query->GetCostAt(endPos, range);
 diff --git a/src/circuit/task/builder/BuilderTask.cpp b/src/circuit/task/builder/BuilderTask.cpp
-index 172d4c26..c56518f0 100644
+index 172d4c26..8c7cd37c 100644
 --- a/src/circuit/task/builder/BuilderTask.cpp
 +++ b/src/circuit/task/builder/BuilderTask.cpp
 @@ -6,6 +6,8 @@
@@ -5488,7 +5488,7 @@ index 172d4c26..c56518f0 100644
  			)
  			return true;
  		}
-@@ -530,13 +596,44 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -530,13 +596,48 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  	if (unit->IsAttrNoDisrupt()) {
  		return true;
  	}
@@ -5501,7 +5501,11 @@ index 172d4c26..c56518f0 100644
 +	// It ends when energy binds: the bank runs dry before our build power could close the deficit. The way back is
 +	// the re-pick after the energy job is finished (builders finish jobs), so it doesn't flap.
 +	// (a guard a decision gave a value - an evacuation - is that decision's, not a boost to end)
-+	const bool boostEnds = (buildType == BuildType::GUARD) && (GetAnarvaValue() <= 0.f) && AnarvaEnergyBindsNow(manager->GetCircuit());
++	// A boost leaves nothing unfinished, so "finish what you started" doesn't hold it: it ends whenever the re-pick is a
++	// better job that isn't a boost (no flapping: that job is then finished). Held until energy bound, the first
++	// constructor boosted the lab for 37 s at 1:51 while an extractor was its better pick - metal 6.6 vs BARb 8.9 at
++	// 2:00, the swing (swing.py it1).
++	const bool boostEnds = (buildType == BuildType::GUARD) && (GetAnarvaValue() <= 0.f);
 +	// Any job yields to energy when energy binds and the re-pick is an energy plant: the commander walked on to an
 +	// extractor while energy went 124/s short at minute 2 and the lab took 51 s per unit (Gasbag, 2026-11-25).
 +	// Only toward energy and only while it binds, so it doesn't flap.
@@ -5536,7 +5540,7 @@ index 172d4c26..c56518f0 100644
  		manager->AssignTask(unit, task);
  		return false;
  	}
-@@ -577,7 +674,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
+@@ -577,7 +678,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
  	CPathFinder* pathfinder = circuit->GetPathfinder();
  	std::shared_ptr<IPathQuery> query = pathfinder->CreatePathSingleQuery(
  			unit, circuit->GetThreatMap(),
@@ -5545,7 +5549,7 @@ index 172d4c26..c56518f0 100644
  	pathQueries[unit] = query;
  
  	pathfinder->RunQuery(circuit->GetScheduler().get(), query, [this](const IPathQuery* query) {
-@@ -828,7 +925,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
+@@ -828,7 +929,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
  						}
  					} break;
  					case SBuildInfo::Condition::CHANCE: {

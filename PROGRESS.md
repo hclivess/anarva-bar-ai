@@ -639,3 +639,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
 - **Sight after the scout fix (sc4):** enemy army known 3836 vs real 4226 at 12:00 (fb3: 3195 vs 5745). Lost at 19:00.
   The gap stays the opening: metal 8.9 vs 18.1 at 4:00 - our 7 extractors by 3:12 die to the first Gators (1:43 on),
   BARb towers its own from 2:06. swing.py now counts energy as a gap only when our bank is empty and theirs isn't.
+- **it1 -> it2:** a boost (assisting the lab) ended only when energy bound; the first constructor boosted 37 s instead of claiming. Now it ends on any better non-boost pick: first constructor's extractor at 107 s (was 157), the 2:00 swing gone; next swing 3:00 army 162 vs 386.
