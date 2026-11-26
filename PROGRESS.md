@@ -780,3 +780,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   path still orders bot labs; scoring factories against the remembered enemy mix (Production's memory), not the mix in
   sight.
 - **Vehicle plant built (vp7):** the factory re-decision no longer aborts a job a builder is on (it flipped vp/advanced lab). vp7: vehicle plant at 402 s (winners' second factory median 7:29), but it made 27 Rovers (scouts) and 20 Blitzes; vp8 none. Both lost (17:00, 19:00). Record: 2 wins in 29. Next: why Production values the Rover so high from the vehicle plant.
+- **[ANV-TRADE] per-type live trade (tr1):** Pawn dealt 8670 / got 13426 (0.65), Tick 3722 / 13083 (0.28) over 18 min; only Pawns and Ticks built, no vehicle plant this game; lost at 18:00. Record: 2 wins in 30. Every unit type we field trades below 1 against BARb's mix.

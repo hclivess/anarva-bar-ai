@@ -5509,11 +5509,27 @@ string Res(const SResourceInfo@ r, float realPull)
 	if (net < 0.f && r.current < -net) return "STALL " + F1(-net) + "/s short";
 	return "ok";
 }
+// per our unit type: damage it dealt and received so far (the live trade, #116: which of our units earn their metal
+// against the mix they meet) - one line a minute
+dictionary tradeTypes;
+void TradeLog(const array<CCircuitUnit@>@ all)
+{
+	for (uint i = 0; i < all.length(); ++i) if (IsArmy(all[i].circuitDef)) tradeTypes.set(all[i].circuitDef.GetName(), true);
+	const array<string>@ ks = tradeTypes.getKeys();
+	string tl = "";
+	for (uint k = 0; k < ks.length(); ++k) {
+		const float dealt = AiDamageDealt(ks[k]), rec = AiDamageReceived(ks[k]);
+		if (dealt <= 0.f && rec <= 0.f) continue;
+		tl += " " + ks[k] + " dealt " + int(dealt) + " got " + int(rec) + " (" + F2(dealt / AiMax(1.f, rec)) + ")";
+	}
+	if (tl.length() > 0) AiLog("[ANV-TRADE] t=" + (ai.frame / SECOND) + "s" + tl);
+}
 void Update()
 {
 	if (lastFrame != NEVER && ai.frame - lastFrame < MINUTE) return;
 	lastFrame = ai.frame;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	TradeLog(all);
 	float army = 0.f; uint armyN = 0, moved = 0, onAttack = 0, onRaid = 0, onDefend = 0, noFight = 0;
 	uint builders = 0, idleBuilders = 0, facs = 0, idleFacs = 0;
 	dictionary now;
