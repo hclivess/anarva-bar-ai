@@ -4099,7 +4099,7 @@ float TailGrowth(const Sim@ s, float end)
 	if (s.lab < 0 || labs[s.lab].con is null || Economist::mexT1 is null) return 0.f;
 	const Lab@ L = labs[s.lab];
 	const float mexBuild = Economist::mexT1.buildTime / AiMax(1.f, L.con.buildSpeed);
-	float v = 0.f; int k = 0;
+	float v = 0.f, best = 0.f; int k = 0;  // best: the most the claims are worth, stopping where they stop paying (0: none)
 	const float conCost = Economist::MetalValue(L.con), mexCost = Economist::MetalValue(Economist::mexT1);
 	// constructors come as fast as the lab builds them AND our metal pays for them: early income compounds (more
 	// income, more constructors, spots claimed sooner) - why players start at a spot cluster and take 3 extractors in
@@ -4130,10 +4130,15 @@ float TailGrowth(const Sim@ s, float end)
 			hold = AiMin(1.f, tKill / AiMax(1e-3f, tResp));
 		}
 		v += tailYield[j] * hold * (end - tk) - mexCost;
+		// constructors needed to claim them by then: one per rate x elapsed time... their cost. The claims stop where the
+		// next spot no longer pays for its share of constructors - players don't expand at a loss: charged for every spot
+		// on the map, the tail read -1072 to -1497 at every start, the start with the most near spots lost most, and we
+		// started at (1306,3328) with one spot near while every player on our side stood at (1431,3555) or (936,2562)
+		// with two spots 104-167 out, built at 9 and 16 s (replays.db ea25036b, 18a2046b, 57d1df6a; swe38)
+		const float conUsed = AiMin(float(k), (tk - s.labAt) / AiMax(1.f, conEvery) + 1.f);  // made by then (the first at once)
+		best = AiMax(best, v - conUsed * conCost);
 	}
-	// constructors needed to claim them by then: one per rate x elapsed time... their cost
-	const float conUsed = AiMin(float(k), (end - s.labAt) / AiMax(1.f, conEvery));
-	return v - conUsed * conCost;
+	return best;
 }
 
 // the plan's value to the end of the horizon (now + H): what it lets us spend, minus what the first raid strips
@@ -4269,6 +4274,9 @@ array<Opt@> Options(const Sim@ s, const array<AIFloat3>@ sp, const array<float>@
 		}
 	}
 	for (uint k = 0; k < plants.length(); ++k) {
+		// what the game lets us build now (blocked by the game - wind on a low-wind map - it is unavailable: the commander
+		// ordered a wind turbine 21 times over 64 s, swe39-40); while planning before the game the blocks aren't read yet
+		if (!planning && !plants[k].IsAvailable(ai.frame)) continue;
 		Opt o; o.kind = 1; @o.def = plants[k]; o.pos = plantPos[k]; o.yieldE = aiEconomyMgr.GetEnergyMake(plants[k]);
 		AIFloat3 nx;
 		if (PlaceNextTo(plants[k], s.pos, nx)) o.pos = nx;  // where the commander stands, not back home

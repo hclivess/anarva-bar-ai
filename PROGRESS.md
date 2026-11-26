@@ -842,3 +842,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   - Commander's unseen-raider risk counts only raiders built early enough to walk to the site: CommRedirect 0 (swe37; it read risk 3700-4341 at danger 0.0-0.4 in swe36).
   - Harness: `build_m` (mobile builders and factories - factory defs have canMove and were counted nowhere); swing.py's total value includes it.
   - swe37 stopped 3:00 on army (31 vs 240), income 8.9 vs 13.5: the vehicle plant made one Rover and two constructors in ~110 s with energy short on both sides. Next: why the plant under-produces (energy plan vs the plant's draw, and the plant's queue).
+- **swe38-41:**
+  - Joining a build valued by the build power our resources can feed (the commander assisted an energy-starved constructor ~60 s at 0/1150 E, swe37): swe38 assist ~9 s, energy 70/80/110.
+  - Start value's expansion term counts claims only while they pay (was -1072..-1497 everywhere): start moved to (832,2392), next to the players' (936,2562) (swe39).
+  - Builders step off their own site before building.
+  - **Script blindness, the game's build blocks:** BAR's Build Blocking API blocks wind turbines on low-wind maps (and water/geothermal units where there is none) via team rules params `unitdef_blocked_<id>`; the AI couldn't see them and the commander ordered a wind turbine 21 times over 64 s (swe39-40, plant at 122-124 s). The core reads them every 10 s and makes blocked defs unavailable ([ANV-BLOCKED]); the opener skips unavailable plants. (SCRIPT_SIGHT.md: exposed.)
+  - swe41: failed builds 8; at 3:00 total value 2426 vs 2038, buildings 1290 vs 950, energy 160 vs 151, income level - the best 3:00 of the series; stopped on army alone (141 vs 258; winners 186-527).

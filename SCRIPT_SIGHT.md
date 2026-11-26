@@ -48,3 +48,5 @@ and record it here. A blind spot is fixed when first met, not worked around.
 | paralysis (EMP), slow, veterancy | unit files, unit state | strength of EMP units, veteran units |
 | the enemy army we can't see | estimate from their income and time (not a fact) | fights against a mostly unseen army (we saw 1-15 units of 5000+ metal) |
 | the core's remaining unit getters | `CCircuitDef` (run `tools/sight_audit.py`) | as needed |
+
+- **Game build blocks** (BAR Build Blocking API, team rules param `unitdef_blocked_<id>`: terrain_wind, terrain_water, terrain_geothermal): exposed 2026-11-26 - the core sets blocked defs unavailable (`CBuilderManager::Watchdog`, [ANV-BLOCKED]).
