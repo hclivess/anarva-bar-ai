@@ -4000,6 +4000,12 @@ float OursThreatened(uint i, const array<CCircuitUnit@>@ mine, float tAnswer)
 	float v = 0.f;
 	for (uint k = 0; k < mine.length(); ++k) {
 		const CCircuitDef@ d = mine[k].circuitDef;
+		// the commander is the game: threatened, it is worth everything (left out, Raiders killed it at home at 13:12
+		// while the army of 58-69 reinforced an attack 1200 away, cmd_m77)
+		if (mine[k] is commander) {
+			if (commander.GetPos(ai.frame).distance2D(ePos[i]) <= ed.GetMaxRange() + ed.speed * AiMax(1.f, tAnswer)) v += GameValue();
+			continue;
+		}
 		if (d.IsMobile()) continue;
 		if (mine[k].GetPos(ai.frame).distance2D(ePos[i]) <= ed.GetMaxRange() + ed.speed * AiMax(1.f, tAnswer)) {
 			// what we lose with it: its cost and what it would yield us over the horizon (same terms as an enemy's value)
@@ -4027,6 +4033,7 @@ void Order(CCircuitUnit@ u, const string& in key, int kind, const AIFloat3& in p
 // D (the win share production uses); winning keeps the value at a square-law share of our metal lost, losing costs it
 // all. A fixed "S x trade > D" gate skipped a Pawn raid at our base 7 times at 11.0 vs 11.4 while it killed 1880
 // metal of economy (Theta, round 30): an even fight for that much is taken by any player.
+array<AIFloat3> shownPos; array<float> shownDef; array<float> shownReach;  // defences fights revealed (pulled back)
 float FightGain(float value, float S, float D, float metal)
 {
 	const float st = S * AiMax(1e-3f, Assess::trade);
@@ -4077,6 +4084,9 @@ void Update()
 	const float H = AiMax(1.f, Economist::Horizon());
 	const float trade = AiMax(1e-3f, Assess::trade);
 
+	// a shown defence holds while enemies are still seen there
+	for (int k = int(shownPos.length()) - 1; k >= 0; --k)
+		if (Cover(shownPos[k], 0.f) <= 0.f) { shownPos.removeAt(k); shownDef.removeAt(k); shownReach.removeAt(k); }
 	// keep live ops: drop dead units, finished targets, and fights we no longer win
 	dictionary assigned;
 	for (int o = int(ops.length()) - 1; o >= 0; --o) {
@@ -4126,6 +4136,14 @@ void Update()
 		}
 		if (!alive || op.units.length() == 0 || FightGain(op.value, S, op.defence, opMetal) <= 0.f) {
 			if (alive && op.units.length() > 0) {
+				// what this fight showed, for the next launch here (launch and keep must read the same defence: relaunched
+				// fresh, the army pulled back and returned ~15 times in 40 s at a group of Levelers and lost 7586 in a
+				// minute, cmd_m75). Its reach: the longest enemy weapon there.
+				float rmax = 0.f;
+				for (uint i = 0; i < n; ++i)
+					if (eDef[i] !is null && eDef[i].surfThrDmg > 0.f && ePos[i].distance2D(op.pos) <= eDef[i].GetMaxRange() + eDef[i].speed * float(ai.frame - op.startFrame) / SECOND)
+						rmax = AiMax(rmax, eDef[i].GetMaxRange() + eDef[i].speed * float(ai.frame - op.startFrame) / SECOND);
+				shownPos.insertLast(op.pos); shownDef.insertLast(op.defence); shownReach.insertLast(rmax);
 				++retreats;
 				AiLog("[ANV-CMD] pull back from (" + int(op.pos.x) + "," + int(op.pos.z) + "): strength " + F1(S) + " x trade "
 					+ F1(trade) + " <= defence " + F1(op.defence));
@@ -4223,6 +4241,8 @@ void Update()
 			// target): launched on the target alone, 269 of 292 raids pulled back at once (Canis 2026-11-26)
 			dfc[i] = AiMax(Cover(cp[i], tFight), Cover(fc, t));
 			if (cid[i] < 0) dfc[i] = AiMax(dfc[i], unseenDefence);
+			for (uint k = 0; k < shownPos.length(); ++k)
+				if (shownPos[k].distance2D(cp[i]) <= shownReach[k]) dfc[i] = AiMax(dfc[i], shownDef[k]);
 			// the fight is with every enemy the defence counts there, and winning it kills them all and saves what they
 			// threaten: its value is theirs together, as its defence is. Valued at the one target, our army (66-88) skipped
 			// every unit of a push (defence 41-66, gain -1000 to -3000 each) while it took the base and the commander
@@ -4278,8 +4298,10 @@ void Update()
 			// is hit: on Feast of Hades our Grunts raided far spots one by one while Gators killed our extractors and
 			// Command skipped them, strength 1.1 vs 4.3, round 20).
 			if (S <= need && cid[best] >= 0 && Assess::OnOurSide(cp[best])) {
+				// any op worth less than this defence can give units (only raids could be recalled, and the whole army
+				// stayed on an attack while the commander died at home)
 				array<int> raidOps;
-				for (uint o = 0; o < ops.length(); ++o) if (ops[o].enemyId < 0) raidOps.insertLast(int(o));
+				for (uint o = 0; o < ops.length(); ++o) if (ops[o].enemyId < 0 || ops[o].value < cv[best]) raidOps.insertLast(int(o));
 				// least valuable first
 				for (uint a2 = 0; a2 < raidOps.length(); ++a2)
 					for (uint b2 = a2 + 1; b2 < raidOps.length(); ++b2)
@@ -4615,7 +4637,7 @@ IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 	IBuilderTask@ bt = cast<IBuilderTask>(task);
 	if (bt is null)
 		return task;
-	if (CommWorth(bt.GetBuildPos(), JobValue(bt)))
+	if (CommWorth(bt.GetBuildPos(), JobValue(bt), JobTime(bt)))
 		return task;
 	++commRedirects;
 	AiLog("[ANV] CommRedirect: " + bt.buildDef.GetName() + " gain " + int(lastGain) + " < risk " + int(lastRisk) + " (danger " + F1(commDanger) + " cover " + F1(commCover) + ")");
@@ -5017,10 +5039,19 @@ IUnitTask@ CommForward(const AIFloat3& in from, float curScore)
 	return commFwdTask;
 }
 
-bool CommWorth(const AIFloat3& in p, float gain)
+// the commander stands at p for the job and then must get out: enemies that can reach it in that whole window count.
+// Counted over the escape time alone, the risk hovered just under the gain (27 vs 29-38) 1700 out until a Thud
+// walked in during the job and killed it at 15:08 (cmd_m79).
+float JobTime(IBuilderTask@ bt)
+{
+	if (bt is null || bt.buildDef is null || commander is null) return 0.f;
+	const float walk = commander.GetPos(ai.frame).distance2D(bt.GetBuildPos()) / AiMax(1.f, commander.circuitDef.speed);
+	return walk + bt.buildDef.buildTime / AiMax(1.f, commander.circuitDef.buildSpeed);
+}
+bool CommWorth(const AIFloat3& in p, float gain, float tJob = 0.f)
 {
 	lastV = GameValue();
-	lastRisk = CommPDeath(p, EscapeTime(p)) * lastV;
+	lastRisk = CommPDeath(p, EscapeTime(p) + tJob) * lastV;
 	lastGain = gain;
 	return gain >= lastRisk;  // a tie (e.g. idle, out of danger) stays and looks for its best job
 }
@@ -5155,7 +5186,7 @@ void CommGuardUpdate()
 	// forward claims and best-job overrides were a second decision-maker for the same choice: 40 claims in 5 minutes
 	// pulled the commander off each job before it finished (1 extractor by minute 3, 1v1 Avalanche 2026-11-25).
 	// Only the risk decision stays here.
-	if (CommWorth(c, JobValue(cur)))
+	if (CommWorth(c, JobValue(cur), JobTime(cur)))
 		return;
 	@commGuardTask = CommSafeJob(c);
 	if (commGuardTask is null) return;

@@ -226,3 +226,12 @@ The latest batch (D-gun and strength fixes) is being played.
     sight - a Mist outranges our sight, so a far site reads safe until it is seen. Next: the unseen part of the risk
     (CommFog) for the commander - players keep it within reach of the army and away from enemies (an enemy within 600
     only 4-9% of the time, replays.db comm), i.e. they treat unseen ground near the front as dangerous.
+- **Commander deaths, continued (cmd_m71-81):** fixed in turn - the fight gain counted even if it dies; the redirect's
+  safe job never held (50 redirects in 50 s 1242 out); ops pulled back on a revealed defence read from the first
+  second (57227-90056) and relaunched fresh at the same group (~15 times in 40 s, 7586 lost to Levelers in a
+  minute) - now the kill time gates it and pulled-back defences are remembered; the commander wasn't a defended asset
+  and only raids could be recalled; the site risk counted the escape only, not the job. cmd_m75: commander alive at
+  20:00, army 6060 at 17:00. Still the pattern in most games: the commander dies 1400-1800 out to Thuds / Mists,
+  artillery that outranges our sight - the unseen danger (CommFog places it at their base). Next, in order: the
+  unseen artillery around the front (where enemies were last seen, not their base); the composition against
+  Levelers (130 Pawns lost to splash in cmd_m75).
