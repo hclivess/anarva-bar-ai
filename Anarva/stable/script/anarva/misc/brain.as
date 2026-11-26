@@ -4719,7 +4719,15 @@ void Update()
 			for (uint k = 0; k < op.units.length(); ++k) { oc0 = oc0 + op.units[k].GetPos(ai.frame); slow = AiMin(slow, op.units[k].circuitDef.speed); }
 			oc0 = oc0 / float(op.units.length());
 			const float tLeft = oc0.distance2D(op.pos) / AiMax(1.f, slow);
-			op.defence = AiMax(op.defence, Cover(oc0, tLeft));
+			// the launch test's terms, so launch and continuation read one defence: at the target while we kill it, half
+			// way by half the walk, at the squad now. Cover(squad, whole walk) read 16.5 where launch read 7.5 for the
+			// same raid spot: launched and pulled back every update, 24-30 units idle for minutes (fb1 11:30-12:30)
+			float dpsN = 0.f;
+			for (uint k = 0; k < op.units.length(); ++k) dpsN += op.units[k].circuitDef.GetSustainedDps();
+			float hpT = (Economist::mexT1 !is null) ? Economist::mexT1.health : 1.f;
+			for (uint i = 0; i < n; ++i) if (eIds[i] == op.enemyId && eDef[i] !is null) { hpT = eDef[i].health * eHp[i]; break; }
+			const float tFightN = hpT / AiMax(1e-3f, dpsN);
+			op.defence = AiMax(AiMax(Cover(op.pos, AiMax(tFightN, tLeft)), Cover((oc0 + op.pos) * 0.5f, tLeft * 0.5f)), Cover(oc0, 0.f));
 		}
 		float opMetal = 0.f;
 		for (uint k = 0; k < op.units.length(); ++k) opMetal += op.units[k].circuitDef.costM;
@@ -6088,6 +6096,7 @@ void Update()  // every 30 frames
 	Economist::MeasureExtraction();
 	Economist::UpdateProducerLife();
 	aiMilitaryMgr.SetValueHorizon(Economist::ProducerLife());
+	aiMilitaryMgr.SetProducerLife((Economist::producerLosses > 0) ? Economist::MeasuredLife() : 0.f);  // feedback to job values
 	// (BARb's attack/raid quotas and the core raid task's targets are gone: no combat unit is in a BARb task any more;
 	// Brain::Command decides each fight from its own defence estimate)
 	Opening::Update();  // map-based opening, re-planned after every job (#94)

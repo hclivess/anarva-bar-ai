@@ -622,3 +622,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   horizon or its measured life (no floor); the producer metal lost per second, over the horizon, joins the stake an
   army defends. fb1: metal 15.8 = BARb at 4:00, 68.6 vs 43.3 at 12:00 (best yet); but bank 2643 vs 1 and army 1966 vs
   5330 at 12:00; army 11844 vs 7685 at 20:00 with kills 22/141 - it doesn't engage. Points loss.
+- **One defence for launch and continuation (fb2):** the running op read Cover(squad, whole walk) - 16.5 where launch read
+  7.5 for the same spot: launch/pull-back every update, 24-30 units idle. Now the launch terms. Pull-backs 37 -> 11, the
+  army raids (28 units at 8:00) - but constructors walked 3400-4570 out and died (399 extractor picks, 5 built).
+- **Producer job value capped by measured life (fb3):** the core's extractor/plant value runs to the horizon or the
+  measured producer life x the spot's keep against our producers' mean keep (SetProducerLife). fb3: 40 extractors, 3
+  constructor deaths, metal 57.1 vs 38.9 at 12:00 and the bank spent; but army 1188 vs 5745 - lost at 14:00.
