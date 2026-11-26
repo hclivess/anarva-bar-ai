@@ -356,3 +356,7 @@ The latest batch (D-gun and strength fixes) is being played.
   0.6-0.7 (honest) and both games were lost at 13:00 (trade 0.47 / 0.31). Knowing it loses fights, the army waited
   while BARb grew. The measurement is right; acting on it by caution alone doesn't win - the fights themselves must
   get better. Core fix kept (AiDamageFromAll = all damage taken).
+- **Splash lanes and their commander's live threat (cmd_m143-m147) - both reverted:** lanes one enemy aoe apart:
+  trades 0.53 / 0.53. Their commander dealt our Pawns 163168 in one game (cmd_m144); its threat scaled by its live
+  trade alone took it off the top of the damage log, but the trade stayed 0.56 / 0.46 and both games were lost -
+  Grunts, Gators and Rogues took its place. Every single lever moves the losses to the next enemy unit.
