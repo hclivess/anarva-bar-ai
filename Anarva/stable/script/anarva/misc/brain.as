@@ -3109,6 +3109,7 @@ array<CCircuitDef@> plants;
 array<AIFloat3> plantPos;
 // the earliest enemy raid
 float raidArrive = 1e9f;      // game seconds
+float raidLabAt = 0.f;        // the enemy lab time that estimate assumed
 float raidRate = 0.f;         // raiders per second it adds (lab rate; capped by income in Value)
 float raidStrength = 0.f;     // sqrt(dps x health) of one raider
 float raidDps = 0.f;
@@ -3265,7 +3266,7 @@ void Init()
 			const float tUnit = AiMax(ut, AiMax((r.costM - mLeft) / mI, (r.costE - eLeft) / eI));
 			const float arrive = tLab + tUnit + path / AiMax(1.f, r.speed);
 			if (arrive < raidArrive) {
-				raidArrive = arrive; raidRate = 1.f / AiMax(1e-3f, ut); raidStrength = Strength(r); raidDps = r.GetSustainedDps(); raidSpeed = r.speed; raidHp = r.health;
+				raidArrive = arrive; raidLabAt = tLab; raidRate = 1.f / AiMax(1e-3f, ut); raidStrength = Strength(r); raidDps = r.GetSustainedDps(); raidSpeed = r.speed; raidHp = r.health;
 				raidCostM = AiMax(1.f, r.costM); raidUnitTime = ut;
 				AiLog("[ANV-OPEN] earliest raid: " + r.GetName() + " from " + F.GetName() + " at " + int(arrive) + " s");
 			}
@@ -3684,6 +3685,16 @@ void Update()
 	// a lab of ours stands: the opening's decision is made, the builders' job valuation takes over
 	if (Intel::allFactories.length() > 0) {
 		done = true;
+		// The enemy commander faces the same economy and start: the time our opener, weighing extractors against the lab,
+		// got its lab up is the time theirs comes (the estimate assumed a lab first, ~99 s raids on Canis: the first
+		// tower came at 109 s while BARb's first unit reached us at 2:00 and winners' first tower stands at ~217 s,
+		// replays.db). A seen enemy still moves it up (below, and Intel).
+		if (raidArrive < 1e9f && now > raidLabAt) {
+			const float was = raidArrive;
+			raidArrive += now - raidLabAt;
+			raidLabAt = now;
+			AiLog("[ANV-OPEN] their lab expected when ours stood (" + int(now) + " s): earliest raid " + int(was) + " -> " + int(raidArrive) + " s");
+		}
 		AiLog("[ANV-OPEN] lab standing at " + int(now) + " s after " + plans + " plans: the builders' job valuation takes over");
 		return;
 	}
@@ -3808,7 +3819,32 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 			if (needE > 0.f) carried = carried && (bestE > 0.f) && (t.E >= needE * tFix);
 			if (needM > 0.f) carried = carried && (bestM > 0.f) && (t.M >= needM * tFix);
 		}
+		// An extractor the commander builds first yields from now until the lab's first constructor could have built it
+		// (lab standing + constructor + its walk there): that is what it gains. It costs the lab the commander's time
+		// for it: so many seconds of the lab's production (its draw, in metal-eq). Players take the near spots first and
+		// the lab after (Canis winners: extractors at 9/16/23 s, two plants, lab at ~61 s, replays.db; ours took the lab
+		// at 28 s as soon as it was affordable and had 6-7 extractors by 4:00 against their 9).
+		float firstGain = 0.f, firstCost = 0.f; string firstName = ""; int firstOpt = -1;
 		if (noWait && carried) {
+			const float drawEq = drawM + drawE / AiMax(1e-3f, Economist::energyPerMetal);
+			const float conSpeed = (L.con !is null) ? AiMax(1.f, L.con.speed) : AiMax(1.f, speed);
+			for (uint a = 0; a < opts.length(); ++a) {
+				if (opts[a].kind != 0) continue;
+				const float tt = s0.pos.distance2D(opts[a].pos) / AiMax(1.f, speed) + opts[a].def.buildTime / AiMax(1.f, bp);
+				const float tByCon = (t.t + tt) + L.conTime + opts[lab].pos.distance2D(opts[a].pos) / conSpeed;
+				const float gain = opts[a].yieldM * AiMax(0.f, tByCon - (s0.t + tt));
+				const float cost = tt * drawEq;
+				if (gain - cost > firstGain - firstCost) { firstGain = gain; firstCost = cost; firstName = "spot " + opts[a].spot; firstOpt = int(a); }
+			}
+		}
+		// that extractor, then: it is what beat the lab (the general producer choice below built winds instead, and the lab
+		// waited until 123 s, op1)
+		if (noWait && carried && firstOpt >= 0 && firstGain > firstCost) {
+			best = firstOpt;
+			why = "extractor first: " + firstName + " yields " + int(firstGain) + " before a constructor could build it, the lab loses " + int(firstCost);
+			return firstGain - firstCost;
+		}
+		if (noWait && carried && firstGain <= firstCost) {
 			best = lab;
 			why = "lab: affordable now; income " + F1(s0.mInc) + " M/s, " + int(s0.eInc) + " E/s covers its production (" + F1(drawM) + " M/s, " + int(drawE) + " E/s)";
 			return 1.f;

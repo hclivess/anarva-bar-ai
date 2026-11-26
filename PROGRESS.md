@@ -385,3 +385,10 @@ The latest batch (D-gun and strength fixes) is being played.
   cmd_m155/156) and income fell to 14-16 M/s - production spent on raiders left our own spots unanswered. Extractors
   built by 4/8/12 min: ours 6-7 / 15-19 / 28-29 (cmd_m155/156) vs Canis winners' median 9 / 22 / 30 (replays.db): the
   earliest gap is the opening's expansion rate, before any raid.
+- **Opening: extractor before lab, enemy lab by symmetry (op0-4, Canis, Armada vs Cortex).** The opener took the lab
+  the moment it was affordable (28 s) and the first constructor a tower at 109 s against a lab-first raid estimate
+  (99 s; BARb's first unit came at 2:00). Now an extractor the commander builds first is weighed (its yield until the
+  lab's first constructor could reach it vs the lab's production lost), and the enemy's lab is expected when ours stood.
+  Lab 59-97 s (winners ~61), first tower 207 s (winners ~217). Extractors built 4/8/12 min: 8/15/24 and 5/18/29 (before
+  6-7/15-19/28-29; winners 9/22/30); income at 12:00 40 and 50 (before 41-45). Both lost: op3 on points, op4 by the
+  commander's death at 12:28 with 25 extractors standing.
