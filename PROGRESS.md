@@ -713,3 +713,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   rs1: lab at 128 s; 8 of its first 12 units constructors, 4 combat units. The opening plan to build as one decision:
   lab by ~1:00 (what delays ours past 2:00), then the Tick's value - it is a raider and scout at 1/4 of a Pawn's cost,
   valued by us as a scout only - and constructors only while a spot can be claimed before the raids we see.
+- **Plants off the lab's site (lb1-2):** PlaceNextTo put solars on the planned lab footprint (nearest-home direction): 17 failed lab starts 53-110 s, lab at 128 s in rs1. Now plants keep clear of the lab sites: lab at 75-78 s, 0-2 failed starts (winners 58 s).

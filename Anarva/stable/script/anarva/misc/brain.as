@@ -3583,6 +3583,12 @@ bool PlaceNextTo(CCircuitDef@ d, const AIFloat3& in at, AIFloat3& out p)
 		AIFloat3 q(at.x + r * cos(ang), 0.f, at.z + r * sin(ang));
 		q.y = AiGetElevation(q.x, q.z);
 		if (!AiCanBeBuiltAt(d, q)) continue;
+		// never on the lab's planned site: a solar there left the lab unplaceable - 17 failed starts from 53 s to 110 s,
+		// the lab at 128 s against the winners' 58 (rs1). Clear of its footprint and the plant's own.
+		bool onLab = false;
+		for (uint L = 0; L < labs.length() && !onLab; ++L)
+			if (labs[L].def !is null && q.distance2D(labs[L].pos) < labs[L].def.GetRadius() + d.GetRadius()) onLab = true;
+		if (onLab) continue;
 		const float dh = q.distance2D(h);
 		if (dh < best) { best = dh; p = q; ok = true; }
 	}
