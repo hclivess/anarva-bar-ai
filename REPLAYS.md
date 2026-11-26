@@ -123,3 +123,11 @@ against three of our games vs BARb hard (en8, rp2, kt1; Comet Catcher, Armada vs
 Winners spend ~45% more by 8:00 (more extractors: ~19 vs our ~12) and put 36% into army against our 12-18%; we put more
 metal into energy than they do in absolute terms.
 
+## Who builds what in the first 8 minutes (2026-11-26)
+
+24 Armada bot-lab 1v1 winners (replays.db `cbuild` for the commander, `built` for all): by 8:00 a median of 19
+extractors and 31 energy buildings. The commander builds 16.5 of the 31 energy buildings and only 4 of the 19
+extractors; constructors take 15 extractors. The reason (comparative advantage): the commander is the best builder per
+second and the costliest unit to lose, so it builds at base where nothing needs walking; the fast, cheap constructors
+claim the spots. Ours did the reverse (rc1: commander picks 155 extractor, 87 solar).
+
