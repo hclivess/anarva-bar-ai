@@ -753,3 +753,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   lost at 15:00. Not deep pushes: fights at home. Micro totals: 292 contact-seconds, fired 185, outranged 103 (hit with
   nothing in our reach), no reply 89. Pawns (range 180) are outranged by Incisors and Pounders. Next: the army's range
   against what they field - the lab's per-type value with the range gap.
+- **dp1 production traced:** the lab isn't idle - metal bank 0-20 from 6:00. Metal is low (8.9 at 6:00, 22.7 at 10:00 vs
+  BARb 22.7 / 41.7) and goes to energy: 21-28 E per M with 1700-2600 energy banked, against the winners' 12-15 E per M
+  (replays.db medians). Extractors 3-4 at 4-6 min (winners 9). Next: the builders' plant picks while energy is banked -
+  the planner's need test counts the bank now (en4), the builders' payback pick does not.
