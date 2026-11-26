@@ -2480,9 +2480,9 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			return aiFactoryMgr.Enqueue(TaskS::Recruit(Task::RecruitType::BUILDPOWER, Task::Priority::HIGH, rez, fac.GetPos(ai.frame), fac.circuitDef.GetRadius()));
 		}
 	}
-	IUnitTask@ ml = MineLayerTask(fac);
-	if (ml !is null)
-		return ml;
+	// (The minelayer went ahead of the comparison - "one if we have none" - and was the vehicle plant's first unit at
+	// 88 s while both Comet Catcher winners built a constructor vehicle first at 91-106 s (replays.db ea25036b, 18a2046b;
+	// swe24). It is one of the plant's units in the comparison below, valued like the rest.)
 	IUnitTask@ mc = MohoConTask(fac);
 	if (mc !is null)
 		return mc;
@@ -3136,7 +3136,13 @@ float Horizon()
 	const CCircuitDef@ com = (Brain::commander !is null) ? Brain::commander.circuitDef : aiSetupMgr.commChoice;
 	if (com !is null) ourInc = AiMax(ourInc, Facts::MetalMake(com.GetName()));
 	const float theirInc = AiMax(Brain::EcoPos::theirs, ourInc * float(AiMax(1, ai.GetEnemyTeamSize())));
-	const float cross = AiTerrainDiagonal() / AiMax(1.f, Brain::Director::allSpeed);
+	// crossing at our army's speed; with no army yet, at the speed of the earliest raider they can send (else the
+	// commander's): an army speed of 0 floored to 1 elmo/s made the start horizon 11590 s, and over three hours the
+	// wait for a lab's production draw cost nothing - the hover plant won and stood never (swe22-23)
+	float crossSpeed = Brain::Director::allSpeed;
+	if (crossSpeed <= 0.f) crossSpeed = Brain::Opening::raidSpeed;
+	if (crossSpeed <= 0.f && com !is null) crossSpeed = com.speed;
+	const float cross = AiTerrainDiagonal() / AiMax(1.f, crossSpeed);
 	return V / AiMax(1e-3f, theirInc) + cross;
 }
 
@@ -3870,8 +3876,9 @@ bool PlaceNextTo(CCircuitDef@ d, const AIFloat3& in at, AIFloat3& out p)
 	// touching the builder's footprint; a building whose square footprint reaches past its radius (a lab) at the
 	// builder's build distance instead - inside its reach and clear of the footprint (one radius out, the lab overlapped
 	// the commander, which can't build on itself: 15 failed starts, swe16)
-	float r = ComDef().GetRadius() + d.GetRadius();
-	if (Facts::BuildOptions(d.GetName()).length() > 0) r = AiMax(r, ComDef().GetBuildDistance());
+	// every building, not only labs: a square footprint reaches past its radius at the corners, and a wind turbine one
+	// radius out overlapped the commander - 102 failed placements (swe22). At the build distance it is in reach and clear.
+	const float r = AiMax(ComDef().GetRadius() + d.GetRadius(), ComDef().GetBuildDistance());
 	const AIFloat3 h = Home();
 	float best = 1e30f;
 	bool ok = false;
@@ -4547,16 +4554,46 @@ void Update()
  *     from running, else at the converter rate.
  * The lab is the best one for this map (strength per metal it fields, its units can reach their base).
  */
+string lastLabWhy = "";
 float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, int &out best, string &out why)
 {
 	best = -1;
+	// Which lab: the one whose plan is worth most over the horizon - its income, the expansion its constructors drive
+	// (their speed and build power against the walks to our spots, TailGrowth) and what its answer holds against the
+	// first raid (Value). Strength per metal of its fighter alone chose the bot lab on Comet Catcher, where both
+	// winners open with a vehicle plant at 69-77 s and fast constructor vehicles to spots 1000-2200 out: extractors
+	// 3/6/8/12 and 3/5/7/9 at 2/3/4/5 min against our 3 at 4:30 (replays.db ea25036b Hellontoast, 18a2046b Artur91,
+	// Armada 1v1; swe21)
 	int lab = -1; float labV = -1e30f;
+	const float Hl = AiMax(1.f, Economist::Horizon());
+	string labWhy = "";
 	for (uint a = 0; a < opts.length(); ++a) {
 		if (opts[a].kind != 2) continue;
-		const Lab@ L = labs[opts[a].lab];
-		const float v = L.strength / AiMax(1.f, Economist::MetalValue(L.answer));
+		// a lab runs only once its draw is covered: the commander closes the gap first (the best producer of each
+		// short resource per second of its time), and the plan stands that much later. Valued without that wait the
+		// hover plant (draw 6.7 M/s, 90 E/s) won and was never built - the commander held it all game (swe22)
+		const Lab@ La = labs[opts[a].lab];
+		const CCircuitDef@ fu = (La.con !is null) ? La.con : La.answer;
+		const float fut = fu.buildTime / AiMax(1.f, La.def.buildSpeed);
+		const float gE = fu.costE / AiMax(1.f, fut) - s0.eInc, gM = fu.costM / AiMax(1.f, fut) - s0.mInc;
+		float rE = 0.f, rM = 0.f;
+		for (uint b = 0; b < opts.length(); ++b) {
+			if (opts[b].kind == 2) continue;
+			const float tt = opts[b].def.buildTime / AiMax(1.f, bp) + Walk(s0.pos, opts[b].pos, speed);
+			rE = AiMax(rE, opts[b].yieldE / AiMax(1e-3f, tt));
+			rM = AiMax(rM, opts[b].yieldM / AiMax(1e-3f, tt));
+		}
+		const float wait = ((gE > 0.f) ? gE / AiMax(1e-3f, rE) : 0.f) + ((gM > 0.f) ? gM / AiMax(1e-3f, rM) : 0.f);
+		Sim@ tl = Copy(s0);
+		tl.t += wait;
+		if (gE > 0.f) tl.eInc += gE;
+		if (gM > 0.f) tl.mInc += gM;
+		Apply(tl, opts[a], bp, speed);
+		const float v = Value(tl, s0.t, Hl);
+		labWhy += " " + opts[a].def.GetName() + "=" + int(v);
 		if (v > labV) { labV = v; lab = int(a); }
 	}
+	if (!planning && labWhy != lastLabWhy) { AiLog("[ANV-OPEN] lab values over " + int(Hl) + " s:" + labWhy); lastLabWhy = labWhy; }
 	float drawE = 0.f, needE = 0.f, drawM = 0.f, needM = 0.f;
 	if (lab >= 0) {
 		const Lab@ L = labs[opts[lab].lab];
@@ -4594,7 +4631,9 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 			// energy must be there before the lab, not carried by the stock: BARb builds 3 solars before its plant and has
 			// 90 E/s at 2:00 against our 50 - the second stat to swing (tools/swing.py sw2); after the lab the commander builds
 			// extractors, not plants, so a gap the stock "carries" stays open and the lab runs short
-			if (needE > 0.f) carried = false;
+			// energy short: carried only if the bank holds the deficit until the commander has closed it (as metal) - a
+			// strict "income first" held the lab all game on "90/s short of 90", a fraction short (swe23)
+			if (needE > 0.f) carried = (bestE > 0.f) && (t.E >= needE * tFix);
 			if (needM > 0.f) carried = carried && (bestM > 0.f) && (t.M >= needM * tFix);
 		}
 		// An extractor the commander builds first yields from now until the lab's first constructor could have built it
@@ -5252,6 +5291,31 @@ void Update()
 			// times in hc2, and the army never finished a fight.)
 			if (lostM > 0.f && age >= tgtHp / AiMax(1e-3f, dps)) op.defence = AiMax(op.defence, S * sqrt(lostM / AiMax(1.f, op.startMetal)));
 		}
+		// A raid on an empty spot of theirs, still running, against coming back to meet an armed enemy that threatens what
+		// we own: what we'd save there (OursThreatened at the squad's travel time to it, priced by the square law against
+		// what covers it) beats what the raid still gains -> end the raid; the units are free on the next update and the
+		// launch takes the threat as its target. Launches were weighed against home, running raids never: 2 Blitzes
+		// stayed at their corner (6960,5888) while 1-2 Grunts killed 3 extractors and 3 solars at 3:17-4:00 (swe24)
+		if (alive && op.enemyId < 0 && op.units.length() > 0) {
+			AIFloat3 oc1(0.f, 0.f, 0.f); float slow1 = 1e9f;
+			for (uint k = 0; k < op.units.length(); ++k) { oc1 = oc1 + op.units[k].GetPos(ai.frame); slow1 = AiMin(slow1, op.units[k].circuitDef.speed); }
+			oc1 = oc1 / float(op.units.length());
+			const float stay = FightGain(op.value, S, op.defence, opMetal);
+			float home = 0.f; int hi = -1;
+			for (uint i = 0; i < n; ++i) {
+				if (eDef[i] is null || !eDef[i].IsMobile() || eDef[i].surfThrDmg <= 0.f) continue;
+				const float th = OursThreatened(i, all, oc1.distance2D(ePos[i]) / AiMax(1.f, slow1));
+				if (th <= 0.f) continue;
+				const float g = FightGain(th, S, Cover(ePos[i], 0.f), opMetal);
+				if (g > home) { home = g; hi = int(i); }
+			}
+			if (hi >= 0 && home > stay) {
+				AiLog("[ANV-CMD] recall raid at (" + int(op.pos.x) + "," + int(op.pos.z) + "): it gains " + int(stay) + ", meeting the "
+					+ eDef[hi].GetName() + " at (" + int(ePos[hi].x) + "," + int(ePos[hi].z) + ") saves " + int(home));
+				ops.removeAt(o);
+				continue;
+			}
+		}
 		if (!alive || op.units.length() == 0 || FightGain(op.value, S, op.defence, opMetal) <= 0.f) {
 			if (alive && op.units.length() > 0) {
 				// what this fight showed, for the next launch here (launch and keep must read the same defence: relaunched
@@ -5477,6 +5541,40 @@ void Update()
 				}
 			}
 			if (pick.length() == 0) continue;
+			// A raid on an empty spot of theirs against what the same units would save at home when the predicted first raid
+			// arrives (the opener's model, income-capped): while our fighters are fewer than the raiders due, each unit at
+			// home is worth one extractor of ours (its loss: metal + yield until rebuilt) x its square-law chance against a
+			// raider. Any positive raid beat staying, and the first Pawns left one by one for their corners while 1-2 Grunts
+			// killed 1-2 extractors at 2:49-3:06 in every game (spectator, swe13-20)
+			if (cid[best] < 0 && Opening::raidRate > 0.f && Economist::mexT1 !is null) {
+				const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
+				float due = AiMax(0.f, Opening::raidArrive - Opening::raidLabAt) * rate;
+				// once their armed units have been seen, the raid is what we saw: the model's count stayed at 7.9 from 1 to 7
+				// Pawns and after the raid of 2 Grunts had come (spectator, swe21)
+				{
+					array<AIFloat3> ep1, ev1; array<CCircuitDef@> ed1; array<float> ec1, eh1, eb1; array<int> ef1;
+					const uint n1 = AiGetEnemies(ep1, ev1, ed1, ec1, ef1, eh1, eb1);
+					float seenArmed = 0.f;
+					for (uint e = 0; e < n1; ++e) if (ed1[e] !is null && ed1[e].IsMobile() && ed1[e].GetSustainedDps() > 0.f) seenArmed += 1.f;
+					if (seenArmed > 0.f || Economist::lossPos.length() > 0) due = seenArmed;
+				}
+				if (Production::OurArmyCount() < due) {
+					float home = 0.f;
+					// one extractor lost: its metal + its yield for the time a constructor takes to build it again
+					const CCircuitDef@ con = EcoPos::CheapestConstructor();
+					const float rebuild = (con !is null) ? Economist::mexT1.buildTime / AiMax(1.f, con.buildSpeed) : 0.f;
+					const float mexLoss = Economist::MetalValue(Economist::mexT1)
+						+ Economist::Extract(Economist::mexT1.GetName()) * MexPorc::SpotMetalAt(Opening::Home(), Economist::mexT1) * rebuild;
+					for (uint k = 0; k < pick.length(); ++k) {
+						const float sU = Opening::Strength(pick[k].circuitDef), R = AiMax(1e-3f, Opening::raidStrength);
+						home += mexLoss * ((sU >= R) ? 1.f : (sU / R) * (sU / R));
+					}
+					if (FightGain(cv[best], S, dfc[best], metal) <= home) {
+						AiLog("[ANV-CMD] stay home: raid spot (" + int(cp[best].x) + "," + int(cp[best].z) + ") worth " + int(cv[best]) + " <= home " + int(home) + " (" + F1(due) + " raiders due, " + int(Production::OurArmyCount()) + " fighters)");
+						continue;
+					}
+				}
+			}
 			const float gain = FightGain(cv[best], S, dfc[best], metal);
 			const float loss = cv[best] - gain;  // for the log
 			if (gain <= 0.f) {  // what it keeps doesn't beat what it risks

@@ -5393,7 +5393,7 @@ index fcc4c984..71fead41 100644
  
  	float prevCost = query->GetCostAt(endPos, range);
 diff --git a/src/circuit/task/builder/BuilderTask.cpp b/src/circuit/task/builder/BuilderTask.cpp
-index 172d4c26..59cccf7d 100644
+index 172d4c26..a72b8cec 100644
 --- a/src/circuit/task/builder/BuilderTask.cpp
 +++ b/src/circuit/task/builder/BuilderTask.cpp
 @@ -6,6 +6,8 @@
@@ -5456,16 +5456,23 @@ index 172d4c26..59cccf7d 100644
  		)
  		return true;
  	}
-@@ -265,7 +276,7 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+@@ -265,23 +276,30 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
  		&& circuit->GetMap()->IsPossibleToBuildAt(buildDef->GetDef(), buildPos, facing))
  	{
  		TRY_UNIT(circuit, unit,
 -			unit->CmdBuild(buildDef, buildPos, facing, 0, frame + FRAMES_PER_SEC * 60);
 +			unit->CmdBuild(buildDef, buildPos, facing, 0, NO_EXPIRY);
  		)
++		if (buildFails > 0) {  // Anarva: did the engine keep a re-issued order? (winds dropped at 132 of 169 reach, swe23)
++			auto cq = unit->GetUnit()->GetCurrentCommands(); const int n = (int)cq.size(); utils::free_clear(cq);
++			const AIFloat3 up = unit->GetPos(frame);
++			circuit->LOG("[ANV-REORDER] f=%i %s %s at (%.0f,%.0f) from %.0f height %.0f vs %.0f facing %i cmds after %i",
++				frame, unit->GetCircuitDef()->GetDef()->GetName(), buildDef->GetDef()->GetName(), buildPos.x, buildPos.z,
++				up.distance2D(buildPos), up.y, buildPos.y, facing, n);
++		}
  		return true;
  	}
-@@ -273,15 +284,15 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+ 
  	// FIXME: Move to Reevaluate
  	circuit->GetThreatMap()->SetThreatType(unit);
  	// FIXME: Replace const 1000.f with build time?
@@ -5484,7 +5491,7 @@ index 172d4c26..59cccf7d 100644
  			)
  			return true;
  		}
-@@ -296,7 +307,7 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+@@ -296,7 +314,7 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
  
  	if (geom::is_valid(buildPos)) {
  		TRY_UNIT(circuit, unit,
@@ -5493,7 +5500,7 @@ index 172d4c26..59cccf7d 100644
  		)
  	} else {
  		if (geom::is_in_range(circuit->GetSetupManager()->GetBasePos(), position, searchRadius)) {  // base must be full
-@@ -312,6 +323,91 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+@@ -312,6 +330,91 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
  
  void IBuilderTask::OnUnitIdle(CCircuitUnit* unit)
  {
@@ -5585,7 +5592,7 @@ index 172d4c26..59cccf7d 100644
  	if (++buildFails <= 2) {  // Workaround due to engine's ability randomly disregard orders
  		Execute(unit);
  	} else if (buildFails <= TASK_RETRIES) {
-@@ -328,7 +424,7 @@ void IBuilderTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+@@ -328,7 +431,7 @@ void IBuilderTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
  	const int frame = circuit->GetLastFrame();
  	CCircuitDef* cdef = unit->GetCircuitDef();
  	const float healthPerc = unit->GetHealthPercent();
@@ -5594,7 +5601,7 @@ index 172d4c26..59cccf7d 100644
  		if (healthPerc < cdef->GetSelfDHP()) {
  			unit->CmdSelfD(true);
  		}
-@@ -407,7 +503,7 @@ void IBuilderTask::UpdateTarget(CCircuitUnit* unit)
+@@ -407,7 +510,7 @@ void IBuilderTask::UpdateTarget(CCircuitUnit* unit)
  	SetTarget(unit);
  
  	CCircuitAI* circuit = manager->GetCircuit();
@@ -5603,7 +5610,7 @@ index 172d4c26..59cccf7d 100644
  	for (CCircuitUnit* ass : units) {
  		TRY_UNIT(circuit, ass,
  			ass->CmdRepair(unit, UNIT_CMD_OPTION, frame);
-@@ -437,9 +533,13 @@ CCircuitUnit* IBuilderTask::GetNextAssignee()
+@@ -437,9 +540,13 @@ CCircuitUnit* IBuilderTask::GetNextAssignee()
  	return unit;
  }
  
@@ -5618,7 +5625,7 @@ index 172d4c26..59cccf7d 100644
  		UpdatePath(unit);  // Execute(unit) within OnTravelEnd
  	}
  }
-@@ -448,14 +548,13 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -448,14 +555,13 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  {
  	CCircuitAI* circuit = manager->GetCircuit();
  
@@ -5637,7 +5644,7 @@ index 172d4c26..59cccf7d 100644
  	{
  		manager->AbortTask(this);
  		return false;
-@@ -482,12 +581,12 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -482,12 +588,12 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  		// NOTE: helps with obstructed factory, but not with blocked building plan.
  		//       @see CTerrainManager::CheckObstruct and its issues.
  		if ((cdef->GetMobileId() >= 0) && circuit->GetTerrainManager()->IsObstruct(pos)) {
@@ -5652,7 +5659,7 @@ index 172d4c26..59cccf7d 100644
  				)
  			}
  			return true;
-@@ -514,10 +613,8 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -514,10 +620,8 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  			}
  			TRY_UNIT(circuit, unit,
  				unit->CmdBARPriority(prio ? 1.f : 0.f);
@@ -5665,7 +5672,7 @@ index 172d4c26..59cccf7d 100644
  			)
  			return true;
  		}
-@@ -530,13 +627,48 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -530,13 +634,48 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  	if (unit->IsAttrNoDisrupt()) {
  		return true;
  	}
@@ -5717,7 +5724,7 @@ index 172d4c26..59cccf7d 100644
  		manager->AssignTask(unit, task);
  		return false;
  	}
-@@ -577,7 +709,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
+@@ -577,7 +716,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
  	CPathFinder* pathfinder = circuit->GetPathfinder();
  	std::shared_ptr<IPathQuery> query = pathfinder->CreatePathSingleQuery(
  			unit, circuit->GetThreatMap(),
@@ -5726,7 +5733,7 @@ index 172d4c26..59cccf7d 100644
  	pathQueries[unit] = query;
  
  	pathfinder->RunQuery(circuit->GetScheduler().get(), query, [this](const IPathQuery* query) {
-@@ -828,7 +960,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
+@@ -828,7 +967,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
  						}
  					} break;
  					case SBuildInfo::Condition::CHANCE: {

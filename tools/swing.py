@@ -70,7 +70,8 @@ def main():
     behind = {s: 0 for s in STATS + ["energy income"]}
     swing = None
     while proc.poll() is None and swing is None:
-        time.sleep(5)
+        # headless runs ~15x real time (swe22: 7:18 in 29 s): a 5 s poll let the game run a minute past the swing
+        time.sleep(1)
         if not os.path.exists(log):
             continue
         with open(log, encoding="utf-8", errors="replace") as fh:
