@@ -25,7 +25,11 @@ void AiTaskAdded(IUnitTask@ task)
 	IBuilderTask@ bt = cast<IBuilderTask>(task);
 	if (bt is null || bt.buildDef is null || bt.GetBuildType() != Task::BuildType::FACTORY) return;
 	const float busy = bt.buildDef.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower());
-	const float up = Brain::Production::UpgradeValue(bt.buildDef, busy);
+	// the value the tier-2 gate measured when it allowed this lab: its return per metal x its cost (the same decision;
+	// UpgradeValue's separate estimate, 2216, never beat the lab's 3240 cost, so the core never took the job and there
+	// was no tier 2 by minute 17 in the owner's game, 2026-11-26)
+	float up = Brain::Production::UpgradeValue(bt.buildDef, busy);
+	if (Brain::Tech::Tier(bt.buildDef) >= 2) up = AiMax(up, Brain::Tech::lastT2Return * Brain::Economist::MetalValue(bt.buildDef));
 	if (up > 0.f) { bt.value = up; AiLog("[ANV] factory job " + bt.buildDef.GetName() + " carries its upgrade value " + int(up)); }
 }
 

@@ -450,10 +450,9 @@ void Update()
 			if (Economist::mexT1 is null || !u.circuitDef.CanBuild(Economist::mexT1)) continue;
 			if (u.task.GetType() == Task::Type::NIL) continue;  // still in the factory
 			IBuilderTask@ bt = cast<IBuilderTask>(u.task);
-			// a constructor on any job but an extractor is spare claiming capacity: another won't claim more (the lab made 7
-			// constructors and ~no army by 4:18; a winner 2-3 then a Tick every ~3 s - replay view d346036b vs rr5). With the
-			// Hold state the army that this frees now stands over our extractors (#106).
-			if (bt is null || bt.buildDef is null || Facts::ExtractsMetal(bt.buildDef.GetName()) <= 0.f) ++unemployed;
+			// (Counting constructors on non-extractor jobs as spare froze our builders at 5-7 all game while BARb grew to 36:
+			// extractors 8-10 vs 46, metal 20 vs 151 at 20:00, army 11k vs 3.7k - the owner's game 2026-11-26, replay view.)
+			if (bt is null || bt.buildDef is null) ++unemployed;
 		}
 	}
 	const bool work = unclaimed > 0 && unemployed == 0 && conDef !is null && saved > Economist::MetalValue(conDef) && Director::ratio >= 1.f;
@@ -736,6 +735,32 @@ void Update()
 				v += (mine[i] is commander) ? V : mine[i].circuitDef.costM;
 			}
 			v *= share;
+			// ...and the warning it gives (#111, owner: "you cant see the enemy with that single radar"): for each producer
+			// of ours, the stretch of the enemy's approach (the line from their base) inside this radar's range and not yet
+			// watched (sight or another radar), over the enemy's speed, is the extra warning; it saves that producer's value
+			// x warning / horizon. Counted only on our own ground, one radar over the base looked like enough and the second
+			// (valued 158-428) was never taken; a winner put one 1396 out among the far extractors (replays.db d346036b).
+			{
+				const AIFloat3 eb = AiEnemyBasePos();
+				const float eSpeed = AiMax(1.f, Director::allSpeed);
+				const float Hw = AiMax(1.f, Economist::Horizon());
+				const float step = AiMax(1.f, R / 4.f);
+				for (uint i = 0; i < mine.length(); ++i) {
+					if (!Economist::IsProducer(mine[i].circuitDef)) continue;
+					const AIFloat3 q = mine[i].GetPos(ai.frame);
+					const float L = eb.distance2D(q);
+					if (L <= 0.f) continue;
+					float inside = 0.f;
+					for (float t = 0.f; t <= L; t += step) {
+						const AIFloat3 pt = eb + (q - eb) * (t / L);
+						if (pt.distance2D(site) > R || AiIsInLOS(pt)) continue;
+						bool cov = false;
+						for (uint k = 0; k < rp.length() && !cov; ++k) cov = pt.distance2D(rp[k]) <= rr[k];
+						if (!cov) inside += step;
+					}
+					v += Economist::MetalValue(mine[i].circuitDef) * (inside / eSpeed) / Hw;
+				}
+			}
 			const float ratio = v / AiMax(1.f, Economist::MetalValue(defs[di]));
 			if (ratio > bestRatio) { bestRatio = ratio; bestV = v; bestU = int(s); @bestD = defs[di]; }
 		}
@@ -2950,6 +2975,7 @@ int Tier(const CCircuitDef@ d)
 	const int t = int(Facts::FactoryTier(d.GetName()));
 	return (t > 0) ? t : 1;
 }
+float lastT2Return = 0.f;  // the tier-2 gate's measured return per metal (the lab job carries it: AiTaskAdded)
 int TierWeHave()
 {
 	int t = 0;
@@ -2992,6 +3018,7 @@ bool Allowed(const CCircuitDef@ facDef)
 		// more than it costs.
 		const float life = Brain::Economist::MeasuredLife();
 		const float ret = AiMax(0.f, life - Brain::Economist::mohoReady) / AiMax(1.f, payback);  // earns only once it stands
+		lastT2Return = ret;
 		const float armyRet = Brain::Production::lastBestRatio;
 		// (no fighter priced yet: the army's worth is unknown, so it can't be beaten - it read 0 and tier 2 began at 2:00)
 		ok = (armyRet > 0.f && ret > 1.f && ret > armyRet) || banked || forced;
@@ -4228,6 +4255,7 @@ void CheckFailedSpot()
  */
 namespace Command {
 class Op {
+	float wpDist = 1e30f;  // the squad's summed distance to its current waypoint at the last update (progress test)
 	int enemyId = -1;  // -1: a place (expected economy)
 	AIFloat3 pos;
 	float value = 0.f;
@@ -4308,13 +4336,31 @@ bool MoveGroup(Op@ op, uint o, const AIFloat3& in dest)
 	c = c / float(op.units.length());
 	if (op.route.length() == 0 || op.routeTo.distance2D(dest) > Intel::CELL) {
 		op.route = Route(c, dest, lead, Strength(op.units));
+		// every waypoint must be reachable by each unit's move type (the engine's own reach test): one on a crater rim a unit
+		// can't climb was never "reached", the squad waited on it and its units pushed at the slope instead of fighting
+		// (owner, 2026-11-26: "you stopped microing the army because it cant reach the top of the crater edge"; #113)
+		for (int w = int(op.route.length()) - 1; w >= 0; --w) {
+			bool ok = true;
+			for (uint k = 0; k < op.units.length() && ok; ++k)
+				ok = AiDefCanReach(ai.GetCircuitDef(op.units[k].circuitDef.GetName()), op.units[k].GetPos(ai.frame), op.route[w]);
+			if (!ok) op.route.removeAt(w);
+		}
+		if (op.route.length() == 0) op.route.insertLast(dest);
 		op.routeTo = dest; op.leg = 0;
 		AiLog("[ANV-CMD] route for " + op.units.length() + " units: " + op.route.length() + " waypoints to (" + int(dest.x) + "," + int(dest.z) + ")");
 	}
 	bool atWp = true;
-	for (uint k = 0; k < op.units.length() && atWp; ++k)
-		if (op.units[k].GetPos(ai.frame).distance2D(op.route[op.leg]) > op.units[k].circuitDef.GetMaxRange()) atWp = false;
-	if (atWp && op.leg + 1 < op.route.length()) { ++op.leg; atWp = false; }
+	float dsum = 0.f;
+	for (uint k = 0; k < op.units.length(); ++k) {
+		const float dk = op.units[k].GetPos(ai.frame).distance2D(op.route[op.leg]);
+		dsum += dk;
+		if (dk > op.units[k].circuitDef.GetMaxRange()) atWp = false;
+	}
+	// no waiting on a condition that may never come (owner, 2026-11-26): when the squad stopped getting closer to the
+	// waypoint since the last update (a unit blocked by terrain or by others), it goes on to the next one
+	if (!atWp && dsum >= op.wpDist) atWp = true;
+	op.wpDist = dsum;
+	if (atWp && op.leg + 1 < op.route.length()) { ++op.leg; atWp = false; op.wpDist = 1e30f; }
 	if (atWp && op.leg + 1 >= op.route.length()) return true;
 	for (uint k = 0; k < op.units.length(); ++k) {
 		if (FightInReach(op.units[k])) continue;  // what it meets on the way, it fights
