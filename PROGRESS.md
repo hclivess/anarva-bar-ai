@@ -371,3 +371,5 @@ The latest batch (D-gun and strength fixes) is being played.
   15:34 1228 out) with 0 fights. Its deaths aren't caused by its fight decisions: it is killed where it works when
   their army arrives. The answer is the army's: meet the push before it reaches the commander, or keep the commander
   where the army is between it and them.
+- **Route-aware safe place (cmd_m152/m153) - reverted:** the commander's safe job scored on the risk half way as well
+  as at the destination: trades 0.49 / 0.55, one economy collapse (army 0 at 20:00), one commander death at base.
