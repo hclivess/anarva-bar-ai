@@ -521,3 +521,7 @@ The latest batch (D-gun and strength fixes) is being played.
   constructor around and energy short, the commander built the best plant at base instead. Triggered 3-6 times, but
   3 extractors and ~8 M/s at 4:00 (no change): the first constructor came at 111-128 s, so there was little to divide.
   The constructor timing itself (the lab's first products) comes before the division.
+- **Commander near base by comparative advantage, reverted (dv3-4, #105):** walk-dominated jobs left to constructors,
+  the commander on base energy or assisting the lab (11-13 times a game). No change: 3-4 extractors and 8-10 M/s at
+  4:00, 8-9 units. dv4 had four constructors by 142 s and still 4 extractors by 4:00 - the constructors don't expand
+  (their picks go to radar, towers, winds). The constructor job choice is the next piece of #105.
