@@ -1,12 +1,15 @@
-# What is in Anarvā (2026-11-25)
+# What is in Anarvā (updated 2026-11-26)
 
 The feature flags (`F_*`) were folded into the code, so this file is now written by hand. The old
 generator, `tools/gen_features.py`, describes the flag system and is retired. Each line says what the
 module decides and from what. The reasoning is in [STRATEGY.md](STRATEGY.md) and [TACTICS.md](TACTICS.md);
 replaced constants are listed in [AUDIT.md](AUDIT.md).
 
-Status: none of this has a measured win against BARb yet. Since the rework no full 1v1 has been won; the
-first games after it found and fixed a series of economy and strength bugs (issues #81–#88).
+Status (2026-11-26): no measured win against BARb hard yet. Fights now trade 0.6–1.2 damage dealt per damage taken
+(was 0.3–0.85): units fight what is in reach, fights are priced by the square law, revealed defences decay. Radar,
+towers, tier 2 (gate by the upgrades' measured return; assisted upgrades) and the commander's watched-ground rule and
+cloak were added. The first four minutes are at half the 1v1 winners' income and army: see PROGRESS.md and issues
+#99–#105. Parts of the tables below describe the state of 2026-11-25.
 
 ## Shared valuation (Economist, Director, Assess)
 

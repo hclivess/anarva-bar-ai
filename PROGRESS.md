@@ -550,3 +550,15 @@ The latest batch (D-gun and strength fixes) is being played.
   559 / 2251 / 4590 / 6478 by 0-4 / 4-8 / 8-12 / 12-16 min vs ours 233 / 1180 / 3949 / 4841. Theirs: Pawn/Rover/Flash
   early, Flash 42% at 4-8, Stumpy 25-32% and air from 8 min. Ours: Centurion 61-72% from 4 min (speed 45 - catches
   nothing). Per-type fight value dropped the speed/reach factor: next fix.
+- **Reach factor in the per-type value, reverted (rc0-3):** each unit counted against an enemy type only by its speed
+  over theirs. From a bot lab alone that means 100% Pawns (rc1-3), trades 0.77 / 0.67 / 0.30, all lost at 17-18 min
+  with the commander dead. The winners' mix (Flash, Stumpy, air) needs a vehicle plant and air, so composition and
+  factory choice move together.
+
+## State at the end of 2026-11-26
+
+Kept: fights (in-reach fire, square-law pricing, decaying revealed defence), radar timed to the earliest raid, towers
+at raided extractors, tier 2 by measured return with assisted upgrades, the commander's watched-ground rule and cloak,
+granularity and per-type unit value, path-length walks in the opener, triangle start candidates. No 1v1 win yet:
+the first four minutes are at half the winners' income and army, and extractors are lost from minute 6. What helped
+and what didn't is consolidated at the top of CLAUDE.md; the opening design is on issue #105.

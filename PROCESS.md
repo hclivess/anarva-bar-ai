@@ -71,7 +71,19 @@ Log every decision with its alternatives, so the next game shows what it weighed
 6. **Test one short game on the map that showed the failure, then read the logs again.** Repeat until the mechanism is right, then go to step 6
    with the batch.
 
-## 6. Verify: one round, then back to 3
+7. **When the parts of a phase depend on each other, change them together.** The opening (start, commander, lab,
+   constructors, energy, the army the first raid needs) failed eleven times when changed one term at a time
+   (2026-11-26, PROGRESS.md). Check the replay view for what else moves with the gap before building a fix.
 
-Run one round under step 2's conditions and read the ranked gaps. Did the gap close, and did nothing else open?
-Record the result in [PROGRESS.md](PROGRESS.md) and the issue. Then take the next largest gap.
+## 6. Verify: mechanism first, then a round, then back to 3
+
+1. **Mechanism:** in a short game, did the change do what it was meant to? Read the log lines it writes (a count of how
+   often it fired, the inputs it saw). A change that never fires, or fires on the wrong cases, is fixed before any
+   result is read.
+2. **Round:** run games under step 2's conditions with `tools/check_game.py` on each, and read the ranked gaps. Did
+   the gap close, and did nothing else open?
+3. **Noise:** the same code ranges widely between games (trades 0.35-0.79 on Canis, 2026-11-26). Three games show only
+   large effects; a small difference in three games is not a result either way. Judge small changes by their mechanism
+   and by the gap they target, not by the win/loss of a few games.
+
+Record the result in [PROGRESS.md](PROGRESS.md) and the issue, kept or reverted. Then take the next largest gap.

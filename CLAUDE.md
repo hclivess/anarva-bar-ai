@@ -24,6 +24,36 @@ compared with top players while it could not even pick its starting location.
   5. decision;
   6. verify.
 
+## What has helped, and what has not (consolidated 2026-11-26)
+
+From the 2026-11-24..26 sessions (~400 games). Read this before choosing how to work.
+
+**Helped (keep doing):**
+- **The owner's remarks.** Radar, cloak, the commander at base in 1v1, assisted extractor upgrades, unit size
+  (one 1000-hp unit > two 500-hp), the replay view: each was a real gap. Every remark becomes an issue at once.
+- **A replay view, building by building** (§1): one winner's phase laid out next to ours showed in minutes what a day
+  of tweaks missed (their lab: 2-3 constructors then a Tick every ~3 s; ours: 7 constructors, no army).
+- **Reading the code that actually decides.** Hidden BARb rules blocked whole behaviours: a "goal build time" bound
+  kept every builder off extractor upgrades; an enemy-influence skip kept builders off towers at raided extractors; a
+  factory value based on overflow blocked the advanced lab for good.
+- **Fixing wrong maths.** A share read as a probability (WinShare as P(win): an army 2x the enemy's sat idle), a
+  linear loss ratio where the square law needs its square root (one pull-back froze the army for the rest of the game),
+  summed exposure read as one producer's life (tier 2 at 2:00).
+- **Logs that show a decision's inputs**, and `tools/check_game.py` against the winners: a `0` or a huge number in an
+  input line found most bugs (`[ANV-IDLE]`: units with an enemy in reach not firing, 20-35% of contacts).
+
+**Did not help (stop doing):**
+- **One-term changes judged over three games.** The same code gave trades from 0.35 to 0.79; three games can't show a
+  change smaller than that. Judge a change first by its mechanism in the logs (did it do what it was meant to?), and
+  by game results only for large effects.
+- **Patching one part of a system whose parts depend on each other.** The opening was changed eleven times one term at
+  a time (extractor-first cost, lab delay, start candidates, plan search, energy gate, constructor queue, division of
+  labour, vehicle plant...): each moved one number and broke another. Winners' first minutes are one pattern (start,
+  commander, lab, constructors, energy, army by the first raid); design it as one.
+- **Aggregates instead of a replay view**, and medians read as targets.
+- **Asking the owner what to do** when the issues, the owner's remarks and the replays already say it.
+- **Committing changes untested together**, and treating "it compiles and runs 5 minutes" as tested.
+
 ## 0. Work ethic: improve first, test later
 
 From the owner, 2026-11-24, after watching Anarva play like BARb while ~200 test games were spent on small tweaks:
