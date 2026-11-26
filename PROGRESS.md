@@ -380,3 +380,8 @@ The latest batch (D-gun and strength fixes) is being played.
   winners (mostly Cortex): 46.9 Gators. Defences: ~10-13 light lasers by 12-16 min plus heavy lasers, AA, mines -
   light lasers are what players build. The gap is the army: theirs fast raiders in numbers, ours slow Warriors/Hammers
   from a bot lab; the opener picks the bot lab by strength per metal, so the vehicle plant (Flash) never comes.
+- **Raid value reverted (cmd_lab2-5, Canis, Armada vs Cortex).** Per-raider bound: 89/235 Fleas, economy gone. Marginal
+  (shared open spots): 20/16 Fleas, trades 1.21 / 0.69, but extractors lost by 8:00 rose to 10 and 9 (vs 4 and 9 without:
+  cmd_m155/156) and income fell to 14-16 M/s - production spent on raiders left our own spots unanswered. Extractors
+  built by 4/8/12 min: ours 6-7 / 15-19 / 28-29 (cmd_m155/156) vs Canis winners' median 9 / 22 / 30 (replays.db): the
+  earliest gap is the opening's expansion rate, before any raid.
