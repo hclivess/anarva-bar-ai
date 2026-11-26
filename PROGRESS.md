@@ -319,3 +319,7 @@ The latest batch (D-gun and strength fixes) is being played.
   Trade 0.85 and 0.95 (the five games before: 0.45-0.89), commander alive in both, army 5846 / 13390 at 20:00 -
   both points losses (their buildings 27465-31728 vs ours 3605-4072). The trade is now near even; the economy gap
   (our extractors fall to 7-9 by 20:00, their income 87-239/s) decides the points.
+- **Towers not one at a time - reverted (cmd_m127/m128):** 29 of 38 producers were lost uncovered (covered live 1364 s
+  vs 152 s, cmd_m125), so the one-order-at-a-time tower gate was dropped: two games, trade 0.49 / 0.47 (the build
+  before: 0.85 / 0.95), the first lost at 16:30 with 2 extractors at 8:00; towers 5 / 16. Builders on towers are
+  builders off extractors early; the tower rate needs the builder's time weighed, not just the site's value.
