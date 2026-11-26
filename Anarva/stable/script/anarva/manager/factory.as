@@ -124,7 +124,10 @@ bool AiIsSwitchTime(int lastSwitchFrame)
 {
 	if (Brain::HasBase() && Brain::Intel::allFactories.length() > 0) {
 		CCircuitDef@ nt = NextTierLab();
-		if (nt !is null && Brain::Tech::Allowed(nt) && FactoryValue(nt) > 0.f) return true;
+		// the tech gate is the decision: it weighs the upgrades' return against what the same metal buys as army. (Also
+		// requiring FactoryValue > 0 - overflow it lets us spend - blocked it: we don't overflow, so an advanced lab is
+		// always negative there; the gate stood open 7 minutes with no lab, t2d/t2e.)
+		if (nt !is null && Brain::Tech::Allowed(nt)) return true;
 	}
 	// No clock, no dice (the inherited rule waited for a random 8000-12000 s limit). Switch when the lab the core
 	// would build next is a higher tier than any we have and the tech decision says it pays now.
@@ -155,11 +158,12 @@ CCircuitDef@ AiGetFactoryToBuild(const AIFloat3& in pos, bool isStart, bool isRe
 	// the horizon, less its cost, per second of building it. Returned whenever "allowed", the advanced lab (2247-3620
 	// metal, value -1154 to -3378 at the builders' prices) stood in for every second factory: one lab all game while
 	// winners add a T1 vehicle or air plant at a median 7:29 (78 of 94 second factories; replays.db 1v1 winners; cmd_m61).
-	if (d !is null && Brain::Tech::Tier(d) > 1 && Brain::Tech::Allowed(d) && lab !is null && Brain::Intel::allFactories.length() > 0) {
-		const float vT = FactoryValue(d), vL = FactoryValue(lab);
-		AiLog("[ANV] next factory: " + d.GetName() + " " + int(vT) + " vs " + lab.GetName() + " " + int(vL) + " (value per build-second x 1000)");
-		if (vT > vL) return d;
-	} else if (d !is null && Brain::Tech::Tier(d) > 1 && Brain::Tech::Allowed(d)) return d;
+	// a higher tier: the tech gate decided it pays more per metal than the army (the overflow-based FactoryValue that
+	// compares T1 labs can't see the upgrades it enables)
+	if (d !is null && Brain::Tech::Tier(d) > 1 && Brain::Tech::Allowed(d)) {
+		AiLog("[ANV] next factory: " + d.GetName() + " (the tech gate allows it)");
+		return d;
+	}
 	if (lab !is null) AiLog("[ANV] next factory: " + lab.GetName());
 	return (lab !is null) ? lab : d;
 }

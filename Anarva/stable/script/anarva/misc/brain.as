@@ -2280,6 +2280,52 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		for (uint k = 0; k < msp.length(); ++k) if (!Assess::OnOurSide(msp[k])) theirSpots.insertLast(msp[k]);
 		if (theirSpots.length() == 0) theirSpots.insertLast(them);
 	}
+	// One fight per enemy type seen (owner: "do you build anything else than fucking ticks?" - 91 Pawns and 12
+	// constructors, sp0; 89 and 235 Fleas, cmd_lab2/3): scored against the whole mix at once the same unit won every
+	// pick, and nothing made its next copy worth less. Per type k: their strength E_k as seen (scaled so the total stays
+	// at least ours - unseen), ours S_k = our army's power against k (Production::SurfPower: range gap, splash, hit
+	// chance), the stake shared by E_k. A unit is worth what it adds over all k; WinShare saturates where a matchup is
+	// won, so more Pawns add nothing against Gators they already beat and a unit that outranges the Levelers we lose to
+	// adds most (square law).
+	array<string> kName; array<float> kE, kS; array<Mix@> kMix;
+	{
+		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+		for (uint i = 0; i < ne; ++i) {
+			const CCircuitDef@ d = ed[i];
+			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
+			int k = kName.find(d.GetName());
+			if (k < 0) {
+				k = int(kName.length()); kName.insertLast(d.GetName()); kE.insertLast(0.f); kS.insertLast(0.f);
+				Mix mk; mk.dps.insertLast(d.GetSustainedDps()); mk.range.insertLast(d.GetMaxRange()); mk.aoe.insertLast(d.GetAoe());
+				mk.shot.insertLast(d.GetShotSpeed()); mk.speed.insertLast(d.speed); mk.rad.insertLast(d.GetRadius()); mk.w.insertLast(1.f);
+				kMix.insertLast(mk);
+			}
+			kE[k] += sqrt(d.GetSustainedDps() * AiMax(1.f, eh[i] * d.health));
+		}
+		float seen = 0.f;
+		for (uint k = 0; k < kE.length(); ++k) seen += kE[k];
+		const float scale = (seen > 0.f) ? AiMax(1.f, eSurf / seen) : 1.f;
+		for (uint k = 0; k < kE.length(); ++k) kE[k] *= scale;
+		// ours against each: per our type, its power x how many (one SurfPower per type pair)
+		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+		dictionary cnt; array<string> ours;
+		for (uint i = 0; i < mine.length(); ++i) {
+			const CCircuitDef@ d = mine[i].circuitDef;
+			if ((!IsArmy(d) && mine[i] !is commander) || Scout::IsScout(mine[i]) || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
+			int c = 0; cnt.get(d.GetName(), c); cnt.set(d.GetName(), c + 1);
+			if (c == 0) ours.insertLast(d.GetName());
+		}
+		for (uint j = 0; j < ours.length(); ++j) {
+			int c = 0; cnt.get(ours[j], c);
+			CCircuitDef@ od = ai.GetCircuitDef(ours[j]);
+			for (uint k = 0; k < kE.length(); ++k) { string tm; kS[k] += float(c) * SurfPower(od, kMix[k], tm); }
+		}
+	}
+	float kESum = 0.f;
+	for (uint k = 0; k < kE.length(); ++k) kESum += kE[k];
+	string kLog = "";
+	for (uint k = 0; k < kE.length(); ++k) kLog += " " + kName[k] + " " + int(kS[k]) + "/" + int(kE[k]);
 	CCircuitDef@ bestDef = null; float bestRatio = 0.f, bestV = 0.f; int bestJob = -1;  // 0 fight, 1 build, 2 scout
 	string why = "";
 	for (uint i = 0; i < opts.length(); ++i) {
@@ -2299,8 +2345,17 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			const float hp = AiMax(1.f, d.health);
 			const float us = SurfPower(d, mix, terms);
 			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp);
-			vFight = stakeAir * (WinShare(sAir + ua, eAir) - WinShare(sAir, eAir))
-				+ stakeSurf * (WinShare(sSurf + us, eSurf) - WinShare(sSurf, eSurf));
+			float vSurf = stakeSurf * (WinShare(sSurf + us, eSurf) - WinShare(sSurf, eSurf));
+			if (kESum > 0.f) {
+				vSurf = 0.f;
+				for (uint k = 0; k < kE.length(); ++k) {
+					string tm;
+					const float uk = SurfPower(d, kMix[k], tm);
+					vSurf += stakeSurf * kE[k] / kESum * (WinShare(kS[k] + uk, kE[k]) - WinShare(kS[k], kE[k]));
+				}
+				terms += " per-type " + int(vSurf);
+			}
+			vFight = stakeAir * (WinShare(sAir + ua, eAir) - WinShare(sAir, eAir)) + vSurf;
 			vFight *= AiMax(0.f, 1.f - dist / AiMax(1.f, d.speed) / H);
 		}
 		// information is worth what we can do with it: the share of a fight our forces could contest (a warning saves
@@ -2322,8 +2377,9 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	if (bestJob == 1) ++builders; else ++choices;
 	++built[bestDef.id];
 	last = bestDef.GetName();
+	if (bestJob == 0) lastBestRatio = bestRatio;
 	AiLog("[ANV-PROD] " + fdef.GetName() + " -> " + bestDef.GetName() + " as " + (bestJob == 2 ? "scout" : (bestJob == 1 ? "constructor" : "fighter"))
-		+ " (value " + int(bestV) + " per metal " + F2(bestRatio) + "; S air/surf " + int(sAir) + "/" + int(sSurf) + " E " + int(eAir) + "/" + int(eSurf) + ")" + " |" + why);
+		+ " (value " + int(bestV) + " per metal " + F2(bestRatio) + "; S air/surf " + int(sAir) + "/" + int(sSurf) + " E " + int(eAir) + "/" + int(eSurf) + "; per type ours/theirs" + kLog + ")" + " |" + why);
 	return aiFactoryMgr.Enqueue(TaskS::Recruit(bestJob == 1 ? Task::RecruitType::BUILDPOWER : Task::RecruitType::FIREPOWER,
 		Task::Priority::NORMAL, bestDef, fpos, fac.circuitDef.GetRadius()));
 }
@@ -2384,19 +2440,25 @@ void FillMix(Mix@ m, const array<string>@ opts)
 float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 {
 	const float hp = AiMax(1.f, d.health);
-	float gapDmg = 0.f, wSum = 0.f, hitsW = 0.f, landW = 0.f, takenW = 0.f;
+	float gapDmg = 0.f, wSum = 0.f, landW = 0.f, dpsW = 0.f, hitsW = 0.f, inW = 0.f;
 	const float spacing = AiMax(1.f, 2.f * d.GetRadius());
 	for (uint k = 0; k < m.w.length(); ++k) {
 		gapDmg += m.w[k] * m.dps[k] * AiMax(0.f, m.range[k] - d.GetMaxRange()) / AiMax(1.f, d.speed);
-		hitsW += m.w[k] * AiMax(1.f, (m.aoe[k] / spacing) * (m.aoe[k] / spacing));
+		const float hk = AiMax(1.f, (m.aoe[k] / spacing) * (m.aoe[k] / spacing));
+		const float tk = HitChance(m.shot[k], m.range[k], d.speed, d.GetRadius());
 		landW += m.w[k] * HitChance(d.GetShotSpeed(), d.GetMaxRange(), m.speed[k], m.rad[k]);
-		takenW += m.w[k] * HitChance(m.shot[k], m.range[k], d.speed, d.GetRadius());
+		// what reaches us is each enemy's damage x the units its blast hits x its hit chance, so splash and dodging are
+		// weighted by the damage each enemy deals, not by its share of the mix: averaged by share, the Leveler's 144-elmo
+		// blast (unit facts) read 1.0 among Gators while Levelers dealt 39% of all damage we took (op3-6)
+		dpsW += m.w[k] * m.dps[k];
+		hitsW += m.w[k] * m.dps[k] * hk;
+		inW += m.w[k] * m.dps[k] * hk * tk;
 		wSum += m.w[k];
 	}
 	if (wSum > 0.f) gapDmg /= wSum;
-	const float hits = (wSum > 0.f) ? hitsW / wSum : 1.f;
+	const float hits = (dpsW > 0.f) ? hitsW / dpsW : 1.f;  // (logged) splash hits per shot, damage-weighted
 	const float land = (wSum > 0.f) ? landW / wSum : 1.f;
-	const float taken = (wSum > 0.f) ? AiMax(1e-3f, takenW / wSum) : 1.f;
+	const float taken = (dpsW > 0.f) ? AiMax(1e-3f, inW / AiMax(1e-3f, hitsW)) : 1.f;  // hit chance, damage x splash weighted
 	const float hpSurf = AiMax(1.f, (hp - gapDmg) / hits / taken);
 	float mixDps = 0.f;
 	for (uint k = 0; k < m.w.length(); ++k) mixDps += m.w[k] * m.dps[k];
@@ -2415,7 +2477,7 @@ float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 		const float meas = dealt / rec;
 		if (model > 0.f) { power *= sqrt(meas / model); live = " live " + F2(meas) + "/" + F2(model) + " x" + F2(sqrt(meas / model)); }
 	}
-	terms = "(hits " + F2(land) + " taken " + F2(taken) + " splash " + F1(hits) + " gapDmg " + int(gapDmg) + live + ")";
+	terms = "(hits " + F2(land) + " taken " + F2(taken) + " splash " + F2(hits) + " gapDmg " + int(gapDmg) + live + ")";
 	return power;
 }
 float HitChance(float shotSpeed, float range, float targetSpeed, float targetRadius)
@@ -2426,6 +2488,7 @@ float HitChance(float shotSpeed, float range, float targetSpeed, float targetRad
 }
 float WinShare(float S, float E) { return (S + E > 0.f) ? S / (S + E) : 0.f; }
 
+float lastBestRatio = 0.f;  // production's best value per metal at its last fighter pick (what army metal buys now)
 string Status() { return "moho=" + mohoCons + "(" + mohoWhy + ") prod=" + choices + "/b" + builders + " rez=" + rezBots.length() + "/" + rezOrders + " last=" + last; }
 
 }  // namespace Production
@@ -2628,7 +2691,14 @@ float MetalShare()
 float ProducerLife()
 {
 	const float floorH = Horizon();
-	return (producerLosses > 0) ? AiMax(floorH, producerExposure / float(producerLosses)) : AiMax(floorH, producerExposure);
+	if (producerLosses > 0) return AiMax(floorH, producerExposure / float(producerLosses));
+	// none lost yet: what we know is that a producer lives at least its mean age so far - the exposure is the sum over
+	// all of them (as a life it read 10575 s at 2:00 and opened tier 2 at 36x; the lab took the army's metal until 8:52,
+	// t2a)
+	int n = 0;
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	for (uint i = 0; i < mine.length(); ++i) if (IsProducer(mine[i].circuitDef)) ++n;
+	return AiMax(floorH, producerExposure / float(AiMax(1, n)));
 }
 
 // Enemy mobile threat; when we see nothing, assume they grew at least as fast as we did.
@@ -2702,8 +2772,24 @@ float MohoPayback(const CCircuitDef@ lab)
 	const float gain = n * (extraM - upkeepM);
 	if (gain <= 0.f)
 		return 1e9f;
-	return (MetalValue(lab) + n * MetalValue(mexT2)) / gain;
+	// the upgrades need the lab's constructor too, and nothing is earned until lab, constructor and upgrades stand:
+	// the lab at our build power now, the constructor at the lab's, the n upgrades at the constructor's (unit facts).
+	// (Cost alone read 220 s at 2:00 with 5 extractors; the lab then took the army's metal until 8:54, t2a/t2c.)
+	float conCost = 0.f, conTime = 0.f, mohoTime = 0.f;
+	const array<string> lo = Facts::BuildOptions(lab.GetName());
+	for (uint i = 0; i < lo.length(); ++i) {
+		CCircuitDef@ c = ai.GetCircuitDef(lo[i]);
+		if (c is null || !c.IsMobile() || c.buildSpeed <= 0.f || !c.CanBuild(mexT2)) continue;
+		if (conCost == 0.f || MetalValue(c) < conCost) {
+			conCost = MetalValue(c);
+			conTime = c.buildTime / AiMax(1.f, lab.buildSpeed);
+			mohoTime = n * mexT2.buildTime / AiMax(1.f, c.buildSpeed);
+		}
+	}
+	mohoReady = lab.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower()) + conTime + mohoTime;
+	return (MetalValue(lab) + conCost + n * MetalValue(mexT2)) / gain;
 }
+float mohoReady = 0.f;  // seconds until the upgrade path earns (set by MohoPayback)
 
 }  // namespace Economist
 
@@ -2759,8 +2845,19 @@ bool Allowed(const CCircuitDef@ facDef)
 		const float tBuild = facDef.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower());
 		const float surplus = AiMax(0.f, aiEconomyMgr.metal.income - AiSmoothMetalPull());
 		const bool banked = aiEconomyMgr.metal.current + surplus * tBuild >= Brain::Economist::MetalValue(facDef);
-		ok = (payback < H && (banked || payback < mexBack)) || forced;
-		why = "payback " + int(payback) + "s vs horizon " + int(H) + "s, next extractor " + (mexBack >= 1e9f ? "none" : (int(mexBack) + "s")) + (forced ? ", enemy teched" : "");
+		// The metal the upgrade path takes would otherwise go where production spends it: the army, at production's best
+		// value per metal now. (Against "banked or faster than the next extractor", tier 2 never came - production spends
+		// all income, so nothing banks, and a 50-metal extractor always pays back faster though spots, not metal, limit
+		// extractors: "payback 176s vs horizon 226s, next extractor 28s", 64 M/s at 12:00, sp2.) The upgrade returns its
+		// producers' life over its payback per metal; it goes when that beats the army's value per metal and returns
+		// more than it costs.
+		const float life = Brain::Economist::ProducerLife();
+		const float ret = AiMax(0.f, life - Brain::Economist::mohoReady) / AiMax(1.f, payback);  // earns only once it stands
+		const float armyRet = Brain::Production::lastBestRatio;
+		// (no fighter priced yet: the army's worth is unknown, so it can't be beaten - it read 0 and tier 2 began at 2:00)
+		ok = (armyRet > 0.f && ret > 1.f && ret > armyRet) || banked || forced;
+		why = "payback " + int(payback) + "s after " + int(Brain::Economist::mohoReady) + "s to build, producer life " + int(life) + "s: returns " + F2(ret) + "x per metal vs the army's " + F2(armyRet)
+			+ (banked ? ", banked" : "") + ", next extractor " + (mexBack >= 1e9f ? "none" : (int(mexBack) + "s")) + (forced ? ", enemy teched" : "");
 	} else {
 		// T3: when the enemy fields super units while we're not ahead and must answer in kind.
 		const bool enemySuper = aiEnemyMgr.GetEnemyCost(RT::SUPER) > 0.f && Brain::Director::ratio < 1.f;

@@ -396,3 +396,16 @@ The latest batch (D-gun and strength fixes) is being played.
   (escape alone let it fight Levelers 1561 out at stake-risk 36, op4). Both still lost with the commander dead, but
   after the army fight was lost: op6 defended the base against Thuds 759 out (stake 6260, trade 0.49), op5 had no
   army left by 16:00 (trade 0.30). The deaths follow the army's trade, which is the gap now (0.3-0.85 over op3-6).
+- **Unit mix per enemy type (sp1-2):** a unit is valued by what it adds in a separate fight against each enemy type seen
+  (WinShare saturates where a matchup is won); splash and hit chance weighted by the damage each enemy deals. Before:
+  84-107 Pawns and nothing else (owner: "do you build anything else than fucking ticks?"); now Pawns, Maces,
+  Centurions, Rocketeers, Flashes, Pincers, Stumpies (sp2, t2e-g). Income at 12:00 up to 58-65.
+- **Tier 2 reaches the game (t2a-g).** Four blocks found in turn: (1) the gate compared against the next extractor and
+  "banked" metal - production spends all income, so never; now the upgrades' return (producer life after the build /
+  payback) against production's best value per metal; (2) producer life before any loss was the sum of all exposures
+  (10575 s at 2:00 - lab from 2:00, army starved, t2a); now the mean age; (3) payback lacked the T2 constructor and
+  the time until lab + constructor + upgrades stand; (4) factory.as also required FactoryValue > 0 (overflow it lets us
+  spend), always negative for an advanced lab - the gate stood open 7 min with no lab (t2d/e). Now: advanced lab at
+  9:23 / 11:57, first upgraded extractors 13:15 / 13:52, 6 and 3 by 15-18 min (t2f/g) - replays.db 1v1 winners: lab
+  10%/50% at 8.4/12.7 min, first upgrade 9.8/14.8 min (107 winners, 34 ever upgrade). Both games lost (trade 0.52 /
+  0.69), the commander dead at 18:32 and 15:33.
