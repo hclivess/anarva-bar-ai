@@ -5310,6 +5310,71 @@ void OnDestroyed(CCircuitUnit@ unit)
  *  - idle: builders and factories with no job
  * Logged as one [ANV-CHECK] line; tools/check_game.py turns a game's lines into the checklist.
  */
+/*
+ * Awareness (owner, 2026-11-26: "all missing parts such as awareness (missing info about own army position, map,
+ * etc)"): what the AI knows, logged every half minute as one line - our army (where, how spread, how far forward),
+ * squads and pickets, the commander, the map (spots ours / theirs seen / open, how much we have seen in the last minute,
+ * radars) and the enemy we know (armed units, strength, groups, the nearest group to our base). A blind input shows up
+ * here as a 0 or a stale value before it shows up as a lost game.
+ */
+namespace Awareness {
+int lastFrame = NEVER;
+void Update()
+{
+	if (lastFrame != NEVER && ai.frame - lastFrame < 30 * SECOND) return;
+	lastFrame = ai.frame;
+	const AIFloat3 home = basePos, them = AiEnemyBasePos();
+	const float span = AiMax(1.f, home.distance2D(them));
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	AIFloat3 c(0.f, 0.f, 0.f); float metal = 0.f, S = 0.f; uint n = 0, radars = 0;
+	for (uint i = 0; i < all.length(); ++i) {
+		const CCircuitDef@ d = all[i].circuitDef;
+		if (!d.IsMobile() && Facts::RadarRange(d.GetName()) > 0.f) ++radars;
+		if (!IsArmy(d) || d.GetSustainedDps() <= 0.f) continue;
+		c = c + all[i].GetPos(ai.frame); metal += d.costM; S += Opening::Strength(d); ++n;
+	}
+	string army = "army 0";
+	if (n > 0) {
+		c = c / float(n);
+		float spread = 0.f;
+		for (uint i = 0; i < all.length(); ++i) {
+			const CCircuitDef@ d = all[i].circuitDef;
+			if (IsArmy(d) && d.GetSustainedDps() > 0.f) spread += all[i].GetPos(ai.frame).distance2D(c);
+		}
+		army = "army " + n + " (" + int(metal) + " metal, strength " + int(S) + ") at (" + int(c.x) + "," + int(c.z) + ") spread " + int(spread / float(n))
+			+ " forward " + F2(home.distance2D(c) / span);
+	}
+	string sq = "ops " + Command::ops.length() + " [";
+	for (uint o = 0; o < Command::ops.length(); ++o) sq += (o > 0 ? " " : "") + Command::ops[o].units.length() + "@" + int(Command::ops[o].pos.x) + "," + int(Command::ops[o].pos.z);
+	sq += "] pickets " + Command::picketAt.getSize();
+	string com = (commander !is null) ? ("commander " + int(commander.GetPos(ai.frame).distance2D(home)) + " from base") : "commander -";
+	// the map: extractor spots, sight in the last minute (scout cells)
+	array<AIFloat3> sp; array<float> si; array<bool> so;
+	const uint ns = AiGetMetalSpots(sp, si, so);
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	uint ours = 0, theirs = 0;
+	for (uint i = 0; i < ns; ++i) {
+		if (EcoPos::OwnSpot(sp[i])) { ++ours; continue; }
+		for (uint k = 0; k < ne; ++k)
+			if (ed[k] !is null && !ed[k].IsMobile() && Facts::ExtractsMetal(ed[k].GetName()) > 0.f && ep[k].distance2D(sp[i]) <= ed[k].GetRadius() * 2.f) { ++theirs; break; }
+	}
+	uint seen = 0;
+	const uint cells = Scout::lastSeen.length();
+	for (uint k = 0; k < cells; ++k) if (ai.frame - Scout::lastSeen[k] <= MINUTE) ++seen;
+	// the enemy we know
+	float eS = 0.f; uint eN = 0;
+	for (uint k = 0; k < ne; ++k) if (ed[k] !is null && ed[k].IsMobile() && ed[k].GetSustainedDps() > 0.f) { eS += Opening::Strength(ed[k]); ++eN; }
+	array<AIFloat3> gp; array<float> gc, gt;
+	const uint g = AiGetEnemyGroups(gp, gc, gt);
+	float nearest = 1e30f;
+	for (uint k = 0; k < g; ++k) nearest = AiMin(nearest, gp[k].distance2D(home));
+	AiLog("[ANV-AWARE] t=" + (ai.frame / SECOND) + "s " + army + " | " + sq + " | " + com
+		+ " | spots " + ours + " ours " + theirs + " theirs seen " + (ns - ours - theirs) + " other | seen last minute " + (cells > 0 ? F2(float(seen) / float(cells)) : "-")
+		+ " of the map, radars " + radars + " | enemy armed " + eN + " strength " + int(eS) + " groups " + g + " nearest " + (g > 0 ? ("" + int(nearest)) : "-") + " from base");
+}
+}  // namespace Awareness
+
 namespace Check {
 int lastFrame = NEVER;
 dictionary lastPos;  // unit id -> "x,z"
@@ -6252,6 +6317,7 @@ void Update()  // every 30 frames
 {
 	CheckSide();
 	Check::Update();
+	Awareness::Update();
 	Check::Micro();
 	aiSwitchHighGroundArty = true;
 	aiSwitchHeightSquads = true;

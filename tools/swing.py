@@ -39,6 +39,8 @@ def main():
     ap.add_argument("--side0", default="Armada")
     ap.add_argument("--side1", default="Cortex")
     ap.add_argument("--minutes", type=float, default=20.0)
+    ap.add_argument("--opp", default="BARb:hard", help="Anarva:anarva for self-play (phase 2)")
+    ap.add_argument("--n1", type=int, default=1, help="opponents on the other side (1vN lane)")
     ap.add_argument("--yardstick", choices=["barb", "winners"], default="barb",
                     help="winners: stop when we fall below 0.9 x the median 1v1 winner at that minute (replays.db, the "
                          "Armada bot-lab wins) on metal income, energy income or army - CLAUDE.md: compare with the best "
@@ -59,7 +61,7 @@ def main():
                 win[m] = {"metal income": statistics.median(v[0] for v in r), "energy income": statistics.median(v[1] for v in r),
                           "army": statistics.median(v[2] for v in r)}
         print(f"yardstick: median of {len(ws)} Armada bot-lab 1v1 winners, minutes {min(win)}-{max(win)}")
-    cmd = [sys.executable, "tools/batch.py", a.out, "--games", "1", "--par", "1", "--me", "Anarva:anarva", "--opp", "BARb:hard",
+    cmd = [sys.executable, "tools/batch.py", a.out, "--games", "1", "--par", "1", "--me", "Anarva:anarva", "--opp", a.opp, "--n1", str(a.n1),
            "--side0", a.side0, "--side1", a.side1, "--maps", a.map, "--game-minutes", str(a.minutes), "--minutes", str(a.minutes + 15)]
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     log = os.path.join(a.out, "g00", "infolog.txt")

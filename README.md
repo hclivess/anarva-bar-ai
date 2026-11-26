@@ -47,6 +47,45 @@ commander alive in two, but lost on points: BARb's buildings stood at ~30k again
 
 **Goal:** first 100% of 1v1 games against BARb hard, then one Anarvā against six BARbs on every map type.
 
+## How Anarvā is developed
+
+Owner's design, 2026-11-26. Phase 1 runs now; phase 2 starts once Anarvā beats BARb hard in 1v1.
+
+```mermaid
+flowchart TB
+    subgraph P1["Phase 1 - now"]
+        direction TB
+        L1["1v1 + swing-stop + spectator + log<br/>Anarvā vs BARb hard<br/><code>tools/swing.py</code>"]
+        L2["1vN + swing-stop + spectator + log<br/>Anarvā vs N x BARb hard<br/><code>swing.py --n1 N</code>"]
+        L3["Owner's games<br/>chat remarks -> GitHub issues<br/><code>docs/owner_feedback/</code>"]
+    end
+    subgraph P2["Phase 2 - after BARb is beaten"]
+        L4["Self-play + spectator + log<br/>Anarvā vs Anarvā<br/><code>swing.py --opp Anarva:anarva</code>"]
+    end
+    Y["Yardstick: the 1v1 winners' median curves<br/>metal, energy, army by minute<br/><code>runs/replays.db</code>, <code>swing.py --yardstick winners</code>"]
+    A["Awareness: what the AI knows, every 30 s<br/>army position, spread, forward share; squads, pickets;<br/>commander; map spots; sight; radars; known enemy<br/><code>[ANV-AWARE]</code>"]
+    G["Offline analyst (gradient boosting)<br/>game-minute states -> next-minute swing<br/>ranks where to work; never inside the AI<br/><code>tools/analyst.py</code>"]
+    S["AngelScript decisions<br/>live values from unit facts and the game;<br/>no constants, dice or fitted weights"]
+    C["Core DLL<br/>bridge, engine facts, job valuation"]
+    P1 --> Y
+    P2 --> Y
+    A --> Y
+    Y -->|"swing: below the winners at minute t"| G
+    G -->|"where to work"| S
+    L3 -->|"issues"| S
+    S --> C
+```
+
+| Part | State | Where |
+|---|---|---|
+| 1v1 lane (swing-stop, spectator, logs) | running | `tools/swing.py`, spectator agent notes in `docs/spectator/` |
+| 1vN lane | available, not yet run | `swing.py --n1 N` |
+| Owner's games | running | `docs/owner_feedback/`, GitHub issues |
+| Self-play (phase 2) | available, waits for a 1v1 win | `swing.py --opp Anarva:anarva` |
+| Yardstick: winners' curves | running | `swing.py --yardstick winners` (24 Armada bot-lab 1v1 wins) |
+| Awareness | running | `[ANV-AWARE]` every 30 s |
+| Offline analyst | first fit: R2 0.85 on held-out games (6787 game-minutes, 539 games, mostly older builds) | `tools/analyst.py` |
+
 ## How it decides
 
 Anarvā runs on its own build of BARb's C++ core (CircuitAI plus [`core/circuitai.patch`](core/circuitai.patch))
