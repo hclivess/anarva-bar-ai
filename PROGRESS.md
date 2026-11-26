@@ -707,3 +707,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   extractors at 4:00, and 2-3 extractors after 12:00 (metal 6.6 vs 155 at 20:00). Next: what the constructors did instead
   of extractors in ca1 (assisting builds too?).
 - **Pickets from seen raiders (pk2):** before any measured loss, each seen raider's reachable sites (it gets there and kills before our army arrives) carry 1/n of it. pk2: 2 extractors lost before 6:00 (rv1/ca1: 3-5), army 2417 vs 3024 at 12:00; but extractors stayed at 4-6 (metal 15.8 vs 45.6 at 12:00). Points loss.
+- **One op per raid spot (rs1):** raid spots carry no id, so the same corner was picked each update ([ANV-AWARE] aw1: ops [1@6800,752 1@6800,752 2@6800,752]). Now an op's spot is taken. rs1: distinct targets; but army 108 at 3:00 and 2 extractors at 4:00 - the opening again; lost at 18:00.

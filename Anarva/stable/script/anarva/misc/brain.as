@@ -4994,6 +4994,11 @@ void Update()
 		}
 		for (uint i = 0; i < EcoPos::raidPos.length(); ++i) {
 			if (AiIsInLOS(EcoPos::raidPos[i])) continue;  // in sight: the known enemies above cover it
+			// a spot an op already has is taken, as an enemy an op has is (raid spots carry no id, so the same corner was
+			// picked again each update: ops [1@6800,752 1@6800,752 2@6800,752] at 3:00 - the army in singles, aw1)
+			bool had = false;
+			for (uint o = 0; o < ops.length() && !had; ++o) if (ops[o].enemyId < 0 && ops[o].pos.distance2D(EcoPos::raidPos[i]) < 1.f) had = true;
+			if (had) continue;
 			cp.insertLast(EcoPos::raidPos[i]); cv.insertLast(EcoPos::raidVal[i]); cid.insertLast(-1);
 			chp.insertLast(Economist::mexT1 !is null ? Economist::mexT1.health : 0.f);  // what a raid spot holds
 			cspd.insertLast(0.f);
