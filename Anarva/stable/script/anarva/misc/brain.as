@@ -4993,7 +4993,13 @@ float CommNet(uint i, const AIFloat3& in c, const CCircuitDef@ cd, const array<A
 		if (all[k].GetPos(ai.frame).distance2D(ep[i]) <= reach) ours += ud.threat;
 	}
 	if (ours <= theirs) return -1e30f;
-	const float risk = CommPDeath(ep[i], EscapeTime(ep[i])) * V;
+	// the risk on the way too, not only at the target: where it stands now, half way and there (measured at the target
+	// alone, it walked 1400 toward a resurrected Pawn past Thuds and died at 12:17, cmd_m40)
+	const AIFloat3 mid = (c + ep[i]) * 0.5f;
+	float pD = CommPDeath(ep[i], EscapeTime(ep[i]));
+	pD = AiMax(pD, CommPDeath(mid, EscapeTime(mid)));
+	pD = AiMax(pD, CommPDeath(c, EscapeTime(c)));
+	const float risk = pD * V;
 	return stake - risk - (t + tFight) * commRate;  // its time is our best builder's time
 }
 void CommDefendUpdate()

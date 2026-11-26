@@ -185,3 +185,10 @@ The latest batch (D-gun and strength fixes) is being played.
     0.06-0.11); Fleas 50 -> 0 by 14:00.
   - Open, in order: the army's collapse at 9-10 min vs Raiders/Levelers (composition and where it fights); the
     bank full again from minute 8-11 in most games (build power); towers still 1-4 by 8:00 vs 6.2.
+- **Ops and commander, continued (cmd_m40-42):** ops infer the defence from their own losses (square law: strength x
+  metal lost / killed) - 10-26 pull backs per game instead of 0; the commander's fight risk is the highest of where it
+  stands, half way and the target (it had walked past Thuds toward a resurrected Pawn). cmd_m42: the commander
+  survived until BARb's push reached the base at 14:13 (army 2592 at 13:00, lost 4767 in minute 14).
+  Earliest gap again: 3 / 6 extractors at 4:00 / 8:00 (winners 9 / 19) with 500-1000 metal banked minutes 4-9.
+  (Note: one headless game hung in pregame with no AI loaded, cmd_m39; batch's --minutes cap didn't stop it -
+  runs are now wrapped in an outer timeout.)
