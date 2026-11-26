@@ -681,3 +681,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   the commander (15000-16000 per home op, no op gave units to another). Now GameValue x CommPDeath x this enemy's share of
   the threat near it. rv1: 44 detachments; ahead at 8:00 for the first time on both - army 918 vs 540, metal 39.2 vs 31.8,
   bank 114. Then 43 extractors/solars lost before 7:00 and metal 20.4 vs 56.4 at 12:00; points loss.
+- **rv1 losses, traced:** nearly all to single Grunts at outer extractors 640-1920 from base, 5:00-12:00. A Grunt kills an
+  extractor in seconds; our units need 30-50 s to walk there: an answer sent after the raid starts is too late for far
+  extractors however well it is chosen. Winners (replays.db): singles spread early across their half, then one main squad;
+  ~2 extractors lost by 12:00 vs our 12-19. Next: pickets - a unit stationed by each outer extractor group, worth the
+  raid losses it prevents there (measured loss rate at that group x how much sooner it arrives than the main army)
+  against what it adds to the main squad's fights.
