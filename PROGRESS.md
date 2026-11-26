@@ -373,3 +373,10 @@ The latest batch (D-gun and strength fixes) is being played.
   where the army is between it and them.
 - **Route-aware safe place (cmd_m152/m153) - reverted:** the commander's safe job scored on the risk half way as well
   as at the destination: trades 0.49 / 0.55, one economy collapse (army 0 at 20:00), one commander death at base.
+- **Concentration kept (cmd_m155-157, #93):** stragglers join the squad's centre before fighting; trades 0.84 / 0.63 /
+  0.77, no regression. **Combined build reverted (cmd_all1-4):** tech gate by return over life, raid value, choke line
+  and turret by fight model together: 0 Flashes, no T2, up to 31 light lasers, economy collapsed (5-12 extractors).
+- **What winners field (replays.db):** Canis winners by 12:00: 22.9 Flash, 21.7 Pawn, 8.2 Flea (fast raiders); Feast
+  winners (mostly Cortex): 46.9 Gators. Defences: ~10-13 light lasers by 12-16 min plus heavy lasers, AA, mines -
+  light lasers are what players build. The gap is the army: theirs fast raiders in numbers, ours slow Warriors/Hammers
+  from a bot lab; the opener picks the bot lab by strength per metal, so the vehicle plant (Flash) never comes.

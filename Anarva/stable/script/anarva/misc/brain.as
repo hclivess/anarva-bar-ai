@@ -4437,10 +4437,28 @@ void Update()
 			for (uint k = 0; k < op.units.length(); ++k) op.units[k].CmdWantedSpeed(op.units[k].circuitDef.speed);  // fight at full speed
 			AiLog("[ANV-CMD] engage (" + int(op.pos.x) + "," + int(op.pos.z) + ") with " + op.units.length() + " units");
 		}
+		// the squad's centre and spread, for reinforcements: a unit that arrives alone fights alone (square law; #93) -
+		// the logs were full of "+1 units" walking straight into the fight one by one
+		AIFloat3 sq(0.f, 0.f, 0.f);
+		for (uint k = 0; k < op.units.length(); ++k) sq = sq + op.units[k].GetPos(ai.frame);
+		sq = sq / float(AiMax(1, int(op.units.length())));
+		float spread = 0.f;
+		{
+			array<float> dd;
+			for (uint k = 0; k < op.units.length(); ++k) dd.insertLast(op.units[k].GetPos(ai.frame).distance2D(sq));
+			dd.sortAsc();
+			if (dd.length() > 0) spread = dd[dd.length() / 2];  // the median unit's distance: the squad's body
+		}
 		for (uint k = 0; k < op.units.length(); ++k) {
 			CCircuitUnit@ u = op.units[k];
 			const AIFloat3 p = u.GetPos(ai.frame);
 			const float reach = AiMax(1.f, u.circuitDef.GetMaxRange());
+			// a straggler joins the squad first: farther from its centre than the squad's body plus its own reach,
+			// it walks to the centre, not into the fight
+			if (op.engaged && op.units.length() > 1 && p.distance2D(sq) > spread + reach) {
+				Order(u, "join" + o + ":" + int(sq.x / reach) + "," + int(sq.z / reach), 0, sq, -1);
+				continue;
+			}
 			int bi = -1, ni = -1, ai2 = -1;  // best unarmed, nearest armed, best armed
 			float bv = 0.f, nd = 1e9f, av = 0.f;
 			for (uint i = 0; i < n; ++i) {
