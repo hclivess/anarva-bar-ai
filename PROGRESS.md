@@ -539,3 +539,14 @@ The latest batch (D-gun and strength fixes) is being played.
   step, "one more plant then the lab" always beat "the lab now"), and the start moved to a corner. The plan value
   rates any producer before the lab above the lab: it must count what the lab's units are worth by when they are
   needed (#103/#41) before any search over it can work - the core of the #105 design.
+- **Committed within-reach opening plan, reverted (nr3-9):** with the plan taken followed and the pool limited to spots
+  where the walk is shorter than the build (+ plants), the commander builds three extractors at 13/35/48 s and one solar,
+  the lab at 69-97 s. Full games: trades 0.52 / 0.66 / 0.63, all lost; nr7 29 extractors and 57.7 M/s at 12:00 (pts loss).
+  4:00 income still 8-10: the first minute isn't where the 4-minute gap is.
+- **Replay walk-through (winner d346036b, Canis) vs ours (rr5):** their lab makes 2-3 constructors then a Tick about every
+  3 s; constructors claim 10 extractors at 700-1660 from start by 4:54 with towers/radar forward; 165 E/s at 2:00. Our
+  lab made 7 constructors by 4:18 and almost no army (54-108), constructors claim <1 extractor each.
+- **Army composition vs players (28 Armada-vs-Cortex 1v1 winners, faction from the commander):** metal per game
+  559 / 2251 / 4590 / 6478 by 0-4 / 4-8 / 8-12 / 12-16 min vs ours 233 / 1180 / 3949 / 4841. Theirs: Pawn/Rover/Flash
+  early, Flash 42% at 4-8, Stumpy 25-32% and air from 8 min. Ours: Centurion 61-72% from 4 min (speed 45 - catches
+  nothing). Per-type fight value dropped the speed/reach factor: next fix.
