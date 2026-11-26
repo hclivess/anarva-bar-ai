@@ -3587,6 +3587,7 @@ CCircuitDef@ BestLab()
 // metal x the share of the enemy it can catch (its speed over their mobiles' mean speed now, at most 1). Second
 // factories were always another bot lab (BestLab ignores the enemy) at 14:45; winners add one at a median 7:29, a
 // vehicle or air plant in 78 of 94 games (replays.db 1v1 winners) - Pawns chased Grunts as fast as themselves.
+float lastNewLabReturn = 0.f;  // the best new kind of lab's return per metal of its cost (last LabVsEnemy)
 CCircuitDef@ BestLabVsEnemy()
 {
 	if (!ready && commander !is null) Init();
@@ -3637,6 +3638,19 @@ CCircuitDef@ BestLabVsEnemy()
 		if (owned.find(labs[k].def.GetName()) < 0)
 			aiMilitaryMgr.SetFactoryEdge(labs[k].def, (labV[k] > 0.f) ? AiMax(0.f, labV[k] - ownedBest) / labV[k] : 0.f);
 	if (best is null) { for (uint k = 0; k < labs.length(); ++k) if (labV[k] > bv) { bv = labV[k]; @best = labs[k].def; } }  // we have every kind
+	// the chosen new kind's return per metal of its cost: the metal it turns into better units over the horizon (edge x
+	// its build power x metal per build-second of its options) / its cost - compared with tier 2's return (factory.as)
+	lastNewLabReturn = 0.f;
+	if (best !is null && owned.find(best.GetName()) < 0) {
+		int bk = -1;
+		for (uint k = 0; k < labs.length(); ++k) if (labs[k].def is best) bk = int(k);
+		const float edge = (bk >= 0 && labV[bk] > 0.f) ? AiMax(0.f, labV[bk] - ownedBest) / labV[bk] : 0.f;
+		const array<string> bo = Facts::BuildOptions(best.GetName());
+		float sm = 0.f, st = 0.f;
+		for (uint q = 0; q < bo.length(); ++q) { CCircuitDef@ o = ai.GetCircuitDef(bo[q]); if (o !is null && o.IsMobile()) { sm += o.costM; st += o.buildTime; } }
+		const float rate = (st > 0.f) ? best.buildSpeed * sm / st : 0.f;
+		lastNewLabReturn = edge * rate * Economist::Horizon() / AiMax(1.f, Economist::MetalValue(best));
+	}
 	AiLog("[ANV] LabVsEnemy: enemy speed " + F1(eSpeed) + " |" + why);
 	return (best !is null) ? best : BestLab();
 }

@@ -160,8 +160,16 @@ CCircuitDef@ AiGetFactoryToBuild(const AIFloat3& in pos, bool isStart, bool isRe
 	// winners add a T1 vehicle or air plant at a median 7:29 (78 of 94 second factories; replays.db 1v1 winners; cmd_m61).
 	// a higher tier: the tech gate decided it pays more per metal than the army (the overflow-based FactoryValue that
 	// compares T1 labs can't see the upgrades it enables)
+	// tier 2 or a new kind of T1 lab: whichever returns more per metal of its cost (tier 2: the tech gate's measured
+	// return; a new kind: its units' edge over ours). In a fixed order the advanced lab came first whenever allowed and
+	// the vehicle plant whose units kill BARb's Pounders and Brutes was never built (fe1-2; REPLAYS.md: winners' second
+	// factories are vehicle or air plants, 78 of 94)
 	if (d !is null && Brain::Tech::Tier(d) > 1 && Brain::Tech::Allowed(d)) {
-		AiLog("[ANV] next factory: " + d.GetName() + " (the tech gate allows it)");
+		if (lab !is null && Brain::Tech::Tier(lab) <= 1 && Brain::Opening::lastNewLabReturn > Brain::Tech::lastT2Return) {
+			AiLog("[ANV] next factory: " + lab.GetName() + " (its units return " + Brain::F2(Brain::Opening::lastNewLabReturn) + " per metal vs tier 2's " + Brain::F2(Brain::Tech::lastT2Return) + ")");
+			return lab;
+		}
+		AiLog("[ANV] next factory: " + d.GetName() + " (the tech gate allows it; new T1 kind returns " + Brain::F2(Brain::Opening::lastNewLabReturn) + ")");
 		return d;
 	}
 	if (lab !is null) AiLog("[ANV] next factory: " + lab.GetName());
