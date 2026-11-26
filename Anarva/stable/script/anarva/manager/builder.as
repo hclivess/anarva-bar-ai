@@ -20,6 +20,13 @@ IUnitTask@ AiMakeTask(CCircuitUnit@ unit)
 
 void AiTaskAdded(IUnitTask@ task)
 {
+	// a lab whose constructors upgrade extractors carries that value into the builders' ranking (valued by the metal it
+	// spends alone, an approved advanced lab loses every pick)
+	IBuilderTask@ bt = cast<IBuilderTask>(task);
+	if (bt is null || bt.buildDef is null || bt.GetBuildType() != Task::BuildType::FACTORY) return;
+	const float busy = bt.buildDef.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower());
+	const float up = Brain::Production::UpgradeValue(bt.buildDef, busy);
+	if (up > 0.f) { bt.value = up; AiLog("[ANV] factory job " + bt.buildDef.GetName() + " carries its upgrade value " + int(up)); }
 }
 
 void AiTaskRemoved(IUnitTask@ task, bool done)

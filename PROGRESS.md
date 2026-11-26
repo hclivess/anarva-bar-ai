@@ -336,3 +336,10 @@ The latest batch (D-gun and strength fixes) is being played.
   "allowed" to an enqueued factory job (core FactoryManager / AiIsSwitchTime) is where T2 stops. Next: trace that step.
   Also learned: cmd_m131/m132 (no lab built either) traded 0.51-0.63 vs 0.85-0.95 for the same effective behaviour -
   single-game variance is that wide.
+- **Tech 2 path wired end to end (cmd_m136):** our tech decision names the next-tier lab itself (NextTierLab: our
+  constructors' build options) for both the switch and the factory choice (was BARb's config pick, never higher tier);
+  the factory value and the factory job carry the extractor-upgrade value; affordability is judged over the build.
+  The gate still answers "not yet": moho payback 154-179 s vs the next extractor's 28 s, and the surplus doesn't cover
+  the lab during its build. With the gate closed play is unchanged. The decision now rests on that return-rate
+  comparison: whether the next extractor's 28 s should count its measured short life (uncovered producers live
+  ~150 s) - an extractor that dies before it pays twice isn't the better investment.

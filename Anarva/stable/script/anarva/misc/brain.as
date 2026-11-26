@@ -2142,6 +2142,29 @@ IUnitTask@ MineLayerTask(CCircuitUnit@ fac)
 bool IsUpgradeCon(const CCircuitDef@ d) { return d !is null && Brain::Economist::mexT2 !is null && d.CanBuild(Brain::Economist::mexT2); }
 int mohoCons = 0;
 string mohoWhy = "";
+// What a lab whose constructors upgrade extractors adds: each safe T1 extractor's extra yield (net of the upgrade's
+// extra upkeep) from when the k-th upgrade is done to the horizon, less each upgrade's cost. BARb's income ran 87-239/s
+// on upgraded extractors vs our 20-40 (cmd_m89-m135).
+float UpgradeValue(const CCircuitDef@ lab, float labBusy)
+{
+	CCircuitDef@ t1 = Brain::Economist::mexT1; CCircuitDef@ t2 = Brain::Economist::mexT2;
+	if (t1 is null || t2 is null || lab is null) return 0.f;
+	const array<string> opts = Facts::BuildOptions(lab.GetName());
+	CCircuitDef@ con = null;
+	for (uint k = 0; k < opts.length() && con is null; ++k) { CCircuitDef@ o = ai.GetCircuitDef(opts[k]); if (o !is null && IsUpgradeCon(o)) @con = o; }
+	if (con is null) return 0.f;
+	uint U = 0;
+	const array<CCircuitUnit@>@ mx = Brain::Economist::mexes;
+	for (uint m = 0; m < mx.length(); ++m) if (mx[m].circuitDef is t1 && aiThreat.GetThreatAt(con, mx[m].GetPos(ai.frame)) <= 0.f) ++U;
+	const float perMex = aiEconomyMgr.metal.income / float(AiMax(1, int(mx.length())));
+	const float extra = perMex * (Brain::Economist::MexExtract(t2) / AiMax(1e-9f, Brain::Economist::MexExtract(t1)) - 1.f)
+		- (Brain::Economist::MexUpkeep(t2) - Brain::Economist::MexUpkeep(t1)) / AiMax(1e-3f, Brain::Economist::energyPerMetal);
+	const float tau = t2.buildTime / AiMax(1.f, con.buildSpeed);
+	const float H = AiMax(1.f, Brain::Economist::ProducerLife());
+	float up = 0.f;
+	for (uint k = 1; k <= U; ++k) up += AiMax(0.f, extra * AiMax(0.f, H - labBusy - float(k) * tau) - Brain::Economist::MetalValue(t2));
+	return up;
+}
 IUnitTask@ MohoConTask(CCircuitUnit@ fac)
 {
 	CCircuitDef@ t2 = Brain::Economist::mexT2;
@@ -2731,7 +2754,11 @@ bool Allowed(const CCircuitDef@ facDef)
 		const float mexBack = Brain::Economist::NextMexPayback();
 		// The extractor is only the alternative when both compete for the same metal: with the lab's cost already
 		// banked, buying it takes nothing from the extractors (one lab sat on 4600 metal for 20 min, Throne 2026-11-25).
-		const bool banked = aiEconomyMgr.metal.current >= Brain::Economist::MetalValue(facDef);
+		// paid while it is built: what we hold plus the income we don't spend during its build (the bank alone could
+		// never hold it - the advanced lab costs more than our whole storage, cmd_m125)
+		const float tBuild = facDef.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower());
+		const float surplus = AiMax(0.f, aiEconomyMgr.metal.income - AiSmoothMetalPull());
+		const bool banked = aiEconomyMgr.metal.current + surplus * tBuild >= Brain::Economist::MetalValue(facDef);
 		ok = (payback < H && (banked || payback < mexBack)) || forced;
 		why = "payback " + int(payback) + "s vs horizon " + int(H) + "s, next extractor " + (mexBack >= 1e9f ? "none" : (int(mexBack) + "s")) + (forced ? ", enemy teched" : "");
 	} else {

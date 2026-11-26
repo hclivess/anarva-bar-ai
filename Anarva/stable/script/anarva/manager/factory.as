@@ -103,8 +103,29 @@ void AiSave(OStream& ostream)
 /*
  * New factory switch condition; switch event is also based on eco + caretakers.
  */
+// The next-tier factory our own constructors can build (their build options), the one our tech decision judges - not
+// BARb's config pick: the switch asked whether BARb's default was a higher tier, which it never was, so an approved
+// advanced lab was never enqueued (cmd_m135: "Tech: building armalab", no factory job).
+CCircuitDef@ NextTierLab()
+{
+	CCircuitDef@ con = Brain::EcoPos::CheapestConstructor();
+	if (con is null) return null;
+	const array<string> opts = Facts::BuildOptions(con.GetName());
+	const int have = Brain::Tech::TierWeHave();
+	for (uint k = 0; k < opts.length(); ++k) {
+		CCircuitDef@ d = ai.GetCircuitDef(opts[k]);
+		if (d is null || d.IsMobile() || d.buildSpeed <= 0.f || !d.IsAvailable(ai.frame)) continue;
+		if (Facts::BuildOptions(d.GetName()).length() == 0) continue;
+		if (Brain::Tech::Tier(d) == have + 1) return d;
+	}
+	return null;
+}
 bool AiIsSwitchTime(int lastSwitchFrame)
 {
+	if (Brain::HasBase() && Brain::Intel::allFactories.length() > 0) {
+		CCircuitDef@ nt = NextTierLab();
+		if (nt !is null && Brain::Tech::Allowed(nt) && FactoryValue(nt) > 0.f) return true;
+	}
 	// No clock, no dice (the inherited rule waited for a random 8000-12000 s limit). Switch when the lab the core
 	// would build next is a higher tier than any we have and the tech decision says it pays now.
 	if (!Brain::HasBase() || Brain::Intel::allFactories.length() == 0)
@@ -126,6 +147,7 @@ CCircuitDef@ AiGetFactoryToBuild(const AIFloat3& in pos, bool isStart, bool isRe
 	// it; otherwise the T1 lab the opener judges best for this map (strength per metal it fields, units that reach
 	// their side). BARb's pick rebuilt a lost lab as an advanced lab with one extractor standing (Canis River).
 	CCircuitDef@ d = aiFactoryMgr.DefaultGetFactoryToBuild(pos, isStart, isReset);
+	{ CCircuitDef@ nt = NextTierLab(); if (nt !is null && !isStart) @d = nt; }  // our next tier, not BARb's pick
 	// the first lab is the opener's; later ones are chosen against the enemy we have seen
 	CCircuitDef@ lab = (Brain::Intel::allFactories.length() == 0) ? Brain::Opening::BestLab() : Brain::Opening::BestLabVsEnemy();
 	// A higher tier competes on the same value as a T1 lab, the one the builders rank it by: the metal it lets us spend
@@ -158,7 +180,7 @@ float FactoryValue(CCircuitDef@ f)
 	const float H = AiMax(1.f, Brain::Economist::ProducerLife());
 	const float overflow = AiMax(0.f, aiEconomyMgr.metal.income - AiSmoothMetalPull()) + aiEconomyMgr.metal.current / H;
 	const float busy = f.buildTime / AiMax(1.f, aiBuilderMgr.GetBuildPower());
-	const float V = AiMin(overflow, rate) * AiMax(0.f, H - busy) - Brain::Economist::MetalValue(f);
+	const float V = AiMin(overflow, rate) * AiMax(0.f, H - busy) - Brain::Economist::MetalValue(f) + Brain::Production::UpgradeValue(f, busy);
 	return 1000.f * V / AiMax(1.f, busy);
 }
 
