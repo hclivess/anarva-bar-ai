@@ -5104,6 +5104,55 @@ int commRedirects = 0;
  * The commander is the win condition: it takes a job only when the job's value beats P(death) there x
  * everything we own (CommWorth, see Commander risk below); otherwise it takes the safest productive job.
  */
+// Squads, measured as the replay analyzer measures them (tools/replay_harness ... zz_replay_analyzer.lua, SQUAD): our
+// armed mobile units (no builders, no air, no commander) grouped by single linkage - two units in one squad when within
+// the longer of their two weapon ranges - every 15 s: units, squad sizes (largest first), the largest squad's units.
+// For comparing our squads and composition with winning players' (owner, 2026-11-26).
+int squadLogFrame = 0;
+void SquadLog()
+{
+	if (ai.frame - squadLogFrame < 15 * SECOND) return;
+	squadLogFrame = ai.frame;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	array<AIFloat3> p; array<float> r; array<string> nm;
+	for (uint i = 0; i < all.length(); ++i) {
+		const CCircuitDef@ d = all[i].circuitDef;
+		if (all[i] is commander || !d.IsMobile() || d.IsAbleToFly() || d.buildSpeed > 0.f || d.GetSustainedDps() <= 0.f) continue;
+		p.insertLast(all[i].GetPos(ai.frame)); r.insertLast(d.GetMaxRange()); nm.insertLast(d.GetName());
+	}
+	const uint n = p.length();
+	if (n == 0) return;
+	array<int> cl(n, -1); int nc = 0;
+	for (uint i = 0; i < n; ++i) {
+		if (cl[i] >= 0) continue;
+		cl[i] = nc;
+		array<uint> stack = {i};
+		while (stack.length() > 0) {
+			const uint a = stack[stack.length() - 1]; stack.removeLast();
+			for (uint j = 0; j < n; ++j) {
+				if (cl[j] >= 0) continue;
+				const float link = AiMax(r[a], r[j]);
+				if (p[a].distance2D(p[j]) <= link) { cl[j] = nc; stack.insertLast(j); }
+			}
+		}
+		++nc;
+	}
+	array<int> size(nc, 0);
+	for (uint i = 0; i < n; ++i) size[cl[i]]++;
+	array<int> order;
+	for (int c = 0; c < nc; ++c) order.insertLast(c);
+	for (uint a = 0; a < order.length(); ++a)
+		for (uint b = a + 1; b < order.length(); ++b)
+			if (size[order[b]] > size[order[a]]) { const int t = order[a]; order[a] = order[b]; order[b] = t; }
+	string sizes = "";
+	for (uint k = 0; k < order.length() && k < 12; ++k) sizes += (k > 0 ? "," : "") + size[order[k]];
+	dictionary comp;
+	for (uint i = 0; i < n; ++i) if (cl[i] == order[0]) { int c = 0; comp.get(nm[i], c); comp.set(nm[i], c + 1); }
+	const array<string>@ ks = comp.getKeys();
+	string big = "";
+	for (uint k = 0; k < ks.length(); ++k) { int c = 0; comp.get(ks[k], c); big += (k > 0 ? "," : "") + ks[k] + ":" + c; }
+	AiLog("[ANV-SQUAD] f=" + ai.frame + " units=" + n + " squads=" + nc + " sizes=" + sizes + " big=" + big);
+}
 IUnitTask@ CommanderTask(CCircuitUnit@ comm, IUnitTask@ task)
 {
 	if (task is null || !HasBase() || task.GetType() != Task::Type::BUILDER || Brain::Intel::allFactories.length() == 0)
@@ -5820,6 +5869,7 @@ void Update()  // every 30 frames
 	EcoPos::Update();
 	RezLab::Update();
 	MexPorc::Update();
+	SquadLog();
 	Radar::Update();
 	Storage::Update();
 	Storage::UpdateEnergy();

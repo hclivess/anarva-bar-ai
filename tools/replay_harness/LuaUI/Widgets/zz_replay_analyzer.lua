@@ -113,6 +113,97 @@ local function dumpMatrix()
 end
 
 
+-- Squads: each team's armed mobile units (no builders, no air) grouped by single linkage - two units belong to the
+-- same squad when they are within the longer of their two weapon ranges (they can support each other's fight). One
+-- line per team every 15 s: unit count, squad sizes (largest first), and the largest squad's units.
+local function maxRange(ud)
+	local r = 0
+	for _, w in ipairs(ud.weapons or {}) do
+		local wd = WeaponDefs[w.weaponDef]
+		if wd and (wd.range or 0) > r then r = wd.range end
+	end
+	return r
+end
+local function logSquads(n)
+	local byTeam = {}
+	for _, uid in ipairs(Spring.GetAllUnits()) do
+		local udid = Spring.GetUnitDefID(uid)
+		local ud = udid and UnitDefs[udid]
+		local team = Spring.GetUnitTeam(uid)
+		if ud and team and team ~= gaia and ud.canMove and not ud.canFly and not ud.isBuilder and #(ud.weapons or {}) > 0
+			and not (ud.customParams and ud.customParams.iscommander) then
+			local x, _, z = Spring.GetUnitPosition(uid)
+			if x then
+				byTeam[team] = byTeam[team] or {}
+				local t = byTeam[team]
+				t[#t + 1] = {x = x, z = z, r = maxRange(ud), name = ud.name}
+			end
+		end
+	end
+	for team, us in pairs(byTeam) do
+		local cl, nc = {}, 0
+		for i = 1, #us do
+			if not cl[i] then
+				nc = nc + 1; cl[i] = nc
+				local stack = {i}
+				while #stack > 0 do
+					local a = table.remove(stack)
+					for j = 1, #us do
+						if not cl[j] then
+							local dx, dz = us[a].x - us[j].x, us[a].z - us[j].z
+							local link = math.max(us[a].r, us[j].r)
+							if dx * dx + dz * dz <= link * link then cl[j] = nc; stack[#stack + 1] = j end
+						end
+					end
+				end
+			end
+		end
+		local size, comp = {}, {}
+		for i = 1, #us do size[cl[i]] = (size[cl[i]] or 0) + 1 end
+		local order = {}
+		for c = 1, nc do order[#order + 1] = c end
+		table.sort(order, function(a, b) return size[a] > size[b] end)
+		local big = order[1]
+		for i = 1, #us do if cl[i] == big then comp[us[i].name] = (comp[us[i].name] or 0) + 1 end end
+		local sizes, parts = {}, {}
+		for k = 1, math.min(#order, 12) do sizes[#sizes + 1] = tostring(size[order[k]]) end
+		for name, c in pairs(comp) do parts[#parts + 1] = name .. ":" .. c end
+		Spring.Echo(string.format("[REPLAY] SQUAD f=%d team=%d units=%d squads=%d sizes=%s big=%s", n, team, #us, nc, table.concat(sizes, ","), table.concat(parts, ",")))
+	end
+	-- the alive army: per team, every armed mobile unit type alive now, its count, mean health share, how many are
+	-- moving, and their orders (the first command of each unit), plus where the army's centre is relative to its start
+	local army = {}
+	for _, uid in ipairs(Spring.GetAllUnits()) do
+		local udid = Spring.GetUnitDefID(uid)
+		local ud = udid and UnitDefs[udid]
+		local team = Spring.GetUnitTeam(uid)
+		if ud and team and team ~= gaia and ud.canMove and #(ud.weapons or {}) > 0 and not ud.isBuilder
+			and not (ud.customParams and ud.customParams.iscommander) then
+			army[team] = army[team] or {types = {}, cmds = {}, sx = 0, sz = 0, n = 0}
+			local a = army[team]
+			local t = a.types[ud.name] or {0, 0, 0}
+			local hp, maxhp = Spring.GetUnitHealth(uid)
+			local vx, _, vz = Spring.GetUnitVelocity(uid)
+			t[1] = t[1] + 1
+			t[2] = t[2] + ((hp and maxhp and maxhp > 0) and hp / maxhp or 0)
+			t[3] = t[3] + ((vx and (vx * vx + vz * vz) > 0.01) and 1 or 0)
+			a.types[ud.name] = t
+			local q = Spring.GetUnitCommands(uid, 1)
+			local c = (q and q[1]) and (cmdName[q[1].id] or tostring(q[1].id)) or "idle"
+			a.cmds[c] = (a.cmds[c] or 0) + 1
+			local x, _, z = Spring.GetUnitPosition(uid)
+			if x then a.sx = a.sx + x; a.sz = a.sz + z; a.n = a.n + 1 end
+		end
+	end
+	for team, a in pairs(army) do
+		local parts, cmds = {}, {}
+		for name, t in pairs(a.types) do parts[#parts + 1] = string.format("%s:%d:%.2f:%d", name, t[1], t[2] / t[1], t[3]) end
+		for c, k in pairs(a.cmds) do cmds[#cmds + 1] = c .. ":" .. k end
+		Spring.Echo(string.format("[REPLAY] ARMY f=%d team=%d cx=%d cz=%d types=%s cmds=%s", n, team,
+			a.n > 0 and math.floor(a.sx / a.n) or -1, a.n > 0 and math.floor(a.sz / a.n) or -1, table.concat(parts, ","), table.concat(cmds, ",")))
+	end
+end
+
 local dumped = false
 
 function widget:Initialize()
@@ -149,6 +240,7 @@ function widget:GameFrame(n)
 		end
 	end
 	if n % 15 == 0 then sampleMotion(n) end
+	if n % 450 == 0 and n > 0 then logSquads(n) end
 	if n % 1800 == 0 and n > 0 then
 		for team, kinds in pairs(motion) do
 			for k, m in pairs(kinds) do
