@@ -572,3 +572,9 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   the commander dead. Even together, redirected constructors take the nearest open spot on our side whether it can be
   held; the winners' constructors claim far spots under the cover of a Tick swarm and forward towers/radar. Holding the
   spots (what makes a far extractor worth claiming) is the missing part of #105.
+- **Army measured against winners (#106):** replay analyzer now logs squads and the alive army; 6 Armada-beat-Cortex
+  replays vs ours: winners 14-22 combat units at 6:00 (ours 5), singles spread early then one main squad that mostly
+  stands in its own half; main squad Rover/Pawn early, Flash/Pawn 6-10 min, Mace/Stumpy from 10. Details on #106.
+- **Hold state (hd1-4, #106):** free units stand at the median point of our extractors and the base (least summed
+  distance), not the base centre. Trades 0.67 / 0.83 / 0.97, commander alive in 2 of 3 (0 of the last 6), extractors lost
+  12-19; all lost (18 min, pts, pts). Kept: the structure players use; the early army is still too small to hold much.

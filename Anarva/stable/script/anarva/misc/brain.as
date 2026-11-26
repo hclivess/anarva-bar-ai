@@ -4876,9 +4876,33 @@ void Update()
 			}
 		}
 	}
-	// free units wait at home (plain move: units shoot what is in reach while moving; no attack-move)
+	// Hold (#106): free units stand together at the point that covers most of our extractors - from where the squad
+	// reaches an extractor before a raider kills it (extractor health / the raiders' dps seen, x the squad's slowest
+	// speed, + its range; unit facts) - and wait there, not at the base centre. Winners' main squads stand in their own
+	// half, mostly idle (holding), 1450-2300 from start at 6-8 min; losers keep moving and fragment (6 replays, #106).
+	const AIFloat3 hold = HoldPoint(freeUnits);
 	for (uint i = 0; i < freeUnits.length(); ++i)
-		if (freeUnits[i].GetPos(ai.frame).distance2D(basePos) > freeUnits[i].circuitDef.GetMaxRange()) Order(freeUnits[i], "home", 0, basePos, -1);
+		if (freeUnits[i].GetPos(ai.frame).distance2D(hold) > freeUnits[i].circuitDef.GetMaxRange()) Order(freeUnits[i], "hold:" + int(hold.x / 64.f) + "," + int(hold.z / 64.f), 0, hold, -1);
+}
+int lastHoldPtLog = -1000000;
+AIFloat3 HoldPoint(const array<CCircuitUnit@>@ units)
+{
+	if (units.length() == 0 || Economist::mexT1 is null) return basePos;
+	// A raider kills an extractor in a few seconds (extractor health / raider dps, unit facts: ~3 s against Cortex's
+	// strongest seen), so no point reaches every spot in time; what a player holds is where the squad is nearest, on
+	// average, to everything it defends - the median point of our extractors and the base (the spot with the least
+	// summed distance to them): raids anywhere are answered soonest from there.
+	const array<CCircuitUnit@>@ mx = Economist::mexes;
+	AIFloat3 best = basePos; float bestSum = 1e30f;
+	for (uint c = 0; c <= mx.length(); ++c) {
+		const AIFloat3 q = (c < mx.length()) ? mx[c].GetPos(ai.frame) : basePos;
+		float sum = q.distance2D(basePos);
+		for (uint m = 0; m < mx.length(); ++m) sum += mx[m].GetPos(ai.frame).distance2D(q);
+		if (sum < bestSum) { bestSum = sum; best = q; }
+	}
+	const float bestV = bestSum / float(AiMax(1, int(mx.length()) + 1));
+	if (ai.frame - lastHoldPtLog >= MINUTE) { lastHoldPtLog = ai.frame; AiLog("[ANV-CMD] hold at (" + int(best.x) + "," + int(best.z) + "): mean distance " + int(bestV) + " to " + mx.length() + " extractors and the base"); }
+	return best;
 }
 string Status() { return "ops=" + ops.length() + " created=" + created + " pulledBack=" + retreats; }
 // a dead unit leaves its squad at once (a handle kept until the next update crashed the game when read: GetPos)
