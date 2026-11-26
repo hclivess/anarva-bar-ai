@@ -851,6 +851,48 @@ void TrackFinds()
 			if (scouts[k].GetPos(ai.frame).distance2D(ep[i]) <= scouts[k].circuitDef.losRadius) { foundMetal += ec[i]; break; }
 	}
 }
+// A scout parked on the enemy's approach warns like a radar (#111's term): for each producer of ours, the stretch of the
+// line from their base to it within the scout's sight and not yet watched (sight or radar), over their speed, saves its
+// value x warning / horizon - at the best point along the approach, over the scout's measured life share of the horizon.
+// Valued only for metal it finds (pOcc 0.02 early), our first Tick came at 190 s against the winners' 84 s, and Grunts
+// reached our extractors unseen from 3:17 (swe2, blind at 2:00 and 3:00; replays.db, 20 winners)
+float WarningValue(const CCircuitDef@ d)
+{
+	const AIFloat3 eb = AiEnemyBasePos();
+	if (!HasBase() || d is null) return 0.f;
+	const float R = AiMax(1.f, d.losRadius);
+	const float eSpeed = AiMax(1.f, Director::allSpeed);
+	const float Hw = AiMax(1.f, Economist::Horizon());
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	array<AIFloat3> rp; array<float> rr;
+	for (uint i = 0; i < mine.length(); ++i) {
+		const float rd = Facts::RadarRange(mine[i].circuitDef.GetName());
+		if (!mine[i].circuitDef.IsMobile() && rd > 0.f) { rp.insertLast(mine[i].GetPos(ai.frame)); rr.insertLast(rd); }
+	}
+	const float L0 = eb.distance2D(basePos);
+	float best = 0.f;
+	for (float f = R; f < L0; f += R) {  // candidate posts along the approach to our base, a sight radius apart
+		const AIFloat3 site = eb + (basePos - eb) * (f / L0);
+		float v = 0.f;
+		for (uint i = 0; i < mine.length(); ++i) {
+			if (!Economist::IsProducer(mine[i].circuitDef)) continue;
+			const AIFloat3 q = mine[i].GetPos(ai.frame);
+			const float L = eb.distance2D(q);
+			if (L <= 0.f) continue;
+			float inside = 0.f;
+			for (float t = 0.f; t <= L; t += R / 4.f) {
+				const AIFloat3 pt = eb + (q - eb) * (t / L);
+				if (pt.distance2D(site) > R || AiIsInLOS(pt)) continue;
+				bool cov = false;
+				for (uint k = 0; k < rp.length() && !cov; ++k) cov = pt.distance2D(rp[k]) <= rr[k];
+				if (!cov) inside += R / 4.f;
+			}
+			v += Economist::MetalValue(mine[i].circuitDef) * (inside / eSpeed) / Hw;
+		}
+		best = AiMax(best, v);
+	}
+	return best * AiMin(1.f, Life() / Hw);
+}
 // measured worth of one more scout: metal found per scout-second x the scouts' life; -1 until scouts have served
 float MeasuredWorth() { return (scoutSeconds > 0.f) ? foundMetal / scoutSeconds * Life() : -1.f; }
 void Update()
@@ -2694,6 +2736,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			// measured once scouts have served (what they found per second over their life), the model before
 			const float mw = Scout::MeasuredWorth();
 			vScout = ((mw >= 0.f) ? AiMin(mw, Scout::NextValue(d)) : Scout::NextValue(d)) * WinShare(sSurf + sAir, eSurf + eAir);
+			if (Scout::scouts.length() == 0) vScout = AiMax(vScout, Scout::WarningValue(d));  // a first scout warns of raids
 		}
 		const float v = AiMax(vFight, AiMax(vBuild, vScout));
 		const float ratio = v / AiMax(1.f, Economist::CostNow(d));  // energy at its price now (binding or not)
