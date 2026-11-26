@@ -150,7 +150,7 @@ itself.
 | Game length | median 14.9 min (middle half 11.6–22.5) |
 | First factory, players / win rate | vehicle plant 76 / 55%, bot lab 130 / 48%, air plant 6 / 17% |
 | Faction chosen, players / win rate | Armada 123 / 52%, Cortex 53 / 34%, random 38 / 66% |
-| How games end | by a commander's death, in 105 of the 107 |
+| Commander deaths | recorded in 105 of the 107 games |
 
 These are counts from this set of games, not a balance verdict: players who pick random may differ in skill from
 those who pick a faction.
