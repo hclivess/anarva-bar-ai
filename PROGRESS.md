@@ -392,3 +392,7 @@ The latest batch (D-gun and strength fixes) is being played.
   Lab 59-97 s (winners ~61), first tower 207 s (winners ~217). Extractors built 4/8/12 min: 8/15/24 and 5/18/29 (before
   6-7/15-19/28-29; winners 9/22/30); income at 12:00 40 and 50 (before 41-45). Both lost: op3 on points, op4 by the
   commander's death at 12:28 with 25 extractors standing.
+- **Commander fight exposure (op5-6):** P(death) at the target now counts the fight's time under fire plus the escape
+  (escape alone let it fight Levelers 1561 out at stake-risk 36, op4). Both still lost with the commander dead, but
+  after the army fight was lost: op6 defended the base against Thuds 759 out (stake 6260, trade 0.49), op5 had no
+  army left by 16:00 (trade 0.30). The deaths follow the army's trade, which is the gap now (0.3-0.85 over op3-6).

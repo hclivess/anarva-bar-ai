@@ -5260,7 +5260,10 @@ float CommNet(uint i, const AIFloat3& in c, const CCircuitDef@ cd, const array<A
 	// the risk on the way too, not only at the target: where it stands now, half way and there (measured at the target
 	// alone, it walked 1400 toward a resurrected Pawn past Thuds and died at 12:17, cmd_m40)
 	const AIFloat3 mid = (c + ep[i]) * 0.5f;
-	float pD = CommPDeath(ep[i], EscapeTime(ep[i]));
+	// at the target it stands under fire for the whole fight and only then walks out: exposed tFight + the escape
+	// (escape alone counted none of the fight: it fought Levelers 1561 out at stake-risk 36-261 and died at 12:28 with
+	// 25 extractors standing, op4)
+	float pD = CommPDeath(ep[i], tFight + EscapeTime(ep[i]));
 	pD = AiMax(pD, CommPDeath(mid, EscapeTime(mid)));
 	pD = AiMax(pD, CommPDeath(c, EscapeTime(c)));
 	const float risk = pD * V;
