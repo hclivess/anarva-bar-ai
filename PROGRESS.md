@@ -239,3 +239,9 @@ The latest batch (D-gun and strength fixes) is being played.
   nearest the spot (was their base). Kills/losses 78/79, the best trade yet; the commander died at home at 14:00 in a
   base overrun (15 Grunts + 7 Rogues; the army 500 away, strength 84 vs 25) - every safe place was in the fight. Next:
   the escape goes away from the danger (behind the army), not to the nearest factory when the factory is the fight.
+- **Commander deaths, tallied (20 games, cmd_m33-85):** all at 12-19 min, mostly 13-15; killers Thud 10, Leveler 10,
+  Raider 7, Rogue 3, Mist 3, Grunt 2; half near base (<650), half far out (>1000). One cause, many routes: BARb's main
+  push of splash units (Thuds, Levelers) arrives at 13-15 min and the commander is in it wherever it stands.
+  Escape-to-the-army (guard a soldier) took it to the front - reverted. Next: answer the push itself - see it coming
+  (its direction and strength from the last-seen enemies) and meet it with the army and towers before it reaches the
+  base, while the commander steps back from its path; and stop massing Pawns into splash (130 lost to Levelers).
