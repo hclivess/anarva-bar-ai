@@ -4161,7 +4161,7 @@ void Update()
 		fSpeed = AiMax(1.f, fSpeed);
 		float freeDps = 0.f;
 		for (uint i = 0; i < freeUnits.length(); ++i) freeDps += freeUnits[i].circuitDef.GetSustainedDps();
-		array<AIFloat3> cp; array<float> cv; array<int> cid; array<float> chp; array<float> cspd;
+		array<AIFloat3> cp; array<float> cv; array<int> cid; array<float> chp; array<float> cspd; array<int> cix;
 		for (uint i = 0; i < n; ++i) {
 			if (eDef[i] is null || eDef[i].IsAbleToFly() || (eFlags[i] & 2) == 0) continue;
 			bool taken = false;
@@ -4170,12 +4170,14 @@ void Update()
 			cp.insertLast(ePos[i]); cv.insertLast(EnemyValue(i, H) + OursThreatened(i, all, fc.distance2D(ePos[i]) / fSpeed)); cid.insertLast(eIds[i]);
 			chp.insertLast(eHp[i] * eDef[i].health);
 			cspd.insertLast(eDef[i].IsMobile() ? eVel[i].Length2D() * SECOND : 0.f);  // how fast it moves now
+			cix.insertLast(int(i));
 		}
 		for (uint i = 0; i < EcoPos::raidPos.length(); ++i) {
 			if (AiIsInLOS(EcoPos::raidPos[i])) continue;  // in sight: the known enemies above cover it
 			cp.insertLast(EcoPos::raidPos[i]); cv.insertLast(EcoPos::raidVal[i]); cid.insertLast(-1);
 			chp.insertLast(Economist::mexT1 !is null ? Economist::mexT1.health : 0.f);  // what a raid spot holds
 			cspd.insertLast(0.f);
+			cix.insertLast(-1);
 		}
 		float fRange = 0.f;
 		for (uint i = 0; i < freeUnits.length(); ++i) fRange += freeUnits[i].circuitDef.GetMaxRange();
@@ -4193,6 +4195,7 @@ void Update()
 			else if (Facts::ExtractsMetal(ed.GetName()) > 0.f) eMexes += 1.f;
 		}
 		const float unseenDefence = (eTowers > 0.f) ? AiMin(1.f, eTowers / AiMax(1.f, eMexes)) * eTowerThreat / eTowers : 0.f;
+		const array<float> cv0 = cv;  // each target's own value, before the groups are summed
 		for (uint i = 0; i < cp.length(); ++i) {
 			// a moving target is reached when we catch it: the gap beyond our range over how fast we close on it (its
 			// speed now). The army of 21-25 chased lone Grunts as fast as itself, "target gone" after 19-31 s each,
@@ -4212,6 +4215,20 @@ void Update()
 			// target): launched on the target alone, 269 of 292 raids pulled back at once (Canis 2026-11-26)
 			dfc[i] = AiMax(Cover(cp[i], tFight), Cover(fc, t));
 			if (cid[i] < 0) dfc[i] = AiMax(dfc[i], unseenDefence);
+			// the fight is with every enemy the defence counts there, and winning it kills them all and saves what they
+			// threaten: its value is theirs together, as its defence is. Valued at the one target, our army (66-88) skipped
+			// every unit of a push (defence 41-66, gain -1000 to -3000 each) while it took the base and the commander
+			// at 14:19 (Canis vs Cortex, cmd_m44)
+			if (cid[i] >= 0) {
+				float cl = 0.f;
+				for (uint j = 0; j < cp.length(); ++j) {
+					if (cix[j] < 0) continue;
+					const CCircuitDef@ ej = eDef[cix[j]];
+					const float reach = ej.GetMaxRange() + (ej.IsMobile() ? ej.speed * tFight : 0.f);
+					if (cp[j].distance2D(cp[i]) <= reach) cl += cv0[j];
+				}
+				cv[i] = AiMax(cv[i], cl);
+			}
 			score[i] = (t >= 1e8f) ? 0.f : cv[i] / AiMax(1.f, t);  // uncatchable: not a target
 		}
 		while (freeUnits.length() > 0) {
@@ -5028,6 +5045,10 @@ float CommNet(uint i, const AIFloat3& in c, const CCircuitDef@ cd, const array<A
 		if (all[k].GetPos(ai.frame).distance2D(ep[i]) <= reach) ours += ud.threat;
 	}
 	if (ours <= theirs) return -1e30f;
+	// what the commander adds is only the difference it makes: the chance the fight is won with it less without it.
+	// Credited with the whole stake whenever our side was stronger, it took 9 fights in 30 s beside an army 3.5x
+	// theirs and was killed by Levelers at 16:01, the game lost with 5596 army standing (cmd_m47)
+	const float marginal = AiMax(0.f, Brain::Production::WinShare(ours, theirs) - Brain::Production::WinShare(ours - cd.threat, theirs));
 	// the risk on the way too, not only at the target: where it stands now, half way and there (measured at the target
 	// alone, it walked 1400 toward a resurrected Pawn past Thuds and died at 12:17, cmd_m40)
 	const AIFloat3 mid = (c + ep[i]) * 0.5f;
@@ -5035,7 +5056,7 @@ float CommNet(uint i, const AIFloat3& in c, const CCircuitDef@ cd, const array<A
 	pD = AiMax(pD, CommPDeath(mid, EscapeTime(mid)));
 	pD = AiMax(pD, CommPDeath(c, EscapeTime(c)));
 	const float risk = pD * V;
-	return stake - risk - (t + tFight) * commRate;  // its time is our best builder's time
+	return stake * marginal - risk - (t + tFight) * commRate;  // its time is our best builder's time
 }
 void CommDefendUpdate()
 {
