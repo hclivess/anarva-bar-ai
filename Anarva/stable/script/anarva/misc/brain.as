@@ -2550,9 +2550,17 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
 		for (uint i = 0; i < mine.length(); ++i) {
 			const CCircuitDef@ d = mine[i].circuitDef;
-			if ((!IsArmy(d) && mine[i] !is commander) || Scout::IsScout(mine[i])) continue;  // the commander fights too
-			sAir += sqrt(AiMax(0.f, d.airThrDmg) * AiMax(1.f, d.health));
-			sSurf += sqrt(AiMax(0.f, d.surfThrDmg) * AiMax(1.f, d.health));
+			// the army only: in 1v1 the commander stays home (owner; replays.db median 276 from start at 3-6 min) and the
+			// raids at our extractors meet the army - counted, its 832 swamped every fighter's share (Blitz 0.10 per metal
+			// vs a constructor's 5.16, swe42); their commander is left out alike
+			if (!IsArmy(d) || mine[i] is commander || Scout::IsScout(mine[i])) continue;
+			// the same measure as theirs below and Opening::Strength - sustained dps x health - in each domain it can shoot.
+			// From the core's threat damage ours read 19 (commander and a Blitz) against their 143 in dps: far behind, a
+			// fighter's share of the win was ~0, Blitzes scored 0.84 per metal against a constructor's 3.49 and the plant
+			// made 4 constructors for 2 fighters by 185 s - army 141 vs 258 at 3:00 (swe41)
+			const float st = sqrt(AiMax(0.f, d.GetSustainedDps()) * AiMax(1.f, d.health));
+			if (d.airThrDmg > 0.f) sAir += st;
+			if (d.surfThrDmg > 0.f) sSurf += st;
 		}
 	}
 	// theirs, as seen
@@ -2562,12 +2570,21 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
 		for (uint i = 0; i < ne; ++i) {
 			const CCircuitDef@ d = ed[i];
-			if (d is null || d.GetSustainedDps() <= 0.f) continue;
+			if (d is null || d.GetSustainedDps() <= 0.f || !d.IsMobile() || d.IsRoleAny(Unit::Role::COMM.mask)) continue;  // their army, as ours
 			const float st = sqrt(d.GetSustainedDps() * AiMax(1.f, eh[i] * d.health));
 			if (d.IsAbleToFly()) eAir += st; else eSurf += st;
 		}
 	}
-	eSurf = AiMax(eSurf, sSurf + sAir);  // unseen: at least as strong as we are (they earn as we do)
+	// unseen: at least as strong as we are on the surface (they earn as we do) - our air strength is what we shoot air
+	// with, not more surface army of theirs (sSurf + sAir counted a unit that shoots both twice: E 1665 vs our 832, swe42)
+	// ...and at least the raiders the opener's model gives them by now (their lab time, rate, income-capped) - with no
+	// army of ours and nothing seen the floor would be 0 and no fighter worth anything
+	{
+		const float tNow = float(ai.frame) / SECOND;
+		const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
+		const float nR = AiMax(0.f, tNow - Opening::raidLabAt - Opening::raidUnitTime) * rate;
+		eSurf = AiMax(eSurf, AiMax(sSurf, nR * Opening::raidStrength));
+	}
 	// Their growth as seen: the strongest surface strength we have seen, and when. A unit ordered now fights the army
 	// that is there when it is ready, so it is valued against that: now + measured growth x (its build + walk) (sight,
 	// not a prior: no growth before two sightings). Valued against the army of the moment, fighters lost to
@@ -3009,7 +3026,9 @@ float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 	float mixDps = 0.f;
 	for (uint k = 0; k < m.w.length(); ++k) mixDps += m.w[k] * m.dps[k];
 	mixDps = (wSum > 0.f) ? mixDps / wSum : 0.f;
-	float power = sqrt(AiMax(0.f, d.surfThrDmg) * land * hpSurf);
+	// in sustained dps, as the enemy's side (kE) and the army totals: from the core's threat damage our Pawns and Blitzes
+	// read 19 against the Grunts' 1227 per type (swe42, groups negative) - two scales in one square law
+	float power = sqrt(AiMax(0.f, d.GetSustainedDps()) * land * hpSurf);
 	// Live trade, once this type has taken a unit's worth of damage (enough to mean something): damage dealt over taken
 	// in this game, against the model's own (our dps x our hit chance) / (their dps x splash hits x their hit chance).
 	// Modelled, Pawns dodged half the shells; live, Levelers dealt them 14709 by minute 11 (cmd_m86) and killed 130 in a
