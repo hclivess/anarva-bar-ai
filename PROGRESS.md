@@ -529,3 +529,8 @@ The latest batch (D-gun and strength fixes) is being played.
   radar is ordered only when it would stand by then. First radar 152-197 s (was 80-136 s; winners' median ~198 s,
   replays.db). Full games rr3-5: trades 0.77 / 0.82 / 0.79, all lost at 17-18 min with the commander dead near base;
   rr5 reached 26 extractors and 54.6 M/s at 12:00, 89 at 16:00. Kept (timing matches the replays, no regression).
+- **Both halves of the division of labour together, reverted (cd1-7, #105):** constructors redirected from jobs that
+  cost them relatively more than the commander to the nearest open extractor; the commander kept at base on energy or
+  the lab assist. 4-minute checks: 11-13 units (was 8-9), 6 winds, but 3-4 extractors; full games cd5-7: extractors
+  1-7 all game, trades 0.63 / 0.36 / 0.39, all lost (12, 15 min, pts). The redirect enqueued extractor jobs at the
+  nearest open spot regardless of whether it could be held; outer spots died (10-18 lost) and income never grew.
