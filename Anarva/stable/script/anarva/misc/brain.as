@@ -567,7 +567,34 @@ void Update()
 			// Cortex, where Armada winners build 6.2 light lasers - replays.db, 28 games)
 			const float cycle = 2.f * AiEnemyBasePos().distance2D(q) / AiMax(1.f, Opening::raidSpeed);
 			const float raids = AiMax(1.f, Economist::Horizon() / AiMax(1.f, cycle));
-			const float expected = val[i] * val[i] / AiMax(1.f, total) * raids;
+			// A raid doesn't stop at one site: unanswered, it keeps killing until our nearest armed unit gets there. Sites it
+			// clears per raid = answer time / (time to kill a site + walk to the next). With one site per raid (share
+			// alone) a tower scored 5-10x worse than an extractor per builder-second and 9 orders gave 1 tower by
+			// minute 8 vs Cortex (players 6.2, replays.db 28 games).
+			float answer = Economist::Horizon(), hp = 0.f, gap = 0.f;
+			for (uint k = 0; k < mine.length(); ++k) {
+				const CCircuitDef@ kd = mine[k].circuitDef;
+				const float dk = mine[k].GetPos(ai.frame).distance2D(q);
+				if (kd.IsMobile() && kd.surfThrDmg > 0.f && kd.buildSpeed <= 0.f) answer = AiMin(answer, dk / AiMax(1.f, kd.speed));
+				if (Economist::IsProducer(kd) && dk <= r) hp += kd.health;
+			}
+			for (uint k = 0; k < mx.length(); ++k) {
+				const float dk = mx[k].GetPos(ai.frame).distance2D(q);
+				if (k != i && (gap == 0.f || dk < gap)) gap = dk;
+			}
+			const float perSite = hp / AiMax(1.f, Opening::raidDps) + gap / AiMax(1.f, Opening::raidSpeed);
+			const float cleared = AiMax(1.f, answer / AiMax(1.f, perSite));
+			const float pHit = AiMin(1.f, cleared * val[i] / AiMax(1.f, total));
+			float expected = val[i] * pHit * raids;
+			// ...and it kills raiders: a raid that reaches it spends about 2 x its range / the raider's speed under its
+			// fire, taking its dps that long; the kills (a share of one raider at least) are worth the raider's cost each
+			// (unit facts). Counted as loss prevented alone, a second tower never beat an extractor (1 tower by minute 8
+			// vs Cortex, players 6.2).
+			if (Opening::raidHp > 0.f && Opening::raidSpeed > 0.f) {
+				const float exposure = 2.f * tur.GetMaxRange() / Opening::raidSpeed;
+				const float kills = AiMin(1.f, tur.GetSustainedDps() * exposure / Opening::raidHp);
+				expected += raids * kills * Opening::raidCostM * pHit;
+			}
 			if (expected > bestHeat) { bestHeat = expected; @best = mx[i]; }
 		}
 	}
@@ -2953,6 +2980,7 @@ float raidRate = 0.f;         // raiders per second it adds (lab rate; capped by
 float raidStrength = 0.f;     // sqrt(dps x health) of one raider
 float raidDps = 0.f;
 float raidSpeed = 0.f;  // the earliest raider's speed (elmos/s), for how often raids come back
+float raidHp = 0.f;     // its health (a tower's kills per raid)
 float raidCostM = 1.f;
 float raidUnitTime = 1.f;
 
@@ -3070,7 +3098,7 @@ void Init()
 			const float tUnit = AiMax(ut, AiMax((r.costM - mLeft) / mI, (r.costE - eLeft) / eI));
 			const float arrive = tLab + tUnit + path / AiMax(1.f, r.speed);
 			if (arrive < raidArrive) {
-				raidArrive = arrive; raidRate = 1.f / AiMax(1e-3f, ut); raidStrength = Strength(r); raidDps = r.GetSustainedDps(); raidSpeed = r.speed;
+				raidArrive = arrive; raidRate = 1.f / AiMax(1e-3f, ut); raidStrength = Strength(r); raidDps = r.GetSustainedDps(); raidSpeed = r.speed; raidHp = r.health;
 				raidCostM = AiMax(1.f, r.costM); raidUnitTime = ut;
 				AiLog("[ANV-OPEN] earliest raid: " + r.GetName() + " from " + F.GetName() + " at " + int(arrive) + " s");
 			}

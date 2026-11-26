@@ -152,3 +152,13 @@ The latest batch (D-gun and strength fixes) is being played.
   exposed value x raids per horizon concentrates on the best site; others sit barely above a tower's cost and lose to
   an extractor's horizon yield. Missing: what a tower kills (raiders' value) and the constructors it keeps alive.
   Next: value a tower by the raiders it would kill over the horizon as well as the loss it prevents.
+- **Geothermal at 2:53 (cmd_m13):** all 300 E/s priced at the short-energy price made a 560-metal geo 2122 from base
+  beat every extractor (killed 6:12; 5 extractors at 4:00 vs winners' 9). Winners' first geo: 5:15 earliest, 10:37
+  mean, Canis 13:41 (replays.db, 31/107 1v1 winners). Fix: energy is worth pE up to production's need, the rest at the
+  converter price; plants get the same site keep as extractors. That alone under-planned energy (133 E/s at 8:00,
+  stall from 7:00) because the plan ignored the bank; it now counts income + bank / horizon (cmd_m15: one stall, at 14).
+- **Towers, still 1 by 8:00:** a raid now clears several sites before it's answered and a tower counts the raiders it
+  kills; orders are still worth 106-222 vs a cost of 94. Root cause: an extractor's own value ignores its raid risk
+  (only the distance keep), so the tower that keeps it alive can't look worth it. 8 extractors died before 8:00 to
+  Grunts/Instigators (cmd_m15). Next: price an extractor by its measured expected life at its site (ANV-JOBS producer
+  life, 380 s), and a tower by the life it adds to the producers in its reach.
