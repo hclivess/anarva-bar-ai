@@ -714,3 +714,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   lab by ~1:00 (what delays ours past 2:00), then the Tick's value - it is a raider and scout at 1/4 of a Pawn's cost,
   valued by us as a scout only - and constructors only while a spot can be claimed before the raids we see.
 - **Plants off the lab's site (lb1-2):** PlaceNextTo put solars on the planned lab footprint (nearest-home direction): 17 failed lab starts 53-110 s, lab at 128 s in rs1. Now plants keep clear of the lab sites: lab at 75-78 s, 0-2 failed starts (winners 58 s).
+- **Reverted: raider value (tk1).** Raid targets per visit over the scouts' life - Scout::Life() is the horizon until a
+  scout dies, so a Tick read 17-980 visits (value up to 4571): the lab built only Ticks, no constructors, metal 6.6 vs
+  48.6 at 12:00. The raider's value needs its measured life (raiders lost per raider-second), not a floor; without a
+  measurement it has no basis yet.
