@@ -169,6 +169,31 @@ local function logSquads(n)
 		for k = 1, math.min(#order, 12) do sizes[#sizes + 1] = tostring(size[order[k]]) end
 		for name, c in pairs(comp) do parts[#parts + 1] = name .. ":" .. c end
 		Spring.Echo(string.format("[REPLAY] SQUAD f=%d team=%d units=%d squads=%d sizes=%s big=%s", n, team, #us, nc, table.concat(sizes, ","), table.concat(parts, ",")))
+		-- formation of the biggest squad (owner, 2026-11-26: "1 unit type bulked in one ball", #116): per type, count,
+		-- weapon range, mean health share and mean distance to the nearest armed enemy - in contact, which types keep in
+		-- front and which behind
+		local ally = Spring.GetTeamAllyTeamID(team)
+		local form = {}
+		for i = 1, #us do
+			if cl[i] == big then
+				local nd = math.huge
+				for t2, us2 in pairs(byTeam) do
+					if Spring.GetTeamAllyTeamID(t2) ~= ally then
+						for j = 1, #us2 do
+							local dx, dz = us[i].x - us2[j].x, us[i].z - us2[j].z
+							local d = math.sqrt(dx * dx + dz * dz)
+							if d < nd then nd = d end
+						end
+					end
+				end
+				local f = form[us[i].name] or {n = 0, d = 0, r = us[i].r}
+				f.n = f.n + 1; f.d = f.d + ((nd < math.huge) and nd or 0)
+				form[us[i].name] = f
+			end
+		end
+		local fp = {}
+		for name, f in pairs(form) do fp[#fp + 1] = string.format("%s:%d:r%d:d%d", name, f.n, f.r, f.d / f.n) end
+		Spring.Echo(string.format("[REPLAY] FORM f=%d team=%d %s", n, team, table.concat(fp, ",")))
 	end
 	-- the alive army: per team, every armed mobile unit type alive now, its count, mean health share, how many are
 	-- moving, and their orders (the first command of each unit), plus where the army's centre is relative to its start

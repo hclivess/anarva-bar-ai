@@ -80,3 +80,28 @@ When each milestone first appears (minutes), and in how many of the 107 games it
 Most 1v1 games are decided at T1 (only 41 of 107 winners build a T2 factory): expansion, the first construction
 turret by ~5 minutes and the T1 army decide them. Query: first `built` frame per (replay, team) for the unit names
 of each milestone, 1v1 winners only.
+
+## Squad formation in contact (#116, 2026-11-26)
+
+`[REPLAY] FORM` (analyzer widget): per type in a team's biggest squad, its count, weapon range and mean distance to the
+nearest armed enemy. Played back: 4 Armada bot-lab 1v1 wins of 14+ minutes (`runs/formplay/`: Gasbag Grabens x2,
+Devil's Postpiles, Feast of Hades); both teams, snapshots where the squad was in contact (nearest enemy within twice its
+longest range). Small set: a lead, not a rule.
+
+| Type | Range | Snapshots | Median distance behind the squad's front | Mean count in squad |
+|---|---|---|---|---|
+| Pawn (armpw) | 180 | 29 | 0 | 6.5 |
+| Blitz (armflash) | 180 | 15 | 0 | 6.5 |
+| Pyro (corpyro) | 230 | 23 | 0 | 3.1 |
+| Fido (armfido) | 650 | 11 | 63 | 8.5 |
+| Mace (armham) | 380 | 10 | 161 | 10.9 |
+| Can (corcan) | 275 | 8 | 181 | 2.9 |
+| Samson (armsam) | 700 | 3 | 457 | 2.0 |
+| Morty (cormort) | 850 | 50 | 0 | 8.8 |
+
+- Short-range units lead; longer-range units stand behind by roughly the range they have over the front - each fights
+  from its own reach. (Morty at 0: in these snapshots it was the squad's only type.)
+- Big single-type squads are normal (Morty ~9, Mace ~11, Fido ~8.5): a ball of one type is not the fault in itself; ours
+  failed because it walked into fire without fighting (ops ending "target gone", 3800-7000 metal lost for 0 killed, mm1).
+- Next to measure: winners vs losers separately, and how often the main squad holds versus chases.
+

@@ -729,3 +729,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
 - **Attack-move for routes and pickets (ft1):** on a plain move squads walked past what shot them. ft1: still 13 kills vs
   75; 71 ops, 7 killed anything (925 metal). The fighting itself needs redesigning from the replays (winners: one main
   squad holding their half, mostly idle; singles spread early; fights taken with an edge), not another term.
+- **Formation from replays (#116):** new `[REPLAY] FORM` analyzer line; 4 winners' replays played back. In contact,
+  short-range types lead (Pawn, Blitz, Pyro at the front) and longer-range ones stand back by about their range edge
+  (Mace +161, Can +181, Samson +457). Single-type squads are normal. Table in REPLAYS.md. Next: each of our units fights
+  from its own reach in contact.
