@@ -360,7 +360,7 @@ void Update()
 	// side: dark time / their crossing time, as above). The core sends a raid with nothing in sight to the best of
 	// these per second of travel that its power beats on the threat map (turrets included).
 	{
-		array<AIFloat3> rp; array<float> rv;
+		array<AIFloat3> rp; array<float> rv, rTakenRaw; array<bool> rSeen;
 		array<AIFloat3> msp; array<float> msi; array<bool> mso;
 		const uint ns = AiGetMetalSpots(msp, msi, mso);
 		float sp2 = 0.f; uint nm2 = 0;
@@ -374,15 +374,37 @@ void Update()
 			for (uint k = 0; k < n && pTaken < 1.f; ++k)
 				if (ed[k] !is null && !ed[k].IsMobile() && (ed[k].GetName().findFirst("mex") >= 0 || ed[k].GetName().findFirst("moho") >= 0)
 					&& ep[k].distance2D(msp[i]) <= ed[k].GetRadius() * 2.f) pTaken = 1.f;
+			const bool seenMex = pTaken >= 1.f;  // an extractor of theirs seen there
 			if (pTaken < 1.f && !Assess::OnOurSide(msp[i]) && !AiIsInLOS(msp[i])) {
 				const float age = scouted2 ? float(ai.frame - Scout::lastSeen[Intel::CellOf(msp[i])]) / SECOND : float(ai.frame) / SECOND;
 				pTaken = AiMin(1.f, age / AiMax(1.f, cross2));
 			}
 			if (pTaken <= 0.f) continue;
-			rp.insertLast(msp[i]);
+			rp.insertLast(msp[i]); rTakenRaw.insertLast(pTaken); rSeen.insertLast(seenMex);
 			// what killing their extractor there is worth: its cost + what it would extract over our horizon
-			const float yieldH = (Economist::mexT1 is null) ? 0.f : msi[i] * Economist::Extract(Economist::mexT1.GetName()) * Economist::Horizon();
-			rv.insertLast(pTaken * (mexV + yieldH));
+			// its yield until they could stand it again (their constructor's walk from their base + build), as a seen
+			// enemy extractor is valued (EnemyValue, #107) - over the whole horizon (~10700 s early) every far corner
+			// outweighed defending home and the first fighters left one by one for them (swe13: ops at 6800,752 and
+			// 6960,5888 at 2:30-4:00, pickets 0)
+			float rebuild = Economist::Horizon();
+			{
+				const CCircuitDef@ con = CheapestConstructor();
+				if (con !is null && Economist::mexT1 !is null)
+					rebuild = AiMin(rebuild, AiEnemyBasePos().distance2D(msp[i]) / AiMax(1.f, con.speed) + Economist::mexT1.buildTime / AiMax(1.f, con.buildSpeed));
+			}
+			const float yieldH = (Economist::mexT1 is null) ? 0.f : msi[i] * Economist::Extract(Economist::mexT1.GetName()) * rebuild;
+			rv.insertLast(mexV + yieldH);
+		}
+		// They can't hold more spots than their economy allows - as many extractors as we have (they earn as we do): the
+		// unseen spots' chances sum to at most our extractor count less the extractors of theirs we see. Never seen, every
+		// far spot read as certainly theirs by 2:00; the first Pawns and Ticks left one each for their corners while 3-4
+		// Grunts killed our extractors at 3:05-3:40 with nothing home (spectator, swe1-12)
+		{
+			float seenM = 0.f, unseenSum = 0.f;
+			for (uint k = 0; k < rp.length(); ++k) { if (rSeen[k]) seenM += 1.f; else unseenSum += rTakenRaw[k]; }
+			const float room = AiMax(0.f, float(Economist::mexes.length()) - seenM);
+			const float scaleU = (unseenSum > room && unseenSum > 0.f) ? room / unseenSum : 1.f;
+			for (uint k = 0; k < rp.length(); ++k) rv[k] *= rSeen[k] ? 1.f : rTakenRaw[k] * scaleU;
 		}
 		raidPos = rp; raidVal = rv;
 	}
