@@ -5649,7 +5649,10 @@ void ReclaimUpdate()
 		const float walk = best.circuitDef.buildSpeed / bp * income * bt;  // what it would have built meanwhile
 		const float risk = UnitPDeath(best, wp[i], bt) * Brain::Economist::MetalValue(best.circuitDef);
 		IBuilderTask@ cur = cast<IBuilderTask>(best.task);
-		const float curV = (cur !is null && cur.buildDef !is null) ? Brain::Economist::MetalValue(cur.buildDef) * best.circuitDef.buildSpeed / bp : best.circuitDef.buildSpeed / bp * income * Brain::Economist::Horizon();
+		// the job it would leave is worth what it yields (an extractor: its extraction over its life), not its price: at
+		// its price (50 x a build-power share, a few metal) any wreck field pulled constructors off extractors - 49
+		// extractor jobs and 24 energy jobs dropped for reclaim, 8 extractors built after 8:00 vs 22 lost (pk1)
+		const float curV = (cur !is null && cur.buildDef !is null) ? AiMax(Brain::Economist::MetalValue(cur.buildDef), Brain::Economist::AssetValue(cur.buildDef)) : best.circuitDef.buildSpeed / bp * income * Brain::Economist::Horizon();
 		if (metal - walk - risk <= curV) continue;
 		// a rez bot revives what can be revived (at least the wreck's metal back as a working unit) unless energy would stall
 		const bool canRez = Brain::Production::rezDefs.findByRef(best.circuitDef) >= 0 && wr[i] && !aiEconomyMgr.isEnergyStalling;

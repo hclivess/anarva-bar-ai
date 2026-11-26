@@ -696,3 +696,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   built vs 22 lost after 8:00. 6 constructor deaths only. 328 job switches ([ANV-SWITCH]) - e.g. "1->4 left 1672": a
   caretaker job dropped for energy with 1672 build-s left, the "any job yields to energy when energy binds" rule - jobs
   left half-built. Lead to confirm next: how often that rule fires now that the energy plan moves more.
+- **Reclaim no longer steals extractor jobs at their price (rc1):** the job left is worth its yield over the horizon
+  (AssetValue), not its cost x a build-power share. [ANV-SWITCH] in pk1: mostly to RECLAIM (type 16) - 49 extractor and
+  24 energy jobs dropped; "to energy" was only 21. rc1: extractors 14 at 12:00 and 24 at 20:00 (pk1: 6-8), metal 109 vs
+  133 at 20:00 (closest yet), army 7687 vs 9980; but a weak opening (2-7 extractors, army ~170 at 4-8 min) and still 31
+  extractor jobs dropped for reclaim. Points loss.
