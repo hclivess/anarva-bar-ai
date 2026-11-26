@@ -3121,7 +3121,18 @@ float TailGrowth(const Sim@ s, float end)
 		// came no sooner than far ones and a central start beat the cluster starts players use (Canis 2026-11-26).
 		const float tk = s.labAt + (-conEvery + sqrt(conEvery * conEvery + 2.f * conEvery * W));
 		if (tk >= end) break;
-		v += tailYield[j] * (end - tk) - mexCost;
+		// Held only if our answer arrives before a raid kills it: a raider kills an extractor in its health / the
+		// raider's dps; our lab's answer unit arrives in the spot's distance from home / its speed. P(hold) = kill time /
+		// response time, at most 1 (unit facts). Counted as always held, far spots made a central start beat the
+		// players' cluster start - which held the map twice on Canis while the central start lost its extractors
+		// (forced-start games, 2026-11-26).
+		float hold = 1.f;
+		if (raidDps > 0.f && L.answer !is null) {
+			const float tKill = Economist::mexT1.health / raidDps;
+			const float tResp = tailDist[j] / AiMax(1.f, L.answer.speed);
+			hold = AiMin(1.f, tKill / AiMax(1e-3f, tResp));
+		}
+		v += tailYield[j] * hold * (end - tk) - mexCost;
 	}
 	// constructors needed to claim them by then: one per rate x elapsed time... their cost
 	const float conUsed = AiMin(float(k), (end - s.labAt) / AiMax(1.f, conEvery));
