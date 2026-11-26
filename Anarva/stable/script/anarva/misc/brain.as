@@ -3867,7 +3867,11 @@ float Strength(const CCircuitDef@ d) { return sqrt(AiMax(0.f, d.GetSustainedDps(
 // without a step. Of the directions around it, the buildable one nearest home (keeps the base together, away from them).
 bool PlaceNextTo(CCircuitDef@ d, const AIFloat3& in at, AIFloat3& out p)
 {
-	const float r = ComDef().GetRadius() + d.GetRadius();
+	// touching the builder's footprint; a building whose square footprint reaches past its radius (a lab) at the
+	// builder's build distance instead - inside its reach and clear of the footprint (one radius out, the lab overlapped
+	// the commander, which can't build on itself: 15 failed starts, swe16)
+	float r = ComDef().GetRadius() + d.GetRadius();
+	if (Facts::BuildOptions(d.GetName()).length() > 0) r = AiMax(r, ComDef().GetBuildDistance());
 	const AIFloat3 h = Home();
 	float best = 1e30f;
 	bool ok = false;
@@ -3880,7 +3884,7 @@ bool PlaceNextTo(CCircuitDef@ d, const AIFloat3& in at, AIFloat3& out p)
 		// the lab at 128 s against the winners' 58 (rs1). Clear of its footprint and the plant's own.
 		bool onLab = false;
 		for (uint L = 0; L < labs.length() && !onLab; ++L)
-			if (labs[L].def !is null && q.distance2D(labs[L].pos) < labs[L].def.GetRadius() + d.GetRadius()) onLab = true;
+			if (labs[L].def !is null && labs[L].def !is d && q.distance2D(labs[L].pos) < labs[L].def.GetRadius() + d.GetRadius()) onLab = true;
 		if (onLab) continue;
 		const float dh = q.distance2D(h);
 		if (dh < best) { best = dh; p = q; ok = true; }
@@ -4225,6 +4229,10 @@ array<Opt@> Options(const Sim@ s, const array<AIFloat3>@ sp, const array<float>@
 		for (uint k = 0; k < labs.length(); ++k) {
 			if (labOnly != -2 && int(k) != labOnly) continue;  // a rollout plans with one lab (or none: -1)
 			Opt o; o.kind = 2; @o.def = labs[k].def; o.pos = labs[k].pos; o.lab = int(k);
+			// beside the commander, where it stands: the fixed site near home sat behind our own solars and the commander
+			// could not reach build range (stopped 206-239 out of the 192 it needs, order dropped, 14 failed starts, lab at
+			// 99-104 s vs ordered at 51 s; swe14-15) - a player builds the lab where they are
+			{ AIFloat3 nx; if (PlaceNextTo(labs[k].def, s.pos, nx)) o.pos = nx; }
 			opts.insertLast(o);
 		}
 	}
@@ -4745,6 +4753,21 @@ void Pickets(array<CCircuitUnit@>@ freeUnits)
 	// army can (its walk + the kill time < the army's walk); it raids one at a time, so each such site carries 1/n of it.
 	// (rv1/ca1: the first raids at 3:00-5:00 came before pickets had a measured loss to place them by.)
 	array<float> seenLoss(site.length(), 0.f), seenE(site.length(), 0.f), seenD(site.length(), 0.f);
+	// Before any raider is seen or any loss measured: the raid the opener's model says is coming (unit facts, setup) -
+	// its raiders spread over our extractors, each site carrying its share. With nothing seen the first fighters left
+	// for their corners and came home at 3:30-4:00 after the Grunts had hit (swe13-17, spectator)
+	bool anySeen = false;
+	{
+		array<AIFloat3> ep0, ev0; array<CCircuitDef@> ed0; array<float> ec0, eh0, eb0; array<int> ef0;
+		const uint n0 = AiGetEnemies(ep0, ev0, ed0, ec0, ef0, eh0, eb0);
+		for (uint e = 0; e < n0 && !anySeen; ++e) anySeen = ed0[e] !is null && ed0[e].IsMobile() && ed0[e].GetSustainedDps() > 0.f;
+	}
+	if (!anySeen && Economist::lossPos.length() == 0 && Opening::raidRate > 0.f && site.length() > 0) {
+		const float tNow = float(ai.frame) / SECOND;
+		const float nR = AiMax(0.f, tNow - Opening::raidLabAt) * AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
+		if (nR > 0.f)
+			for (uint k = 0; k < site.length(); ++k) { seenLoss[k] = siteLoss[k] * AiMin(1.f, nR / float(site.length())); seenE[k] = Opening::raidStrength; seenD[k] = Opening::raidDps; }
+	}
 	{
 		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);

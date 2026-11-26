@@ -5393,7 +5393,7 @@ index fcc4c984..71fead41 100644
  
  	float prevCost = query->GetCostAt(endPos, range);
 diff --git a/src/circuit/task/builder/BuilderTask.cpp b/src/circuit/task/builder/BuilderTask.cpp
-index 172d4c26..8c7cd37c 100644
+index 172d4c26..59cccf7d 100644
 --- a/src/circuit/task/builder/BuilderTask.cpp
 +++ b/src/circuit/task/builder/BuilderTask.cpp
 @@ -6,6 +6,8 @@
@@ -5493,7 +5493,7 @@ index 172d4c26..8c7cd37c 100644
  		)
  	} else {
  		if (geom::is_in_range(circuit->GetSetupManager()->GetBasePos(), position, searchRadius)) {  // base must be full
-@@ -312,6 +323,60 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+@@ -312,6 +323,91 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
  
  void IBuilderTask::OnUnitIdle(CCircuitUnit* unit)
  {
@@ -5531,6 +5531,30 @@ index 172d4c26..8c7cd37c 100644
 +			}
 +		}
 +	}
++	// Anarva: our own unfinished building of this kind already stands on the site (the job never learned its target):
++	// continue it instead of ordering a new one the engine refuses - the commander idled beside its half-built lab for
++	// 15 "failed starts" and the lab came at 81-104 s (swe15-18, onSite=[armlab])
++	if ((target == nullptr) && (buildDef != nullptr) && geom::is_valid(buildPos)) {
++		CCircuitAI* c = manager->GetCircuit();
++		auto us = c->GetCallback()->GetFriendlyUnitsIn(buildPos, buildDef->GetRadius());
++		CCircuitUnit* frame = nullptr;
++		for (springai::Unit* u : us) {
++			if ((u == nullptr) || (frame != nullptr)) continue;
++			CCircuitUnit* cu = c->GetTeamUnit(u->GetUnitId());
++			const bool sameDef = (cu != nullptr) && (cu->GetCircuitDef() == buildDef);
++			const bool building = (cu != nullptr) && cu->GetUnit()->IsBeingBuilt();
++			c->LOG("[ANV-FRAME] f=%i on site: unit %i team-unit %i sameDef %i beingBuilt %i progress %.2f", c->GetLastFrame(), u->GetUnitId(),
++				cu != nullptr ? 1 : 0, sameDef ? 1 : 0, building ? 1 : 0, u->GetBuildProgress());
++			if (sameDef && (building || u->GetBuildProgress() < 1.f)) frame = cu;
++		}
++		utils::free_clear(us);
++		if (frame != nullptr) {
++			TRY_UNIT(c, unit,
++				unit->CmdRepair(frame, UNIT_COMMAND_OPTION_INTERNAL_ORDER, NO_EXPIRY);
++			)
++			return;
++		}
++	}
 +	{  // Anarva: every failed build order, any job type (towers vanished unbuilt with nothing in the log)
 +		CCircuitAI* c = manager->GetCircuit();
 +		const bool canPlace = (buildDef != nullptr) && c->GetMap()->IsPossibleToBuildAt(buildDef->GetDef(), GetPosition(), facing);
@@ -5544,17 +5568,24 @@ index 172d4c26..8c7cd37c 100644
 +			utils::free_clear(us);
 +		}
 +		auto cq = unit->GetUnit()->GetCurrentCommands(); const int ncmd = (int)cq.size(); utils::free_clear(cq);
-+		c->LOG("[ANV-BUILDFAIL] f=%i %s job %d %s fails=%i dist=%.0f canPlace=%i | site dist=%.0f job-site=%.0f sitePlace=%i onSite=%i [%s] vel=%.2f cmds=%i",
++		int feats = 0;
++		if (buildDef != nullptr && geom::is_valid(buildPos)) {
++			auto fs = c->GetCallback()->GetFeaturesIn(buildPos, buildDef->GetRadius());
++			feats = (int)fs.size();
++			utils::free_clear(fs);
++		}
++		const float bdist = unit->GetCircuitDef()->GetBuildDistance();
++		c->LOG("[ANV-BUILDFAIL] f=%i %s job %d %s fails=%i dist=%.0f canPlace=%i | site dist=%.0f job-site=%.0f sitePlace=%i onSite=%i [%s] vel=%.2f cmds=%i features=%i buildDist=%.0f radius=%.0f",
 +			c->GetLastFrame(), unit->GetCircuitDef()->GetDef()->GetName(),
 +			(int)buildType, (buildDef != nullptr) ? buildDef->GetDef()->GetName() : "-", buildFails + 1,
 +			up.distance2D(GetPosition()), canPlace ? 1 : 0,
 +			geom::is_valid(buildPos) ? up.distance2D(buildPos) : -1.f, geom::is_valid(buildPos) ? GetPosition().distance2D(buildPos) : -1.f,
-+			sitePlace ? 1 : 0, onSite, who.c_str(), unit->GetUnit()->GetVel().Length2D(), ncmd);
++			sitePlace ? 1 : 0, onSite, who.c_str(), unit->GetUnit()->GetVel().Length2D(), ncmd, feats, bdist, (buildDef != nullptr) ? buildDef->GetRadius() : 0.f);
 +	}
  	if (++buildFails <= 2) {  // Workaround due to engine's ability randomly disregard orders
  		Execute(unit);
  	} else if (buildFails <= TASK_RETRIES) {
-@@ -328,7 +393,7 @@ void IBuilderTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+@@ -328,7 +424,7 @@ void IBuilderTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
  	const int frame = circuit->GetLastFrame();
  	CCircuitDef* cdef = unit->GetCircuitDef();
  	const float healthPerc = unit->GetHealthPercent();
@@ -5563,7 +5594,7 @@ index 172d4c26..8c7cd37c 100644
  		if (healthPerc < cdef->GetSelfDHP()) {
  			unit->CmdSelfD(true);
  		}
-@@ -407,7 +472,7 @@ void IBuilderTask::UpdateTarget(CCircuitUnit* unit)
+@@ -407,7 +503,7 @@ void IBuilderTask::UpdateTarget(CCircuitUnit* unit)
  	SetTarget(unit);
  
  	CCircuitAI* circuit = manager->GetCircuit();
@@ -5572,7 +5603,7 @@ index 172d4c26..8c7cd37c 100644
  	for (CCircuitUnit* ass : units) {
  		TRY_UNIT(circuit, ass,
  			ass->CmdRepair(unit, UNIT_CMD_OPTION, frame);
-@@ -437,9 +502,13 @@ CCircuitUnit* IBuilderTask::GetNextAssignee()
+@@ -437,9 +533,13 @@ CCircuitUnit* IBuilderTask::GetNextAssignee()
  	return unit;
  }
  
@@ -5587,7 +5618,7 @@ index 172d4c26..8c7cd37c 100644
  		UpdatePath(unit);  // Execute(unit) within OnTravelEnd
  	}
  }
-@@ -448,14 +517,13 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -448,14 +548,13 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  {
  	CCircuitAI* circuit = manager->GetCircuit();
  
@@ -5606,7 +5637,7 @@ index 172d4c26..8c7cd37c 100644
  	{
  		manager->AbortTask(this);
  		return false;
-@@ -482,12 +550,12 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -482,12 +581,12 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  		// NOTE: helps with obstructed factory, but not with blocked building plan.
  		//       @see CTerrainManager::CheckObstruct and its issues.
  		if ((cdef->GetMobileId() >= 0) && circuit->GetTerrainManager()->IsObstruct(pos)) {
@@ -5621,7 +5652,7 @@ index 172d4c26..8c7cd37c 100644
  				)
  			}
  			return true;
-@@ -514,10 +582,8 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -514,10 +613,8 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  			}
  			TRY_UNIT(circuit, unit,
  				unit->CmdBARPriority(prio ? 1.f : 0.f);
@@ -5634,7 +5665,7 @@ index 172d4c26..8c7cd37c 100644
  			)
  			return true;
  		}
-@@ -530,13 +596,48 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -530,13 +627,48 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  	if (unit->IsAttrNoDisrupt()) {
  		return true;
  	}
@@ -5686,7 +5717,7 @@ index 172d4c26..8c7cd37c 100644
  		manager->AssignTask(unit, task);
  		return false;
  	}
-@@ -577,7 +678,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
+@@ -577,7 +709,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
  	CPathFinder* pathfinder = circuit->GetPathfinder();
  	std::shared_ptr<IPathQuery> query = pathfinder->CreatePathSingleQuery(
  			unit, circuit->GetThreatMap(),
@@ -5695,7 +5726,7 @@ index 172d4c26..8c7cd37c 100644
  	pathQueries[unit] = query;
  
  	pathfinder->RunQuery(circuit->GetScheduler().get(), query, [this](const IPathQuery* query) {
-@@ -828,7 +929,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
+@@ -828,7 +960,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
  						}
  					} break;
  					case SBuildInfo::Condition::CHANCE: {
