@@ -2436,6 +2436,23 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		}
 	}
 	eSurf = AiMax(eSurf, sSurf + sAir);  // unseen: at least as strong as we are (they earn as we do)
+	// Their growth as seen: the strongest surface strength we have seen, and when. A unit ordered now fights the army
+	// that is there when it is ready, so it is valued against that: now + measured growth x (its build + walk) (sight,
+	// not a prior: no growth before two sightings). Valued against the army of the moment, fighters lost to
+	// constructors both before BARb's first raid (seen 39-50) and once it was seen (277 vs our 35): army 162 vs 386 at
+	// 3:00, the swing (swing.py it2).
+	{
+		float seenE = 0.f;
+		array<AIFloat3> ep2, ev2; array<CCircuitDef@> ed2; array<float> ec2, eh2, eb2; array<int> ef2;
+		const uint ne2 = AiGetEnemies(ep2, ev2, ed2, ec2, ef2, eh2, eb2);
+		for (uint i = 0; i < ne2; ++i)
+			if (ed2[i] !is null && ed2[i].IsMobile() && !ed2[i].IsAbleToFly() && ed2[i].GetSustainedDps() > 0.f)
+				seenE += sqrt(ed2[i].GetSustainedDps() * AiMax(1.f, eh2[i] * ed2[i].health));
+		if (seenE > peakE) {
+			if (peakE > 0.f && peakFrame >= 0 && ai.frame > peakFrame) growthE = (seenE - peakE) / (float(ai.frame - peakFrame) / SECOND);
+			peakE = seenE; peakFrame = ai.frame;
+		}
+	}
 	// The ground units a fighter of ours will meet: the enemy's as seen (weighted by strength); none seen yet, the
 	// units this factory offers (they build the same class of units). A unit outranged by them takes their fire while
 	// it closes the gap: its health in the fight is less that damage (range, speed and dps from the unit defs). Without
@@ -2568,22 +2585,24 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			const float hp = AiMax(1.f, d.health);
 			const float us = SurfPower(d, mix, terms);
 			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp);
-			float vSurf = stakeSurf * (WinShare(sSurf + us, eSurf) - WinShare(sSurf, eSurf));
+			const float tReady = d.buildTime / AiMax(1.f, fdef.buildSpeed) + dist / AiMax(1.f, d.speed);
+			const float grow = (eSurf > 0.f) ? 1.f + growthE * tReady / eSurf : 1.f;  // the enemy when it is ready, as a factor
+			float vSurf = stakeSurf * (WinShare(sSurf + us, eSurf * grow) - WinShare(sSurf, eSurf * grow));
 			if (kESum > 0.f) {
 				vSurf = 0.f;
 				for (uint k = 0; k < kE.length(); ++k) {
 					string tm;
 					const float uk = SurfPower(d, kMix[k], tm);
 					// with one unit more our force is split one way further (#101): Gran(n+1) on the new total
-					vSurf += stakeSurf * kE[k] / kESum * (WinShare((kS[k] + uk) * Gran(nOurs + 1.f), kE[k]) - WinShare(kS[k] * Gran(nOurs), kE[k]));
+					vSurf += stakeSurf * kE[k] / kESum * (WinShare((kS[k] + uk) * Gran(nOurs + 1.f), kE[k] * grow) - WinShare(kS[k] * Gran(nOurs), kE[k] * grow));
 				}
-				terms += " per-type " + int(vSurf);
+				terms += " per-type " + int(vSurf) + " grow " + F2(grow);
 			}
 			if (gE.length() > 0) {
 				float vG = 0.f;
 				for (uint g = 0; g < gE.length(); ++g) {
 					const float stakeG = AiMin(stakeSurf, gD[g] * H * mPerHp);
-					vG += stakeG * (WinShare((sSurf + us) * Gran(nOurs + 1.f), gE[g]) - WinShare(sSurf * Gran(nOurs), gE[g]));
+					vG += stakeG * (WinShare((sSurf + us) * Gran(nOurs + 1.f), gE[g] * grow) - WinShare(sSurf * Gran(nOurs), gE[g] * grow));
 				}
 				terms += " groups " + gE.length() + ":" + int(vG);
 				vSurf = AiMax(vSurf, vG);  // the global fight and the group fights are the same army: the larger stands
@@ -2727,6 +2746,7 @@ float WinShare(float S, float E) { return (S + E > 0.f) ? S / (S + E) : 0.f; }
 float Gran(float n) { const float m = AiMax(1.f, n); return sqrt((m + 1.f) / (2.f * m)); }
 
 float lastBestRatio = 0.f;  // production's best value per metal at its last fighter pick (what army metal buys now)
+float peakE = 0.f, growthE = 0.f; int peakFrame = -1;  // strongest enemy surface strength seen, its measured growth /s
 string Status() { return "moho=" + mohoCons + "(" + mohoWhy + ") prod=" + choices + "/b" + builders + " rez=" + rezBots.length() + "/" + rezOrders + " last=" + last; }
 
 }  // namespace Production
