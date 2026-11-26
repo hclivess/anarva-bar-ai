@@ -513,3 +513,7 @@ The latest batch (D-gun and strength fixes) is being played.
   opener can't reach without the army-by-raid term (#103/#41).
 - **Constructor queue in the extractor-first gain, reverted (cq1-2):** charging each spot the wait for every open spot
   nearer the lab made far spots look most valuable: the commander walked off, no lab by 4:00 (2-3 extractors, 5 M/s).
+- **First lab by plan value (vehicle plant), reverted (vp1-5):** choosing the lab by the plan value (constructor speed in
+  TailGrowth) picked the vehicle plant (armcv walks 54 vs 36). Army at 4:00 doubled (330-361) but extractors stayed 1-6
+  through 12:00, income 4-23, all three lost at 17-19 min with the commander dead (trades 0.69 / 0.56 / 0.63): the
+  constructors didn't expand faster in play, and production went to Rovers, Flashes and mine layers.
