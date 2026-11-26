@@ -450,7 +450,10 @@ void Update()
 			if (Economist::mexT1 is null || !u.circuitDef.CanBuild(Economist::mexT1)) continue;
 			if (u.task.GetType() == Task::Type::NIL) continue;  // still in the factory
 			IBuilderTask@ bt = cast<IBuilderTask>(u.task);
-			if (bt is null || bt.buildDef is null) ++unemployed;
+			// a constructor on any job but an extractor is spare claiming capacity: another won't claim more (the lab made 7
+			// constructors and ~no army by 4:18; a winner 2-3 then a Tick every ~3 s - replay view d346036b vs rr5). With the
+			// Hold state the army that this frees now stands over our extractors (#106).
+			if (bt is null || bt.buildDef is null || Facts::ExtractsMetal(bt.buildDef.GetName()) <= 0.f) ++unemployed;
 		}
 	}
 	const bool work = unclaimed > 0 && unemployed == 0 && conDef !is null && saved > Economist::MetalValue(conDef) && Director::ratio >= 1.f;

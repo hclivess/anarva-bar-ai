@@ -578,3 +578,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
 - **Hold state (hd1-4, #106):** free units stand at the median point of our extractors and the base (least summed
   distance), not the base centre. Trades 0.67 / 0.83 / 0.97, commander alive in 2 of 3 (0 of the last 6), extractors lost
   12-19; all lost (18 min, pts, pts). Kept: the structure players use; the early army is still too small to hold much.
+- **Hold + constructors on non-extractor jobs counted as spare (hc1-3):** trades 1.04 / 0.89 / 0.91 (best set average,
+  ~0.95), combat units at 6:00 9 / 17 / 8 (was 5; winners 14-22), commander alive in 2 of 3. Lost on points twice
+  (buildings 1467 / 1730 vs 30726 / 32476) and once at 13:00: extractors still fall (4-15 held, 12-19 lost) and our
+  buildings are a tenth of BARb's. Kept. Next: what the buildings gap is made of.
