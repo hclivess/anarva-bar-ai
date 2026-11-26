@@ -467,7 +467,12 @@ void Update()
 	for (uint a = 0; a < spWork.length(); ++a)
 		for (uint b = a + 1; b < spWork.length(); ++b)
 			if (spWork[b] < spWork[a]) { const float tw = spWork[a]; spWork[a] = spWork[b]; spWork[b] = tw; const float ty = spYield[a]; spYield[a] = spYield[b]; spYield[b] = ty; }
-	const float Hc = AiMax(1.f, Economist::Horizon());
+	// over how long a claimed extractor pays: at least the threat horizon (the earliest they could take everything), and
+	// as long as our producers have survived so far - building-seconds survived / (losses + 1), the survival estimate
+	// that stays defined before the first loss. The threat horizon alone fell to 198 s once fast Blitzes raised the map
+	// crossing speed, a constructor scored 1.1-2.8 per metal against a Blitz's 3.5 and a Rover's 10.8, and the plant's
+	// first constructor came at 158 s (winners 91 s; extractors 6.6 vs BARb's 20.4 M/s at 4:00, swe30)
+	const float Hc = AiMax(AiMax(1.f, Economist::Horizon()), Economist::producerExposure / float(Economist::producerLosses + 1));
 	// feedback (owner: "ignores losses? is there no feedback loop?"): a claimed extractor yields until the horizon or
 	// until it dies, whichever comes first - its measured life once producers have been lost (no horizon floor)
 	const float Lm = (Economist::producerLosses > 0) ? Economist::MeasuredLife() : 1e30f;
@@ -4646,7 +4651,7 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 			const float drawEq = drawM + drawE / AiMax(1e-3f, Economist::energyPerMetal);
 			const float conSpeed = (L.con !is null) ? AiMax(1.f, L.con.speed) : AiMax(1.f, speed);
 			for (uint a = 0; a < opts.length(); ++a) {
-				if (opts[a].kind != 0) continue;
+				if (opts[a].kind == 2) continue;
 				// simulated, with the resource waits: the extractor first, then the lab - against the lab now (t). It costs the
 				// lab's production for every second the lab stands later; the commander's time alone missed that the stock
 				// spent on it makes the lab wait (pl1: spot 49 "111 vs 104", then the lab took 46 s, standing at 119 s)
@@ -4656,7 +4661,13 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 				Apply(w, opts[lab], bp, speed);
 				const float tt = mexDone - s0.t;
 				const float tByCon = w.t + L.conTime + opts[lab].pos.distance2D(opts[a].pos) / conSpeed;
-				const float gain = opts[a].yieldM * AiMax(0.f, tByCon - mexDone);
+				// an energy plant first: otherwise the commander builds it once the lab stands, so it yields for the lab's
+				// build time sooner (energy at its metal worth). Only extractors were tested: the commander built extractor,
+				// solar, extractor, lab at ~42 s while BARb and the winners build three extractors and two plants first
+				// (Comet Catcher, replays.db ea25036b: 9/16/31 s, solars 41/50 s, plant 69 s); buildings 255 vs 550 at 1:00 in
+				// every game (swe25-29)
+				const float gain = (opts[a].kind == 0) ? opts[a].yieldM * AiMax(0.f, tByCon - mexDone)
+					: opts[a].yieldE / AiMax(1e-3f, Economist::energyPerMetal) * AiMax(0.f, w.t - mexDone);
 				// A later lab loses no resources (they bank and are spent once it stands); what it costs is the army later, and
 				// that matters only past the earliest enemy raid: the lab's production for the time its first unit comes
 				// later than the raid can arrive (#41). Charged for the whole delay, the opener built one extractor before
@@ -4664,14 +4675,14 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 				// to swing (tools/swing.py, sw1).
 				const float tR = raidArrive;
 				const float cost = drawEq * (AiMax(0.f, w.t + L.unitTime - tR) - AiMax(0.f, t.t + L.unitTime - tR));
-				if (gain - cost > firstGain - firstCost) { firstGain = gain; firstCost = cost; firstName = "spot " + opts[a].spot; firstOpt = int(a); }
+				if (gain - cost > firstGain - firstCost) { firstGain = gain; firstCost = cost; firstName = (opts[a].kind == 0) ? ("spot " + opts[a].spot) : opts[a].def.GetName(); firstOpt = int(a); }
 			}
 		}
 		// that extractor, then: it is what beat the lab (the general producer choice below built winds instead, and the lab
 		// waited until 123 s, op1)
 		if (noWait && carried && firstOpt >= 0 && firstGain > firstCost) {
 			best = firstOpt;
-			why = "extractor first: " + firstName + " yields " + int(firstGain) + " before a constructor could build it, the lab loses " + int(firstCost);
+			why = "before the lab: " + firstName + " yields " + int(firstGain) + " before a constructor could build it, the lab loses " + int(firstCost);
 			return firstGain - firstCost;
 		}
 		if (noWait && carried && firstGain <= firstCost) {
@@ -4701,6 +4712,17 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 	// draw: no plant until 146 s, the lab at 136 s, energy stalled (owner's game, BarR 1.1, 2026-11-25: "stalling metal
 	// extractors on energy - bad!"; winners: solar 24 s, wind 29 s, lab 64 s).
 	const bool leontief = (drawM > 0.f) && (drawE > 0.f) && (needM > 0.f || needE > 0.f);
+	float labStartIn = 0.f;  // the commander closes both gaps one after the other, each at its best producer's rate
+	if (leontief) {
+		float bE = 0.f, bM = 0.f;
+		for (uint a = 0; a < opts.length(); ++a) {
+			if (opts[a].kind == 2) continue;
+			const float tt = opts[a].def.buildTime / AiMax(1.f, bp) + Walk(s0.pos, opts[a].pos, speed);
+			bE = AiMax(bE, opts[a].yieldE / AiMax(1e-3f, tt));
+			bM = AiMax(bM, opts[a].yieldM / AiMax(1e-3f, tt));
+		}
+		labStartIn = ((needE > 0.f) ? needE / AiMax(1e-3f, bE) : 0.f) + ((needM > 0.f) ? needM / AiMax(1e-3f, bM) : 0.f);
+	}
 	const float rM = (drawM > 0.f) ? s0.mInc / drawM : 1.f, rE = (drawE > 0.f) ? s0.eInc / drawE : 1.f;
 	float bestV = -1e30f, bestTie = -1e30f;
 	for (uint a = 0; a < opts.length(); ++a) {
@@ -4709,7 +4731,18 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 		const float tie = (opts[a].yieldM * mWorth + opts[a].yieldE * eWorth) / AiMax(1e-3f, time);
 		float v = tie;
 		if (leontief) {
-			const float gain = AiMin(AiMin(1.f, rM + opts[a].yieldM / drawM), AiMin(1.f, rE + opts[a].yieldE / drawE)) - AiMin(AiMin(1.f, rM), AiMin(1.f, rE));
+			// Before the lab stands nothing draws energy: a plant's output until then counts only as far as the bank can
+			// hold it (the share of its output to the lab's start that fits in the free storage) - at the start the bank
+			// is full and an early solar overflows, which is why the winners build three extractors, then two plants, then
+			// the plant (Comet Catcher: extractors at 9/16/31 s, solars 41/50 s, vehicle plant 69 s, replays.db ea25036b;
+			// ours extractor, solar, extractor, plant: buildings 255 vs BARb 550 at 1:00, swe25). The lab's start: when the
+			// commander has closed both gaps (labStartIn). Metal is spent by every build and never overflows here.
+			float yE = opts[a].yieldE;
+			if (yE > 0.f && labStartIn > time && aiEconomyMgr.energy.storage > 0.f && !planning) {
+				const float freeE = AiMax(0.f, aiEconomyMgr.energy.storage - s0.E);
+				yE *= AiMin(1.f, freeE / AiMax(1e-3f, yE * (labStartIn - time)));
+			}
+			const float gain = AiMin(AiMin(1.f, rM + opts[a].yieldM / drawM), AiMin(1.f, rE + yE / drawE)) - AiMin(AiMin(1.f, rM), AiMin(1.f, rE));
 			v = gain / AiMax(1e-3f, time);
 		}
 		if (v > bestV || (v == bestV && tie > bestTie)) { bestV = v; bestTie = tie; best = int(a); }
@@ -5062,6 +5095,7 @@ float OursThreatened(uint i, const array<CCircuitUnit@>@ mine, float tAnswer)
 	const CCircuitDef@ ed = eDef[i];
 	if (ed is null || ed.surfThrDmg <= 0.f) return 0.f;
 	float v = 0.f;
+	array<AIFloat3> reach; array<float> reachHp, reachLoss;
 	for (uint k = 0; k < mine.length(); ++k) {
 		const CCircuitDef@ d = mine[k].circuitDef;
 		// the commander is the game: threatened, it is worth everything (left out, Raiders killed it at home at 13:12
@@ -5094,8 +5128,25 @@ float OursThreatened(uint i, const array<CCircuitUnit@>@ mine, float tAnswer)
 			// what a raid takes: its cost and its yield until it stands again, as for raid towers (MexPorc::RaidLoss).
 			// With its whole future yield every defence looked worth any odds and the army threw itself away (army
 			// 54-354 at minute 8 in round 31 vs 1400-1900 at minute 12 in round 30).
-			if (yield >= 0.f) v += MexPorc::RaidLoss(mine[k], EcoPos::CheapestConstructor());
+			if (yield >= 0.f) { reach.insertLast(mine[k].GetPos(ai.frame)); reachHp.insertLast(d.health); reachLoss.insertLast(MexPorc::RaidLoss(mine[k], EcoPos::CheapestConstructor())); }
 		}
+	}
+	// ...but one raider kills one building at a time: nearest first, each taking its health / the raider's dps plus the
+	// walk to it, while the time before our answer lasts. Every building in its reach counted in full: one 31-metal corfav
+	// read 5297-6643 and the whole army chased scouts for 44 s with no kill while Incisors took 2 extractors (swe30)
+	const float dps = AiMax(1e-3f, ed.GetSustainedDps());
+	array<bool> done(reach.length(), false);
+	AIFloat3 at = ePos[i]; float tUsed = 0.f;
+	while (true) {
+		int nb = -1; float nd = 1e30f;
+		for (uint k = 0; k < reach.length(); ++k) if (!done[k] && at.distance2D(reach[k]) < nd) { nd = at.distance2D(reach[k]); nb = int(k); }
+		if (nb < 0) break;
+		const float step = AiMax(0.f, nd - ed.GetMaxRange()) / AiMax(1.f, ed.speed) + reachHp[nb] / dps;
+		if (tUsed + step > AiMax(1.f, tAnswer)) {
+			v += reachLoss[nb] * AiMax(0.f, AiMax(1.f, tAnswer) - tUsed) / AiMax(1e-3f, step);  // the share it gets through
+			break;
+		}
+		tUsed += step; v += reachLoss[nb]; done[nb] = true; at = reach[nb];
 	}
 	return v;
 }

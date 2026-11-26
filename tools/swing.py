@@ -18,6 +18,10 @@ STAT = re.compile(r"\[HARNESS\] stats f=(\d+) dead=\w+ team=(\d) units=\d+ army_
                   r"e_inc=(\d+) m=[\d/]+ e=(\d+)/(\d+) killed_m=(\d+) lost_m=(\d+) dmg_out=(\d+) dmg_in=(\d+)")
 # stat -> how ours is compared with theirs (bigger is better for all; damage and kills as a share of the exchange)
 STATS = ["metal income", "energy short", "army", "buildings", "army+buildings", "damage share", "kill share"]
+# stats that stop a game: the owner's list (energy, metal, army, damage taken vs dealt) and the total value. Buildings
+# alone are printed, not judged: with income level and army+buildings level (680 vs 686) a lead in army over buildings
+# is a split, not being outplayed (swe26 stopped on buildings 460 vs 600 with army 220 vs 86).
+JUDGED = [s for s in STATS if s != "buildings"]
 
 
 def values(t):
@@ -98,15 +102,15 @@ def main():
                         if behind[s2] >= 2 and swing is None:
                             swing = (fr, s2 + " vs winners", ours, win[m][s2])
                 continue
-            for s in STATS:
+            for s in JUDGED:
                 ours, theirs = pair[0][s], pair[1][s]
                 if s == "energy short":
                     # energy matters when it runs out: ours short while theirs isn't (more income spent is no gap)
                     worse = pair[0][s] > 0 and pair[1][s] == 0
                 elif s in ("damage share", "kill share"):
-                    worse = (pair[0]["damage share" if s == "damage share" else "kill share"] < 0.5) and (ours > 0 or theirs > 0)
-                    if s == "damage share" and (pair[0]["damage share"] == 0 and pair[1]["damage share"] == 0):
-                        worse = False
+                    # behind by more than a tenth, as every other stat: "below 0.5" stopped swe27 at 5:00 on kill share
+                    # 0.40 vs 0.43 (about 4 kills against 6 losses) while we led in army 691 vs 460 and buildings
+                    worse = (ours > 0 or theirs > 0) and ours < theirs * 0.9
                 else:
                     # a swing is a real gap, not a build finishing a few seconds later: behind by more than a tenth
                     worse = ours < theirs * 0.9
