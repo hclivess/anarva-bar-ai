@@ -517,3 +517,7 @@ The latest batch (D-gun and strength fixes) is being played.
   TailGrowth) picked the vehicle plant (armcv walks 54 vs 36). Army at 4:00 doubled (330-361) but extractors stayed 1-6
   through 12:00, income 4-23, all three lost at 17-19 min with the commander dead (trades 0.69 / 0.56 / 0.63): the
   constructors didn't expand faster in play, and production went to Rovers, Flashes and mine layers.
+- **Commander division of labour, reverted (dv1-2, #105):** on a walk-dominated job (walk > its build time) with a
+  constructor around and energy short, the commander built the best plant at base instead. Triggered 3-6 times, but
+  3 extractors and ~8 M/s at 4:00 (no change): the first constructor came at 111-128 s, so there was little to divide.
+  The constructor timing itself (the lab's first products) comes before the division.
