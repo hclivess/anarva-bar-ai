@@ -5296,7 +5296,9 @@ float EffThreat(const CCircuitDef@ d)
 {
 	if (fightMixFrame != ai.frame) { fightMix = Brain::Production::Mix(); Brain::Production::FillMix(fightMix, null); fightMixFrame = ai.frame; }
 	if (fightMix.w.length() == 0 || d.surfThrDmg <= 0.f) return d.threat;
-	const float plain = sqrt(AiMax(0.f, d.surfThrDmg) * AiMax(1.f, d.health));
+	// SurfPower is in sustained dps (swe44): its plain counterpart must be too, or the ratio scales every unit by dps over
+	// the core's threat damage - single Rovers read strong enough for Grunts and died one by one, 0 kills (swe44)
+	const float plain = sqrt(AiMax(0.f, d.GetSustainedDps()) * AiMax(1.f, d.health));
 	string tm;
 	return d.threat * Brain::Production::SurfPower(d, fightMix, tm) / AiMax(1e-3f, plain);
 }
