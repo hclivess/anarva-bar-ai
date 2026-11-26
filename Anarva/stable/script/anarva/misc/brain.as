@@ -4808,7 +4808,10 @@ void BuilderSafeUpdate()
 	for (uint i = 0; i < all.length(); ++i) {
 		CCircuitUnit@ u = all[i];
 		const CCircuitDef@ d = u.circuitDef;
-		if (u is commander || !d.IsMobile() || !d.IsRoleAny(Unit::Role::BUILDER.mask) || d.buildSpeed <= 0.f) continue;
+		if (!d.IsMobile() || !d.IsRoleAny(Unit::Role::BUILDER.mask) || d.buildSpeed <= 0.f) continue;
+		// the commander too: its fights are CommNet's, its building is weighed here like any builder's - left out, it
+		// built where raids came and died on a build job at 16:21 and 19:27, each time the game (cmd_m56, cmd_m58)
+		if (u is commander && commFightTask !is null && u.task is commFightTask) continue;
 		const AIFloat3 c = u.GetPos(ai.frame);
 		CCircuitUnit@ fac = FactoryReachedSoonest(c, d);
 		if (fac is null) continue;
@@ -4834,7 +4837,8 @@ void BuilderSafeUpdate()
 		float jobV = (bt !is null && bt.buildDef !is null) ? Brain::Economist::AssetValue(bt.buildDef) : 0.f;
 		if (bt !is null && bt.buildDef is null)
 			jobV = AiMax(bt.value, bt.GetCostM() + bt.GetCostE() / AiMax(1e-3f, Brain::Economist::energyPerMetal));
-		const float own = Brain::Economist::MetalValue(d);
+		// what is lost with it: its metal - and for the commander the game (everything we own)
+		const float own = (u is commander) ? GameValue() : Brain::Economist::MetalValue(d);
 		// the job is at risk too (owner: kept upgrading a mex with 4 pawns on it): if the structure dies before it is
 		// finished, the metal sunk into it is lost (bounded by its full value; progress isn't visible to the script)
 		float Pj = 0.f;
