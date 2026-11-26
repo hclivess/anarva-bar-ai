@@ -259,3 +259,8 @@ The latest batch (D-gun and strength fixes) is being played.
   Enemy base as a target, now six games with every gate tried (seen / judged / peak / win gate / their commander):
   all six weaker than the build without it - reverted for good. A base we can't see can't be judged; the army needs
   to see it (scouting, or the army's own advance as a scout) and our late economy must grow past ~20 M/s.
+- **Idle army holding the most exposed producers - tried two ways, reverted (cmd_m96, cmd_m98):** at the most exposed
+  producer the army went forward and was destroyed by minute 14; gated by "we win there" both games still collapsed
+  (army 0 by 12-14, extractors to 0-1). The committed build (c87b9db) stays the best: army 10102-14080 at 20:00,
+  commander alive. Its open gaps: raiders kill our buildings late (41 in minutes 16-19) while the army waits at home;
+  our metal income stalls at ~20/s (winners ~37, BARb 87-154); the army never ends the game.
