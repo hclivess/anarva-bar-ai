@@ -654,6 +654,80 @@ void Update()
 }
 }  // namespace MexPorc
 
+/*
+ * Radar (#48 vision, script blindness): 96 of 107 1v1 winners build radar, the first at a median 3.3 min and 5 by
+ * 12:00 (replays.db); we built none, and the commander died to enemies nobody saw coming (an unseen attacker 2651
+ * out, a Reaper at 823 - cs1-3). A radar turns unseen enemies into seen ones within its range (unit facts:
+ * radardistance, gen_facts.py). It is worth what it covers, not yet under radar - everything of ours there, the
+ * commander at the game's value - times the share of the enemy we can't see now: their strength unseen is at least
+ * ours less what we see (they earn as we do), over all of it. Seeing everything, a radar adds nothing. Built at the
+ * site of ours (a building, or the commander) where that is largest, from the radar our constructors can build with
+ * the most value per metal; one order at a time, its value competing with every other job.
+ */
+namespace Radar {
+IUnitTask@ pending = null;
+int lastLog = -1000000;
+void OnTaskRemoved(IUnitTask@ task) { if (task is pending) @pending = null; }
+void Update()
+{
+	if (pending !is null || !HasBase() || Brain::Intel::allFactories.length() == 0) return;
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	// the radars our constructors can build, and the ground our radars already cover
+	array<CCircuitDef@> defs;
+	array<AIFloat3> rp; array<float> rr;
+	for (uint i = 0; i < mine.length(); ++i) {
+		const CCircuitDef@ d = mine[i].circuitDef;
+		const float rd = Facts::RadarRange(d.GetName());
+		if (!d.IsMobile() && rd > 0.f) { rp.insertLast(mine[i].GetPos(ai.frame)); rr.insertLast(rd); }
+		if (!d.IsMobile() || d.buildSpeed <= 0.f) continue;
+		const array<string> opts = Facts::BuildOptions(d.GetName());
+		for (uint k = 0; k < opts.length(); ++k) {
+			CCircuitDef@ o = ai.GetCircuitDef(opts[k]);
+			if (o is null || o.IsMobile() || !o.IsAvailable(ai.frame) || defs.findByRef(o) >= 0) continue;
+			if (Facts::RadarRange(o.GetName()) <= 0.f || o.GetSustainedDps() > 0.f || Facts::BuildOptions(o.GetName()).length() > 0) continue;
+			if (o.IsAbleToFly()) continue;
+			defs.insertLast(o);
+		}
+	}
+	if (defs.length() == 0) return;
+	// the share of their strength we don't see
+	const float seen = Economist::KnownEnemyThreat();
+	const float ours = Director::OurPower();
+	const float hidden = AiMax(0.f, ours - seen);
+	const float share = hidden / AiMax(1e-3f, hidden + seen);
+	if (share <= 0.f) return;
+	const float V = GameValue();
+	int bestU = -1; CCircuitDef@ bestD = null; float bestV = 0.f, bestRatio = 0.f;
+	for (uint s = 0; s < mine.length(); ++s) {
+		const bool comm = mine[s] is commander;
+		if (mine[s].circuitDef.IsMobile() && !comm) continue;
+		const AIFloat3 site = mine[s].GetPos(ai.frame);
+		for (uint di = 0; di < defs.length(); ++di) {
+			const float R = Facts::RadarRange(defs[di].GetName());
+			float v = 0.f;
+			for (uint i = 0; i < mine.length(); ++i) {
+				const AIFloat3 q = mine[i].GetPos(ai.frame);
+				if (q.distance2D(site) > R) continue;
+				bool covered = false;
+				for (uint k = 0; k < rp.length() && !covered; ++k) covered = q.distance2D(rp[k]) <= rr[k];
+				if (covered) continue;
+				v += (mine[i] is commander) ? V : mine[i].circuitDef.costM;
+			}
+			v *= share;
+			const float ratio = v / AiMax(1.f, Economist::MetalValue(defs[di]));
+			if (ratio > bestRatio) { bestRatio = ratio; bestV = v; bestU = int(s); @bestD = defs[di]; }
+		}
+	}
+	if (bestD is null || bestV <= Economist::MetalValue(bestD)) return;  // it must be worth more than it costs
+	const AIFloat3 p = mine[bestU].GetPos(ai.frame);
+	@pending = aiBuilderMgr.Enqueue(TaskB::Common(Task::BuildType::RADAR, Task::Priority::NORMAL, bestD, p, bestD.GetRadius() * 4.f, true, OrderLife(bestD, p)));
+	IBuilderTask@ bt = cast<IBuilderTask>(pending);
+	if (bt !is null) bt.value = bestV;
+	AiLog("[ANV] Radar: " + bestD.GetName() + " at (" + int(p.x) + "," + int(p.z) + ") by " + mine[bestU].circuitDef.GetName() + ": covers "
+		+ int(bestV / share) + " unwatched x unseen share " + F2(share) + " (seen " + F1(seen) + ", ours " + F1(ours) + ") = " + int(bestV) + " > cost " + int(Economist::MetalValue(bestD)));
+}
+}  // namespace Radar
+
 /* ======================================================================== */
 /*
  * Scouting by the value of vision (issue #48, Vritrasura108). Each cell keeps the time since we last had
@@ -5238,7 +5312,7 @@ IUnitTask@ CommSafeJob(const AIFloat3& in from) { ++commRetreats; return CommBes
  * takes the best spot when that beats the job it has.
  */
 int commFwd = 0, fwdCalls = 0, fwdBusy = 0, fwdNone = 0; float fwdBestSeen = 0.f, fwdCurSeen = 0.f; IUnitTask@ commFwdTask = null; float lastFwdGain = 0.f; int fwdDue = 0, fwdFailed = 0;
-void OnBuilderTaskRemoved(IUnitTask@ task) { MexPorc::OnTaskRemoved(task); Strategic::OnTaskRemoved(task); Opening::OnTaskRemoved(task); if (task is commFwdTask) @commFwdTask = null; if (task is commGuardTask) @commGuardTask = null; }
+void OnBuilderTaskRemoved(IUnitTask@ task) { Radar::OnTaskRemoved(task); MexPorc::OnTaskRemoved(task); Strategic::OnTaskRemoved(task); Opening::OnTaskRemoved(task); if (task is commFwdTask) @commFwdTask = null; if (task is commGuardTask) @commGuardTask = null; }
 IUnitTask@ CommForward(const AIFloat3& in from, float curScore)
 {
 	if (Brain::Economist::mexT1 is null) return null;
@@ -5296,8 +5370,28 @@ float JobTime(IBuilderTask@ bt)
 	const float walk = commander.GetPos(ai.frame).distance2D(bt.GetBuildPos()) / AiMax(1.f, commander.circuitDef.speed);
 	return walk + bt.buildDef.buildTime / AiMax(1.f, commander.circuitDef.buildSpeed);
 }
+// Ground we watch: in our sight, or inside the radar of one of our buildings (unit facts, gen_facts.py).
+bool Watched(const AIFloat3& in p)
+{
+	if (AiIsInLOS(p)) return true;
+	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
+	for (uint i = 0; i < all.length(); ++i) {
+		if (all[i].circuitDef.IsMobile()) continue;
+		const float r = Facts::RadarRange(all[i].circuitDef.GetName());
+		if (r > 0.f && all[i].GetPos(ai.frame).distance2D(p) <= r) return true;
+	}
+	return false;
+}
 bool CommWorth(const AIFloat3& in p, float gain, float tJob = 0.f)
 {
+	// Its risk is read from the enemies we see: on ground nobody watches it reads ~0 whatever is there, and the commander
+	// walked to an extractor 2651 out and died to an attacker nobody saw (cs2). Where we can't watch, the risk can't
+	// be known, so it doesn't go (a constructor does). 1v1 winners keep it home: from start, median 276 at 3-6 min,
+	// 501 at 6-9, ~1000 at 12-15 (replays.db, 107 winners); the 2000-3000 forward commander is the team-game cluster.
+	if (commander !is null && !Watched(p) && p.distance2D(commander.GetPos(ai.frame)) > commander.circuitDef.GetBuildDistance()) {
+		lastV = GameValue(); lastRisk = lastV; lastGain = gain;
+		return false;
+	}
 	lastV = GameValue();
 	lastRisk = CommPDeath(p, EscapeTime(p) + tJob) * lastV;
 	lastGain = gain;
@@ -5425,6 +5519,30 @@ void CommDefendUpdate()
 	AiLog("[ANV] CommDefend: commander -> " + ed[best].GetName() + " at (" + int(ep[best].x) + "," + int(ep[best].z) + "), stake-risk " + int(bestNet));
 }
 
+// Cloak (owner: "commander cloaked and standing is invisible unless he moves or units stand next to him"). Unit facts:
+// the Armada commander cloaks at 100 E/s standing, 1000 moving, and is revealed within 50. It cloaks while the risk
+// where it stands over this update - P(death) x the game - beats the energy for that time at the energy price, and
+// only with the energy for it in store (a stall drops the cloak anyway).
+bool commCloaked = false; int commCloakFrame = -1;
+void CommCloakUpdate()
+{
+	if (commander is null || !commander.circuitDef.IsAbleToCloak()) return;
+	const string nm = commander.circuitDef.GetName();
+	const float dt = (commCloakFrame < 0) ? 1.f : AiMax(1.f, float(ai.frame - commCloakFrame) / SECOND);
+	commCloakFrame = ai.frame;
+	const AIFloat3 v = commander.GetVel();
+	const bool moving = v.x * v.x + v.z * v.z > 0.f;
+	const float costE = moving ? Facts::CloakCostMoving(nm) : Facts::CloakCost(nm);
+	const AIFloat3 c = commander.GetPos(ai.frame);
+	const float risk = CommPDeath(c, AiMax(dt, EscapeTime(c))) * GameValue();
+	const float cost = costE * dt / AiMax(1e-3f, Economist::energyPerMetal);
+	const bool want = costE > 0.f && risk > cost && aiEconomyMgr.energy.current >= costE * dt;
+	if (want != commCloaked) {
+		commander.CmdCloak(want);
+		commCloaked = want;
+		AiLog("[ANV] CommCloak: " + (want ? "on" : "off") + " (" + (moving ? "moving" : "standing") + ", risk " + int(risk) + " vs energy " + int(cost) + " metal-eq over " + F1(dt) + " s)");
+	}
+}
 void CommGuardUpdate()
 {
 	if (!Opening::done) return;  // the opening directs the commander until its lab stands (#95)
@@ -5522,10 +5640,12 @@ void Update()  // every 30 frames
 	EcoPos::Update();
 	RezLab::Update();
 	MexPorc::Update();
+	Radar::Update();
 	Storage::Update();
 	Storage::UpdateEnergy();
 	CommDefendUpdate();
 	CommGuardUpdate();
+	CommCloakUpdate();
 	BuilderSafeUpdate();
 	ReclaimUpdate();
 	Recycler::EcoReclaimUpdate();

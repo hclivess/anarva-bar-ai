@@ -422,3 +422,8 @@ The latest batch (D-gun and strength fixes) is being played.
   deaths came where it stood outside every known enemy's reach (Reaper at 823, an unseen attacker 2651 out, a
   Leveler at 318), i.e. from enemies not seen in time, not from a missing escape. Six games of the same code ranged
   0.35-0.79: single-game differences of this size are noise.
+- **Radar (#99, owner raised it three times):** Brain::Radar values a radar by what it covers that isn't under radar
+  (the commander at the game's value) x the unseen share of the enemy ((ours - seen) / total). rd1-3: 3-4 radars per game,
+  first at 1:22 / 2:16 / 1:42 (1v1 winners: median 3.3 min, 5 by 12:00). Trades 0.56 / 0.55 / 0.60; rd3 the closest
+  game yet (pts loss, army 5600 vs 6900 at 20:00, commander alive); rd1/rd2 commander dead at 202-415 from base.
+  Facts gained: RadarRange, CloakCost, CloakCostMoving, DecloakDistance (gen_facts.py); CmdCloak bridged.

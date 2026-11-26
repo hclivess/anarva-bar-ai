@@ -68,7 +68,7 @@ def scan(units_dir):
                 continue  # only the unit table named like the file
             u = top[name]
             d = {"name": name}
-            for key in ("metalcost", "energycost", "workertime", "extractsmetal", "energyupkeep", "buildtime", "metalmake", "energymake", "speed"):
+            for key in ("metalcost", "energycost", "workertime", "extractsmetal", "energyupkeep", "buildtime", "metalmake", "energymake", "speed", "radardistance", "sightdistance", "cloakcost", "cloakcostmoving", "mincloakdistance"):
                 x = _num(u.get(key))
                 if x is not None:
                     d[key] = x
@@ -181,7 +181,8 @@ def main():
     lines.append("")
     for key, fn in (("stockpiletime", "StockpileTime"), ("metalpershot", "ShotMetal"), ("shieldradius", "ShieldRadius"),
                     ("extractsmetal", "ExtractsMetal"), ("energyupkeep", "EnergyUpkeep"), ("factorytier", "FactoryTier"),
-                    ("needgeo", "NeedsGeo"), ("metalmake", "MetalMake"), ("energymake", "EnergyMake")):
+                    ("needgeo", "NeedsGeo"), ("metalmake", "MetalMake"), ("energymake", "EnergyMake"),
+                    ("radardistance", "RadarRange"), ("cloakcost", "CloakCost"), ("cloakcostmoving", "CloakCostMoving"), ("mincloakdistance", "DecloakDistance")):
         items = sorted((n, d[key]) for n, d in defs.items() if key in d)
         lines.append("dictionary %s_ = {" % key)
         lines.append(",\n".join('\t{"%s", %g}' % (n, v) for n, v in items))
