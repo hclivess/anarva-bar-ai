@@ -4002,10 +4002,23 @@ float FightGain(float value, float S, float D, float metal)
 	const float loss = p * metal * AiMin(1.f, r * r) + (1.f - p) * metal;
 	return value * p - loss;
 }
+// A unit's threat in a fight against the enemies we've seen: its generic threat x its fighting power against them
+// (Production::SurfPower: range gap, splash on a massed squad, hit chance) over its plain sqrt(dps x health). Summed
+// as generic threat, 11 Pawns judged 15.7 vs 9.3 attacked two Levelers and 10 died in 2 s to splash (cmd_m28, 7:00).
+Brain::Production::Mix fightMix;
+int fightMixFrame = -1;
+float EffThreat(const CCircuitDef@ d)
+{
+	if (fightMixFrame != ai.frame) { fightMix = Brain::Production::Mix(); Brain::Production::FillMix(fightMix, null); fightMixFrame = ai.frame; }
+	if (fightMix.w.length() == 0 || d.surfThrDmg <= 0.f) return d.threat;
+	const float plain = sqrt(AiMax(0.f, d.surfThrDmg) * AiMax(1.f, d.health));
+	string tm;
+	return d.threat * Brain::Production::SurfPower(d, fightMix, tm) / AiMax(1e-3f, plain);
+}
 float Strength(const array<CCircuitUnit@>@ us)
 {
 	float s = 0.f;
-	for (uint i = 0; i < us.length(); ++i) s += us[i].circuitDef.threat;
+	for (uint i = 0; i < us.length(); ++i) s += EffThreat(us[i].circuitDef);
 	return s;
 }
 
@@ -4183,7 +4196,7 @@ void Update()
 				if (nk < 0) break;
 				used[nk] = true;
 				pick.insertLast(freeUnits[nk]);
-				S += freeUnits[nk].circuitDef.threat;
+				S += EffThreat(freeUnits[nk].circuitDef);
 				metal += freeUnits[nk].circuitDef.costM;
 			}
 			// our own armed buildings within reach fight there too (as the enemy's count in its defence)
@@ -4206,7 +4219,7 @@ void Update()
 				float S2 = S, given = 0.f;
 				array<int> take;
 				for (uint q = 0; q < raidOps.length() && S2 <= need; ++q) {
-					for (uint k = 0; k < ops[raidOps[q]].units.length(); ++k) S2 += ops[raidOps[q]].units[k].circuitDef.threat;
+					for (uint k = 0; k < ops[raidOps[q]].units.length(); ++k) S2 += EffThreat(ops[raidOps[q]].units[k].circuitDef);
 					given += ops[raidOps[q]].value;
 					take.insertLast(raidOps[q]);
 				}
@@ -4588,6 +4601,7 @@ float CommFog(const AIFloat3& in p, float tHome, float seenThreat, float seenSpe
 	return dist / AiMax(1.f, sp) <= tHome ? hidden : 0.f;
 }
 float commDanger = 0.f, commCover = 0.f, commDps = 0.f;
+float commEnemyHp = 0.f, commOurDps = 0.f;  // the reaching enemies' health, our dps there (how long the fight lasts)
 
 /*
  * Wreck reclaim (owner: "24 minutes in, zero reclaim" with ~3000 metal in 47 wrecks and metal at 0/6700).
@@ -4653,13 +4667,13 @@ void CommForces(const AIFloat3& in p, float tHome)
 {
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 	const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
-	commDanger = 0.f; commDps = 0.f;
+	commDanger = 0.f; commDps = 0.f; commEnemyHp = 0.f; commOurDps = 0.f;
 	for (uint i = 0; i < n; ++i) {
 		CCircuitDef@ d = ed[i];
 		if (d is null || d.threat <= 0.f || (ef[i] & 4) != 0) continue;
 		const float reach = AiMax(0.f, ep[i].distance2D(p) - d.GetMaxRange());
-		if (!d.IsMobile()) { if (reach <= 0.f) { commDanger += d.threat; commDps += d.surfThrDmg; } continue; }
-		if (MoveTime(d, reach) <= tHome) { commDanger += d.threat * eh[i]; commDps += d.surfThrDmg * eh[i]; }
+		if (!d.IsMobile()) { if (reach <= 0.f) { commDanger += d.threat; commDps += d.surfThrDmg; commEnemyHp += d.health * eh[i]; } continue; }
+		if (MoveTime(d, reach) <= tHome) { commDanger += d.threat * eh[i]; commDps += d.surfThrDmg * eh[i]; commEnemyHp += d.health * eh[i]; }
 	}
 	{
 		float seenT = 0.f, seenS = 0.f, perThreatDps = 0.f; uint seenN = 0;
@@ -4672,14 +4686,17 @@ void CommForces(const AIFloat3& in p, float tHome)
 		}
 	}
 	commCover = riskUnit.circuitDef.power;
+	commOurDps = riskUnit.circuitDef.surfThrDmg;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	for (uint i = 0; i < all.length(); ++i) {
 		CCircuitUnit@ u = all[i];
 		const CCircuitDef@ d = u.circuitDef;
 		if (u is riskUnit || d.power <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
 		const float dist = u.GetPos(ai.frame).distance2D(p);
-		if (d.IsMobile() ? (MoveTime(d, dist) <= tHome) : (dist <= d.GetMaxRange()))
+		if (d.IsMobile() ? (MoveTime(d, dist) <= tHome) : (dist <= d.GetMaxRange())) {
 			commCover += d.power;
+			commOurDps += AiMax(0.f, d.surfThrDmg);
+		}
 	}
 }
 float RiskPDeath(const AIFloat3& in p, float tHome)
@@ -4688,8 +4705,19 @@ float RiskPDeath(const AIFloat3& in p, float tHome)
 	const float d2 = commDanger * commDanger, c2 = commCover * commCover;
 	const float lose = d2 / AiMax(1e-3f, d2 + c2);  // the fight there goes against us
 	// ...and it can't walk out: time to burn through its health vs time back to cover
-	const float tKill = (riskHealth > 0.f ? riskHealth : riskUnit.circuitDef.health) / AiMax(1e-3f, commDps);
-	return lose * tHome / AiMax(1e-3f, tHome + tKill);
+	// its health now, not its maximum: a damaged commander read as a fresh 3700 hp, re-engaged Levelers and Raiders
+	// three times in 6 s and died at 12:51 (cmd_m32) - the risk never rose as it took hits
+	const float tKill = (riskHealth > 0.f ? riskHealth : AiMax(1.f, riskUnit.GetHealth())) / AiMax(1e-3f, commDps);
+	const float pLose = lose * tHome / AiMax(1e-3f, tHome + tKill);
+	// ...or it is shot down while the fight is won: the fire aimed at it (its share of our power there x the reaching
+	// enemies' dps) over the time it stands in it - until they're dead (their health / our dps there) or it is out
+	// (tHome) - against its health now. With the "fight lost" term alone, an army of 3726 nearby made the commander's
+	// risk ~0 and it fought Levelers until it died at 13:26, the game lost (cmd_m33).
+	const float health = (riskHealth > 0.f ? riskHealth : AiMax(1.f, riskUnit.GetHealth()));
+	const float share = riskUnit.circuitDef.power / AiMax(1e-3f, commCover);
+	const float tExposed = AiMin(tHome, commEnemyHp / AiMax(1e-3f, commOurDps));
+	const float pFocus = AiMin(1.f, commDps * share * tExposed / health);
+	return 1.f - (1.f - pLose) * (1.f - pFocus);
 }
 float CommPDeath(const AIFloat3& in p, float tHome) { @riskUnit = commander; return RiskPDeath(p, tHome); }
 float UnitPDeath(CCircuitUnit@ u, const AIFloat3& in p, float tHome) { @riskUnit = u; riskHealth = 0.f; return RiskPDeath(p, tHome); }
@@ -4928,6 +4956,31 @@ float CatchTime(const AIFloat3& in c, const CCircuitDef@ cd, const AIFloat3& in 
 	const float closing = cd.speed - theirs;
 	return (closing > 0.f) ? gap / closing : 1e9f;
 }
+// What fighting enemy i is worth to the commander now: what it saves and kills, less the game it risks and the
+// building its time would do (-1e30 when it can't or shouldn't: not on our side, uncatchable, outgunned).
+float CommNet(uint i, const AIFloat3& in c, const CCircuitDef@ cd, const array<AIFloat3>@ ep, const array<AIFloat3>@ ev,
+	const array<CCircuitDef@>@ ed, const array<int>@ ef, const array<float>@ eh, const array<CCircuitUnit@>@ all, float V, float commRate)
+{
+	const CCircuitDef@ d = ed[i];
+	if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.surfThrDmg <= 0.f || (ef[i] & 2) == 0) return -1e30f;
+	if (!Assess::OnOurSide(ep[i])) return -1e30f;
+	const float t = CatchTime(c, cd, ep[i], d, ev[i].Length2D() * SECOND);
+	if (t >= 1e8f) return -1e30f;  // faster than the commander and out of its reach: a chase it can't win
+	const float stake = Command::OursThreatened(i, all, t) + Command::EnemyValue(i, Economist::Horizon());
+	// what fights there while we kill it, against the commander and our armed units within their reach
+	const float tFight = eh[i] * d.health / AiMax(1e-3f, cd.GetSustainedDps());
+	const float theirs = Command::Cover(ep[i], tFight);
+	float ours = cd.threat;
+	for (uint k = 0; k < all.length(); ++k) {
+		const CCircuitDef@ ud = all[k].circuitDef;
+		if (all[k] is commander || ud.threat <= 0.f || ud.surfThrDmg <= 0.f) continue;
+		const float reach = ud.GetMaxRange() + (ud.IsMobile() ? ud.speed * (t + tFight) : 0.f);
+		if (all[k].GetPos(ai.frame).distance2D(ep[i]) <= reach) ours += ud.threat;
+	}
+	if (ours <= theirs) return -1e30f;
+	const float risk = CommPDeath(ep[i], EscapeTime(ep[i])) * V;
+	return stake - risk - (t + tFight) * commRate;  // its time is our best builder's time
+}
 void CommDefendUpdate()
 {
 	if (commander is null || !Opening::done || !HasBase()) return;
@@ -4940,16 +4993,7 @@ void CommDefendUpdate()
 	// still on a fight: keep at it while the target lives, can still be caught and is on our side (a chase without
 	// those took the commander away after Pawns, faster than it, with no base, no extractors and no units: owner,
 	// 2026-11-25 "WHERE ARE YOU WALKING WITH THE COMMANDER ... YOU GO AWAY WITH THE COMMANDER TO HUNT PAWNS")
-	if (commFightTask !is null && commander.task is commFightTask) {
-		for (uint i = 0; i < n && i < ids.length(); ++i)
-			if (ids[i] == commFightTarget) {
-				if (ed[i] !is null && Assess::OnOurSide(ep[i]) && CatchTime(c, cd, ep[i], ed[i], ev[i].Length2D() * SECOND) < 1e8f) { commander.CmdAttackEnemy(commFightTarget); return; }
-				break;
-			}
-		AiLog("[ANV] CommDefend: commander stops (target gone, uncatchable or off our side)");
-		commFightTask.Abort(); @commFightTask = null; commFightTarget = -1;
-		return;
-	}
+
 	// what a second of the commander's time builds: the extractor it could put up per second of its build power
 	// (as the opener ranks producers per second of commander time)
 	float commRate = 0.f;
@@ -4961,27 +5005,22 @@ void CommDefendUpdate()
 	const float V = GameValue();
 	// the same arrays Command reads
 	Command::ePos = ep; Command::eDef = ed; Command::eFlags = ef; Command::eHp = eh; Command::eIds = ids; Command::eCost = ec;
+	// still on a fight: keep at it only while the same test that started it still pays - the risk is re-read as the
+	// commander takes damage (kept on target alone, it fought a Rogue while stake-risk fell 940 -> 213 -> 55 -> 15
+	// and died at 13:05 with an army of 3056 standing: the game lost, Canis vs Cortex cmd_m30)
+	if (commFightTask !is null && commander.task is commFightTask) {
+		for (uint i = 0; i < n && i < ids.length(); ++i)
+			if (ids[i] == commFightTarget) {
+				if (CommNet(i, c, cd, ep, ev, ed, ef, eh, all, V, commRate) > 0.f) { commander.CmdAttackEnemy(commFightTarget); return; }
+				break;
+			}
+		AiLog("[ANV] CommDefend: commander stops (target gone, or the fight no longer pays)");
+		commFightTask.Abort(); @commFightTask = null; commFightTarget = -1;
+		return;
+	}
 	int best = -1; float bestNet = 0.f;
 	for (uint i = 0; i < n && i < ids.length(); ++i) {
-		const CCircuitDef@ d = ed[i];
-		if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.surfThrDmg <= 0.f || (ef[i] & 2) == 0) continue;
-		if (!Assess::OnOurSide(ep[i])) continue;
-		const float t = CatchTime(c, cd, ep[i], d, ev[i].Length2D() * SECOND);
-		if (t >= 1e8f) continue;  // faster than the commander and out of its reach: a chase it can't win
-		const float stake = Command::OursThreatened(i, all, t) + Command::EnemyValue(i, Economist::Horizon());
-		// what fights there while we kill it, against the commander and our armed units within their reach
-		const float tFight = eh[i] * d.health / AiMax(1e-3f, cd.GetSustainedDps());
-		const float theirs = Command::Cover(ep[i], tFight);
-		float ours = cd.threat;
-		for (uint k = 0; k < all.length(); ++k) {
-			const CCircuitDef@ ud = all[k].circuitDef;
-			if (all[k] is commander || ud.threat <= 0.f || ud.surfThrDmg <= 0.f) continue;
-			const float reach = ud.GetMaxRange() + (ud.IsMobile() ? ud.speed * (t + tFight) : 0.f);
-			if (all[k].GetPos(ai.frame).distance2D(ep[i]) <= reach) ours += ud.threat;
-		}
-		if (ours <= theirs) continue;
-		const float risk = CommPDeath(ep[i], EscapeTime(ep[i])) * V;
-		const float net = stake - risk - (t + tFight) * commRate;  // its time is our best builder's time
+		const float net = CommNet(i, c, cd, ep, ev, ed, ef, eh, all, V, commRate);
 		if (net > bestNet) { bestNet = net; best = int(i); }
 	}
 	if (best < 0) return;
