@@ -105,6 +105,28 @@ everything in SQLite (`runs/replays.db`), so no replay is ever played twice:
 | First T3 gantry | 12 | 26.3 min | 24.3–30.8 |
 | Juggernaut / Behemoth / Titan | 1 each | 41 / 46 / 33 min | |
 
+**What winners build, minute by minute** (units built per game in each minute; the 24 most-built units):
+
+![Unit time map of 1v1 winners](docs/units_timeline.png)
+
+Wind is built hardest between minutes 6 and 9. The raiders arrive in the same window: Grunts (`corak`) at minutes
+2–6, Incisors (`corgator`) at 8–10. Winners build about 17 construction turrets per game, most of them at minutes
+8–10.
+
+**Where they build** (Feast of Hades, 15 winning players, both start sides overlaid, growing minute by minute):
+
+![Build heatmap on Feast of Hades](docs/heatmap_feast_of.gif)
+
+Extractors cover the whole map. Energy stays packed in the two base corners, and defences sit along the middle and
+the extractor fields.
+
+**Which units kill the most** (metal killed by attacking unit type, both players, all 1v1 replays):
+
+![Units ranked by metal killed in 1v1](docs/top_killers.png)
+
+At T1 the Incisor (`corgator`), the Grunt (`corak`) and the Blitz (`armflash`) lead. The heavy units at the top come
+from the longer games. Regenerate all three with `python tools/viz_units.py [--map "<map>"]`.
+
 Most 1v1 games are decided at T1: only 41 of 107 winners build a T2 factory. Expansion, the first construction
 turret by about five minutes, and the T1 army decide them. By 3:00 the winners average 8.4 wind turbines,
 5 extractors, about 6 fighters and 0.2 towers.
