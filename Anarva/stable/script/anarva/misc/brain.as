@@ -4591,7 +4591,21 @@ float OursThreatened(uint i, const array<CCircuitUnit@>@ mine, float tAnswer)
 		// the commander is the game: threatened, it is worth everything (left out, Raiders killed it at home at 13:12
 		// while the army of 58-69 reinforced an attack 1200 away, cmd_m77)
 		if (mine[k] is commander) {
-			if (commander.GetPos(ai.frame).distance2D(ePos[i]) <= ed.GetMaxRange() + ed.speed * AiMax(1.f, tAnswer)) v += GameValue();
+			// worth the game only as far as it can kill the commander: the chance the commander dies there in the time we
+			// need to answer (CommPDeath, all enemies near), this enemy's share of the threat near it. Counted as the
+			// whole game, every raider at home read 15000-16000 - every home op as valuable as every other, so no op gave
+			// units to another and lone Incisors met 2 units at a time (en6, 3:00-5:20)
+			const AIFloat3 cpos = commander.GetPos(ai.frame);
+			if (cpos.distance2D(ePos[i]) <= ed.GetMaxRange() + ed.speed * AiMax(1.f, tAnswer)) {
+				float near = 0.f;
+				for (uint j = 0; j < eDef.length(); ++j) {
+					const CCircuitDef@ ej = eDef[j];
+					if (ej is null || ej.surfThrDmg <= 0.f) continue;
+					if (cpos.distance2D(ePos[j]) <= ej.GetMaxRange() + ej.speed * AiMax(1.f, tAnswer)) near += ej.threat;
+				}
+				const float share = (near > 0.f) ? ed.threat / near : 1.f;
+				v += GameValue() * CommPDeath(cpos, AiMax(1.f, tAnswer)) * share;
+			}
 			continue;
 		}
 		if (d.IsMobile()) continue;

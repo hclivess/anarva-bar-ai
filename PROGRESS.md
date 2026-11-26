@@ -677,3 +677,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   raider read 15000-16000 (EnemyValue + OursThreatened): detaching never paid, so a losing 2-unit fight went ahead instead
   of a winning one with the army. Next: what a raider target is worth (the damage it can do before it is stopped, not the
   sum of everything it threatens), so the detachment's arithmetic can concentrate the army at home.
+- **A raider's threat to the commander by its kill chance (rv1):** was the whole game's value for any raider in reach of
+  the commander (15000-16000 per home op, no op gave units to another). Now GameValue x CommPDeath x this enemy's share of
+  the threat near it. rv1: 44 detachments; ahead at 8:00 for the first time on both - army 918 vs 540, metal 39.2 vs 31.8,
+  bank 114. Then 43 extractors/solars lost before 7:00 and metal 20.4 vs 56.4 at 12:00; points loss.
