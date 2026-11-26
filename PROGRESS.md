@@ -648,3 +648,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   their balance, not either one, is what decides. Next: one model for both - each unit's value as the metal it adds or
   saves over the horizon in the same simulation (claims that survive the measured raids vs raid losses it prevents).
 - **[ANV-CONVAL] logs the constructor value's inputs (cv1):** 0 before the lab (no constructor to build), then 626 -> 371 -> 86-167 as constructors are added and the horizon shortens with measured losses (H 272 -> 146, Lm 1081 -> 426). The fb3/fg1 split (454 vs 0.02 at 1:00) is the timing of the lab's first pick, not the formula: run-to-run variance, judged by mechanism.
+- **Replay view, first 4 minutes (replays.db: 24 Armada bot-lab 1v1 wins vs fg1):** winners by 4:00 - 0 towers (0-1),
+  9 extractors (6-10), 5 constructors (3-6), army 609 metal / 12 units (365-826). fg1: 1 tower, 4 extractors, 4
+  constructors, army 150. Winners don't tower early; they build MORE of both economy and army - we are not choosing badly
+  between them, we spend too slowly (the 2:00-3:00 swings: commander, lab, constructors idle or late, bank standing).
+  Next: spending throughput from the first minute, not towers.
