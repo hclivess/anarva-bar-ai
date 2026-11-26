@@ -3840,6 +3840,20 @@ AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3&
 		for (uint j = 0; j < sp.length(); ++j)
 			if (sp[j].distance2D(sp[i]) <= 2.f * reach) { c.x += sp[j].x; c.z += sp[j].z; ++k; }
 		cands.insertLast(AIFloat3(c.x / k, 0.f, c.z / k));
+		// ...and the spot with its two nearest: the centre of a triangle the commander builds from one place. The cluster
+		// average of 4-5 spots missed it - winners on Canis stand at (2525,5854), the centre of three spots 127-179 away,
+		// building them at 9/16/23 s; ours chose (2464,5696), 51 from one and 248 from the next (ob4/ob6)
+		int n1 = -1, n2 = -1;
+		for (uint j = 0; j < sp.length(); ++j) {
+			if (j == i) continue;
+			const float dj = sp[j].distance2D(sp[i]);
+			if (n1 < 0 || dj < sp[uint(n1)].distance2D(sp[i])) { n2 = n1; n1 = int(j); }
+			else if (n2 < 0 || dj < sp[uint(n2)].distance2D(sp[i])) n2 = int(j);
+		}
+		if (n2 >= 0) {
+			const AIFloat3 t3((sp[i].x + sp[uint(n1)].x + sp[uint(n2)].x) / 3.f, 0.f, (sp[i].z + sp[uint(n1)].z + sp[uint(n2)].z) / 3.f);
+			cands.insertLast(t3);  // (the simulation prices the short steps; winners' spots are 127-179 away, just past reach)
+		}
 	}
 	const float H = AiMax(1.f, Economist::Horizon());
 	const float ext = (Economist::mexT1 !is null) ? Economist::Extract(Economist::mexT1.GetName()) : 0.f;

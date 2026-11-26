@@ -481,3 +481,12 @@ The latest batch (D-gun and strength fixes) is being played.
 - **Commander assists the lab, reverted (ca1-3):** valued at its build power x the lab's metal per build-second, capped
   by spare metal, x production's value per metal. It took the commander off expansion (3-4 extractors at 4:00), all lost
   at 13-17 min, commander dead in all three. Assisting only pays with the income to feed it; ours is half the winners'.
+- **Opener: extractor-first charged the simulated lab delay (ob1-6):** the lab now stands at 50-67 s (was 60-119);
+  all three full games lost (trades 0.6 / 0.52 / 0.89), 3-6 extractors at 4:00 (winners 9).
+- **Start position (st0-1):** Canis winners stand at the centre of a triangle of three spots 127-179 away (e.g.
+  (2525,5854), (1634,5323)) and build them at 9/16/23 s; our candidates (cluster averages of 4-5 spots) never included
+  it, and we chose (2464,5696), 51 from one spot and 248 from the next. Each spot's triangle with its two nearest is now a
+  candidate: (2528,5877) scores 132244 vs 128689, and the pick became (1627,5323) - a winners' start. But from there the
+  opener builds one extractor, a solar and the lab: the extractor-first test compares "extractor then lab" with "lab
+  now" and the extractor's energy makes the lab wait; winners build extractor x3, solar x2, then the lab (~61 s). Next:
+  weigh short sequences (extractor, plant, lab), not single steps.
