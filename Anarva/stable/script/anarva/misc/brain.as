@@ -2790,6 +2790,17 @@ float MetalShare()
 	const float avail = aiEconomyMgr.metal.income + bank;
 	return (avail > 0.f) ? AiMin(1.f, AiSmoothMetalPull() / avail) : 1.f;
 }
+// The life we have measured, without the horizon floor: exposure / losses, or before any loss the mean age so far.
+// For a decision that pays only if producers live long (tier 2): floored by Horizon() - huge early, when the enemy has
+// no army yet - the upgrades read 36x at 1:48 and the lab took the army's metal (as4).
+float MeasuredLife()
+{
+	if (producerLosses > 0) return producerExposure / float(producerLosses);
+	int n = 0;
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	for (uint i = 0; i < mine.length(); ++i) if (IsProducer(mine[i].circuitDef)) ++n;
+	return producerExposure / float(AiMax(1, n));
+}
 float ProducerLife()
 {
 	const float floorH = Horizon();
@@ -2957,7 +2968,7 @@ bool Allowed(const CCircuitDef@ facDef)
 		// extractors: "payback 176s vs horizon 226s, next extractor 28s", 64 M/s at 12:00, sp2.) The upgrade returns its
 		// producers' life over its payback per metal; it goes when that beats the army's value per metal and returns
 		// more than it costs.
-		const float life = Brain::Economist::ProducerLife();
+		const float life = Brain::Economist::MeasuredLife();
 		const float ret = AiMax(0.f, life - Brain::Economist::mohoReady) / AiMax(1.f, payback);  // earns only once it stands
 		const float armyRet = Brain::Production::lastBestRatio;
 		// (no fighter priced yet: the army's worth is unknown, so it can't be beaten - it read 0 and tier 2 began at 2:00)

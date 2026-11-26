@@ -446,3 +446,7 @@ The latest batch (D-gun and strength fixes) is being played.
   0.75 / 0.43). as6: income 75.6 at 12:00 (our highest) with an army of 162. **Next:** ProducerLife is floored by
   Horizon() (the earliest the enemy could take all we own), which is huge early: the gate read 36x vs the army's 24x and
   opened at 1:48 (as4). The floor must not make an early life look long.
+- **Tier 2 on measured life (ml1-3, mu1-3):** the tech gate uses the producer life measured in this game (exposure /
+  losses, or mean age), not floored by Horizon(): it opens at 3.8-5.1 min, labs at 9:34-12:39, first upgrades 13:31 and
+  15:23 (mu2/mu3) - replays.db 1v1 winners: lab median 12.7 min, first upgrade median 14.8. Upgrade-spot rejections are
+  logged ([ANV-MEXUP]). All games still lost (trades 0.38-0.64): T2 timing now matches the winners; the army's fights don't.
