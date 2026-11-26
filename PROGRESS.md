@@ -592,3 +592,8 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   0.46, economy collapsing in ev4. The principle holds; our fight estimate can't carry a higher stake yet - more value
   means more fights we can't win. Kept: extractors valued at the metal of their own spot, not the map average (owner:
   "different metal spots have different values"), in the enemy value, raid loss and threatened-producer value.
+- **Per-fight range gap and splash vs measured squad spacing, reverted (fs1-3, #108):** both sides' power computed
+  against the units actually at the fight (SurfPower with the squad's median nearest-neighbour spacing). The army got
+  far more cautious (206-591 skipped fights a game, 31-82 pull-backs) and traded worse: 0.57 / 0.50 / 0.64 against
+  0.76-0.92 committed. The model's numbers are not calibrated to what fights actually cost: the next step is to check
+  the per-fight estimate against measured fight outcomes ([ANV-FIGHT] lost vs killed per op) before it decides.
