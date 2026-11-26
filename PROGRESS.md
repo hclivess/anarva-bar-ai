@@ -692,3 +692,7 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   value per metal of army. pk1: 229 assignments (e.g. Pawn -> (624,4160): 1620 lost in 391 s, win 0.77, 487 > 27); 28
   extractors lost; army ahead at 12:00 (1857 vs 1231), kills 116/208. But metal stalls at ~20 M/s from 8:00 while BARb's
   grows (50.4 at 12:00): expansion after 8:00 is the gap now. Points loss.
+- **pk1 expansion after 8:00, traced (not yet fixed):** 8-12 constructors, 64-74 unclaimed spots, but 6-8 extractors: 8
+  built vs 22 lost after 8:00. 6 constructor deaths only. 328 job switches ([ANV-SWITCH]) - e.g. "1->4 left 1672": a
+  caretaker job dropped for energy with 1672 build-s left, the "any job yields to energy when energy binds" rule - jobs
+  left half-built. Lead to confirm next: how often that rule fires now that the energy plan moves more.
