@@ -6717,7 +6717,11 @@ bool CommWorth(const AIFloat3& in p, float gain, float tJob = 0.f)
 	if (commander !is null && !knownEmpty && !Watched(p) && p.distance2D(commander.GetPos(ai.frame)) > commander.circuitDef.GetBuildDistance()) {
 		const float tNow = float(ai.frame) / SECOND;
 		const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
-		const float nR = AiMax(0.f, tNow - Opening::raidLabAt) * rate;
+		// only raiders built early enough to have walked here: their lab's start + the walk from their base to p. All
+		// built since their lab, the count read ~5-8 at 82 s, every extractor job read risk 3700-4341 at danger 0.0-0.4
+		// and the commander was redirected to the end with 2 extractors at 2:00 (swe36; BARb's army then: 146 metal)
+		const float walk = AiEnemyBasePos().distance2D(p) / AiMax(1.f, Opening::raidSpeed);
+		const float nR = AiMax(0.f, tNow + tJob - Opening::raidLabAt - Opening::raidUnitTime - walk) * rate;
 		const float Sc = Opening::Strength(commander.circuitDef);
 		float Pu = 0.f;
 		if (nR * Opening::raidStrength > Sc)

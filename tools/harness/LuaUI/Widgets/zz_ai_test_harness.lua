@@ -16,7 +16,7 @@ local function teamLine(teamID)
 	local mCur, mStor, _, mInc = Spring.GetTeamResources(teamID, "metal")
 	local eCur, eStor, _, eInc = Spring.GetTeamResources(teamID, "energy")
 	local units = Spring.GetTeamUnits(teamID) or {}
-	local army, eco = 0, 0
+	local army, eco, build = 0, 0, 0
 	for i = 1, #units do
 		local ud = UnitDefs[Spring.GetUnitDefID(units[i])]
 		if ud then
@@ -24,14 +24,17 @@ local function teamLine(teamID)
 				army = army + ud.metalCost
 			elseif not ud.canMove then
 				eco = eco + ud.metalCost
+			elseif ud.isBuilder and not (ud.customParams and ud.customParams.iscommander) then
+				-- mobile builders (not the commanders, one each): counted nowhere, a constructor read as metal lost
+				build = build + ud.metalCost
 			end
 		end
 	end
 	local hist = Spring.GetTeamStatsHistory(teamID, 0, Spring.GetTeamStatsHistory(teamID))
 	local last = hist and hist[#hist] or {}
-	return string.format("team=%d units=%d army_m=%d static_m=%d m_inc=%.1f e_inc=%.0f m=%d/%d e=%d/%d killed_m=%d lost_m=%d dmg_out=%d dmg_in=%d",
+	return string.format("team=%d units=%d army_m=%d static_m=%d m_inc=%.1f e_inc=%.0f m=%d/%d e=%d/%d killed_m=%d lost_m=%d dmg_out=%d dmg_in=%d build_m=%d",
 		teamID, #units, army, eco, mInc or 0, eInc or 0, mCur or 0, mStor or 0, eCur or 0, eStor or 0,
-		last.unitsKilled or 0, last.unitsDied or 0, last.damageDealt or 0, last.damageReceived or 0)
+		last.unitsKilled or 0, last.unitsDied or 0, last.damageDealt or 0, last.damageReceived or 0, build)
 end
 
 -- What each team has built, by kind and tech level (diagnostic: when do the bots tech, convert, expand?)

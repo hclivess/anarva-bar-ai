@@ -15,7 +15,7 @@ import sys
 import time
 
 STAT = re.compile(r"\[HARNESS\] stats f=(\d+) dead=\w+ team=(\d) units=\d+ army_m=(\d+) static_m=(\d+) m_inc=([\d.]+) "
-                  r"e_inc=(\d+) m=[\d/]+ e=(\d+)/(\d+) killed_m=(\d+) lost_m=(\d+) dmg_out=(\d+) dmg_in=(\d+)")
+                  r"e_inc=(\d+) m=[\d/]+ e=(\d+)/(\d+) killed_m=(\d+) lost_m=(\d+) dmg_out=(\d+) dmg_in=(\d+)(?: build_m=(\d+))?")
 # stat -> how ours is compared with theirs (bigger is better for all; damage and kills as a share of the exchange)
 STATS = ["metal income", "energy short", "army", "buildings", "army+buildings", "damage share", "kill share"]
 # stats that stop a game: the owner's list (energy, metal, army, damage taken vs dealt) and the total value. Buildings
@@ -25,11 +25,14 @@ JUDGED = [s for s in STATS if s != "buildings"]
 
 
 def values(t):
-    f, team, army, static, minc, einc, ecur, esto, killed, lost, dout, din = t
+    f, team, army, static, minc, einc, ecur, esto, killed, lost, dout, din, build = t
+    build = int(build or 0)
     return {
         "energy short": 1.0 if int(ecur) * 10 < int(esto) else 0.0,  # bank under a tenth: production waits
         "metal income": float(minc), "energy income": float(einc), "army": int(army), "buildings": int(static),
-        "army+buildings": int(army) + int(static),
+        # all we own: constructors too (the harness counted them nowhere: two constructor vehicles, ~240 metal, read as
+        # being outplayed at 2:00 with buildings level, swe36)
+        "army+buildings": int(army) + int(static) + build,
         "damage share": int(dout) / max(1, int(dout) + int(din)),
         "kill share": int(killed) / max(1, int(killed) + int(lost)),
     }
