@@ -460,3 +460,7 @@ The latest batch (D-gun and strength fixes) is being played.
   FightGain prices loss) and is forgotten when the place is in sight again; max skip defence 23-370 (was 34795, fr1).
   Trades 0.78 / 0.97 / 0.78, armies near even at 20:00 (5543 vs 6141, 5747 vs 6711), but extractors fall 10-12 -> 3 and
   buildings 1065-3880 vs 28-29k: the loss is now our economy, not the army.
+- **Towers at raided extractors (tw1-3):** the core skipped every non-urgent job where enemy influence was negative, so
+  tower orders at raided extractors stood untaken (up to 139 s) and were replaced unbuilt. Lifted for defence jobs (the
+  builder's risk is weighed by builder safety). Towers by 8/12 min: 4/7, 2/3, 3/4 (was 1/4, sd3; winners 6.2 by 8:00).
+  Trades 0.64 / 0.42 / 0.62, all lost; extractors still fall (lost 14-23 per game).
