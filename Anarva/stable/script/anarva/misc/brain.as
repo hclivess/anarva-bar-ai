@@ -296,7 +296,7 @@ void Update()
 
 namespace EcoPos {
 bool wantConstructor = false;  // (kept for the status line)
-float constructorValue = 0.f;  // metal-eq one more constructor saves (Production compares it with every other unit)
+float constructorValue = 0.f; int conLogFrame = -100000;  // metal-eq one more constructor saves (Production compares it with every other unit)
 array<AIFloat3> raidPos; array<float> raidVal;  // expected enemy economy (Command objectives)
 // the cheapest mobile constructor any factory we own can build (unit facts via Facts::BuildOptions)
 CCircuitDef@ CheapestConstructor()
@@ -478,6 +478,12 @@ void Update()
 	const bool work = unclaimed > 0 && unemployed == 0 && conDef !is null && saved > Economist::MetalValue(conDef) && Director::ratio >= 1.f;
 	// the value Production weighs against every other unit: the yield saved, while every constructor has a job
 	constructorValue = (unclaimed > 0 && unemployed == 0) ? saved : 0.f;
+	if (ai.frame - conLogFrame >= SECOND * 30) {
+		conLogFrame = ai.frame;
+		AiLog("[ANV-CONVAL] spots " + spWork.length() + " unclaimed " + unclaimed + " unemployed " + unemployed + " N " + int(N) + " H " + int(Hc)
+			+ " Lm " + (Lm > 1e20f ? "-" : ("" + int(Lm))) + " vN " + int(vN) + " vN1 " + int(vN1) + " share " + F2(Economist::MetalShare())
+			+ " first work " + (spWork.length() > 0 ? int(spWork[0]) : -1) + " yield " + (spYield.length() > 0 ? F2(spYield[0]) : "-") + " -> " + int(constructorValue));
+	}
 	wantConstructor = work;
 	aiFactoryMgr.buildpowerRatio = 0.f;  // the core never asks for constructors itself: Production weighs constructorValue (#96)
 }

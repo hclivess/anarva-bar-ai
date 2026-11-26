@@ -647,3 +647,4 @@ and what didn't is consolidated at the top of CLAUDE.md; the opening design is o
   the whole game from economy to army: the two values come from different models (claim schedule vs win share) and
   their balance, not either one, is what decides. Next: one model for both - each unit's value as the metal it adds or
   saves over the horizon in the same simulation (claims that survive the measured raids vs raid losses it prevents).
+- **[ANV-CONVAL] logs the constructor value's inputs (cv1):** 0 before the lab (no constructor to build), then 626 -> 371 -> 86-167 as constructors are added and the horizon shortens with measured losses (H 272 -> 146, Lm 1081 -> 426). The fb3/fg1 split (454 vs 0.02 at 1:00) is the timing of the lab's first pick, not the formula: run-to-run variance, judged by mechanism.
