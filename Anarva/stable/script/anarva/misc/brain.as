@@ -348,6 +348,20 @@ float SpotLifeWith(const AIFloat3& in q, const AIFloat3& in extraAt, float extra
 // expected to hit a spot at q over the next Hr seconds - none before the first can arrive, then one round trip of a
 // raider apart, each hitting q with the chance P that it clears q before our answer (as SpotLifeWith). A raided
 // extractor is rebuilt, so each raid costs one RaidLoss, not the spot.
+// How soon what beats a raider (no scouts; the commander included, as the raid ledger counts it) reaches q; 1e30 if
+// nothing does. A warning of a raid is worth only up to this: it lets that answer come sooner.
+float AnswerDelay(const AIFloat3& in q)
+{
+	float tAns = 1e30f;
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	for (uint k = 0; k < mine.length(); ++k) {
+		const CCircuitDef@ kd = mine[k].circuitDef;
+		if (!kd.IsMobile() || kd.surfThrDmg <= 0.f || (kd.buildSpeed > 0.f && mine[k] !is commander) || Scout::IsScout(mine[k])
+			|| Opening::Strength(kd) < Opening::raidStrength) continue;
+		tAns = AiMin(tAns, mine[k].GetPos(ai.frame).distance2D(q) / AiMax(1.f, kd.speed));
+	}
+	return tAns;
+}
 float SpotRaids(const AIFloat3& in q, float Hr, const AIFloat3& in extraAt, float extraSpeed)
 {
 	if (Opening::raidSpeed <= 0.f || Opening::raidDps <= 0.f || Economist::mexT1 is null) return 0.f;
@@ -957,7 +971,9 @@ void Update()
 						for (uint k = 0; k < rp.length() && !cov; ++k) cov = pt.distance2D(rp[k]) <= rr[k];
 						if (!cov) inside += step;
 					}
-					v += Economist::MetalValue(mine[i].circuitDef) * (inside / eSpeed) / Hw;
+					// worth min(warning, the answer's delay), nothing with no answer (a 21-metal Flea read ~2000 with no army and the
+					// commander away - 79 per metal, twice over a Pawn, swe100)
+					{ const float tAns = EcoPos::AnswerDelay(q); if (tAns < 1e29f) v += Economist::MetalValue(mine[i].circuitDef) * AiMin(inside / eSpeed, tAns) / Hw; }
 				}
 			}
 			const float ratio = v / AiMax(1.f, Economist::MetalValue(defs[di]));
@@ -1057,7 +1073,9 @@ float WarningValue(const CCircuitDef@ d)
 				for (uint k = 0; k < rp.length() && !cov; ++k) cov = pt.distance2D(rp[k]) <= rr[k];
 				if (!cov) inside += R / 4.f;
 			}
-			v += Economist::MetalValue(mine[i].circuitDef) * (inside / eSpeed) / Hw;
+			// worth min(warning, the answer's delay), nothing with no answer (a 21-metal Flea read ~2000 with no army and the
+			// commander away - 79 per metal, twice over a Pawn, swe100)
+			{ const float tAns = EcoPos::AnswerDelay(q); if (tAns < 1e29f) v += Economist::MetalValue(mine[i].circuitDef) * AiMin(inside / eSpeed, tAns) / Hw; }
 		}
 		best = AiMax(best, v);
 	}
