@@ -508,8 +508,23 @@ void Update()
 			float seenM = 0.f, unseenSum = 0.f;
 			for (uint k = 0; k < rp.length(); ++k) { if (rSeen[k]) seenM += 1.f; else unseenSum += rTakenRaw[k]; }
 			const float room = AiMax(0.f, float(Economist::mexes.length()) - seenM);
-			const float scaleU = (unseenSum > room && unseenSum > 0.f) ? room / unseenSum : 1.f;
-			for (uint k = 0; k < rp.length(); ++k) rv[k] *= rSeen[k] ? 1.f : rTakenRaw[k] * scaleU;
+			// ...and they claim as we do, nearest their base first (their constructors' walk): the room fills the unseen
+			// spots in that order, each up to what its last sighting allows. Spread evenly, every unseen corner read
+			// equally likely and the Blitzes walked one each to empty far spots: 8 raids, "target gone" after 11-120 s,
+			// 0 killed, the army never fought by 4:00 (swe80)
+			const AIFloat3 eb = AiEnemyBasePos();
+			array<int> order;
+			for (uint k = 0; k < rp.length(); ++k) if (!rSeen[k]) order.insertLast(int(k));
+			for (uint a = 1; a < order.length(); ++a) {  // insertion sort by distance from their base
+				const int x = order[a]; const float dx = rp[x].distance2D(eb);
+				int b = int(a) - 1;
+				while (b >= 0 && rp[order[b]].distance2D(eb) > dx) { order[b + 1] = order[b]; --b; }
+				order[b + 1] = x;
+			}
+			array<float> occ(rp.length());
+			float left = room;
+			for (uint a = 0; a < order.length(); ++a) { const int x = order[a]; occ[x] = AiMin(left, rTakenRaw[x]); left -= occ[x]; }
+			for (uint k = 0; k < rp.length(); ++k) rv[k] *= rSeen[k] ? 1.f : occ[k];
 		}
 		raidPos = rp; raidVal = rv;
 	}
