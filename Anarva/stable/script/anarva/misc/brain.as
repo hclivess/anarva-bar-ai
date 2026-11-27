@@ -393,7 +393,20 @@ float SpotRaids(const AIFloat3& in q, float Hr, const AIFloat3& in extraAt, floa
 	const float perSite = tKill + gap / AiMax(1.f, Opening::raidSpeed);
 	const float cleared = (answer < 1e29f) ? AiMax(1.f, answer / AiMax(1.f, perSite)) : nSites;
 	const float P = AiMin(1.f, cleared / nSites) * (1.f - hold);
-	const float model = AiMax(0.f, Hr - tFirst) / cycle * P;
+	// ...raiders that stay on our side don't go home between raids: they walk from site to site and come back to q
+	// about every nSites x perSite. While armed enemies stand on our side the shorter of the two cycles counts (timed
+	// by round trips the model read our far claims as raided once in ~2 minutes; Grunts on our side took them within
+	// a minute of their claim, swe110-123)
+	float cyc = cycle;
+	{
+		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+		bool onOurs = false;
+		for (uint i = 0; i < ne && !onOurs; ++i)
+			if (ed[i] !is null && ed[i].IsMobile() && ed[i].GetSustainedDps() > 0.f && !ed[i].IsAbleToFly() && Assess::OnOurSide(ep[i])) onOurs = true;
+		if (onOurs) cyc = AiMin(cycle, AiMax(1.f, nSites * perSite));
+	}
+	const float model = AiMax(0.f, Hr - tFirst) / cyc * P;
 	// ...and at least what has happened here (feedback, owner: "ignores losses? is there no feedback loop?"): the producers
 	// we lost within one raid's reach between sites, at the rate since the first loss, over what is left. The model alone
 	// spread raids over every spot alike: our far extractors fell to raiders the army never met while the defence value
