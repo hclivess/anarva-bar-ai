@@ -417,12 +417,21 @@ float DefenceGain(const CCircuitDef@ d, const AIFloat3& in at)
 		const float r0 = SpotRaids(q, Hd, q, 0.f), r1 = SpotRaids(q, Hd, at, d.speed);
 		gain += MexPorc::RaidLoss(mine[i], con) * AiMax(0.f, r0 - r1);
 	}
+	// ...and on the claims our constructors will make (the ledger): the constructor is credited with every claim net of
+	// its raids, and the fighter that cuts those raids was credited only with the 3-4 extractors we held - the lab made
+	// 3-5 constructors and its first fighter at 150-196 s, against 1v1 winners' one constructor and a fighter at ~95 s
+	// (replays.db, 107 winner team-games; swe100-105)
+	for (uint j = 0; j < ledgerPos.length(); ++j) {
+		const float r0 = SpotRaids(ledgerPos[j], ledgerRem[j], ledgerPos[j], 0.f), r1 = SpotRaids(ledgerPos[j], ledgerRem[j], at, d.speed);
+		gain += ledgerLoss[j] * AiMax(0.f, r0 - r1);
+	}
 	return gain * odds;
 }
 bool wantConstructor = false;  // (kept for the status line)
 float constructorValue = 0.f; int conLogFrame = -100000; float spendLog = 0.f;
 int conValueFrame = -1;  // when constructorValue was computed (the plant's choice recomputes it if older)  // metal-eq one more constructor saves (Production compares it with every other unit)
 array<AIFloat3> raidPos; array<float> raidVal;  // expected enemy economy (Command objectives)
+array<AIFloat3> ledgerPos; array<float> ledgerRem, ledgerLoss;  // the ledger's claims within the horizon (pos, time left, raid loss)
 // the cheapest mobile constructor any factory we own can build (unit facts via Facts::BuildOptions)
 CCircuitDef@ CheapestConstructor()
 {
@@ -612,6 +621,7 @@ void Update()
 	// until it dies, whichever comes first - its measured life once producers have been lost (no horizon floor)
 	const float Lm = (Economist::producerLosses > 0) ? Economist::MeasuredLife() : 1e30f;
 	float vN = 0.f, vN1 = 0.f, cum = 0.f;
+	ledgerPos.resize(0); ledgerRem.resize(0); ledgerLoss.resize(0);
 	for (uint j = 0; j < spWork.length(); ++j) {
 		cum += spWork[j];
 		// on the ledger: a claimed spot yields from its claim to the horizon less the raids that hit it there (each a
@@ -621,6 +631,8 @@ void Update()
 		const float lossJ = Economist::MetalValue(Economist::mexT1) + spYield[j] * (spWork[j]);
 		vN += AiMax(0.f, spYield[j] * AiMax(0.f, Hc - tN) - SpotRaids(spPos[j], AiMax(0.f, Hc - tN), spPos[j], 0.f) * lossJ);
 		vN1 += AiMax(0.f, spYield[j] * AiMax(0.f, Hc - tN1) - SpotRaids(spPos[j], AiMax(0.f, Hc - tN1), spPos[j], 0.f) * lossJ);
+		// the claims the current constructors make within the horizon: what a fighter protects too (DefenceGain)
+		if (tN < Hc) { ledgerPos.insertLast(spPos[j]); ledgerRem.insertLast(Hc - tN); ledgerLoss.insertLast(lossJ); }
 	}
 	float saved = (vN1 - vN) * Economist::MetalShare();
 	// ...and it is build power: it spends metal that otherwise sits unspent (income + bank over a producer's life, less
