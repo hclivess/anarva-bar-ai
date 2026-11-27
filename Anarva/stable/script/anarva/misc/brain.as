@@ -4277,8 +4277,10 @@ void PrepareTail(const array<AIFloat3>@ sp, const array<float>@ si, const array<
 // one per (walk + extractor build); the k-th spot comes at labAt + sqrt(2 k conTime / rate). Each yields its kept
 // income to the end of the horizon, less the constructors' cost. (Income held constant after the hand-over made a
 // lab worth nothing until the commander had built everything: lab first 28.7k vs 204k, lab at 6478 s.)
+string tailWhy = "";  // the first claims' inputs, for the start log
 float TailGrowth(const Sim@ s, float end)
 {
+	tailWhy = "";
 	if (s.lab < 0 || labs[s.lab].con is null || Economist::mexT1 is null) return 0.f;
 	const Lab@ L = labs[s.lab];
 	const float mexBuild = Economist::mexT1.buildTime / AiMax(1.f, L.con.buildSpeed);
@@ -4325,6 +4327,7 @@ float TailGrowth(const Sim@ s, float end)
 		// with two spots 104-167 out, built at 9 and 16 s (replays.db ea25036b, 18a2046b, 57d1df6a; swe38)
 		const float conUsed = AiMin(float(k), (tk - s.labAt) / AiMax(1.f, conEvery) + 1.f);  // made by then (the first at once)
 		best = AiMax(best, v - conUsed * conCost);
+		if (k <= 3) tailWhy += " k" + k + "@" + int(tk) + " hold " + F2(hold) + " v " + int(v) + " cons " + int(conUsed * conCost);
 	}
 	return best;
 }
@@ -4683,7 +4686,7 @@ AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3&
 		// changes is in the plan's value: the commander's first extractors, the constructors' walks to every later
 		// spot at the share kept from here (TailGrowth), and how soon the raid comes.)
 		const float terr = 0.f;
-		AiLog("[ANV-START] candidate (" + int(planHome.x) + "," + int(planHome.z) + ") value " + int(v) + " [" + Describe(os, 0.f, H) + " tail " + int(TailGrowth(os, H))
+		AiLog("[ANV-START] candidate (" + int(planHome.x) + "," + int(planHome.z) + ") value " + int(v) + " [" + Describe(os, 0.f, H) + " tail " + int(TailGrowth(os, H)) + " (" + tailWhy + ")"
 			+ " con " + ((os.lab >= 0 && labs[os.lab].con !is null) ? labs[os.lab].con.GetName() : "none") + " raid " + int(raidArrive) + "]");
 		if (v > bestV) { bestV = v; bestP = planHome; }
 	}
