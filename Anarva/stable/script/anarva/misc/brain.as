@@ -5871,6 +5871,14 @@ void Update()
 				const float gap = fc.distance2D(cp[i]) - fRange;
 				const float closing = fSpeed - cspd[i];
 				t = (gap <= 0.f) ? 0.f : ((closing > 0.f) ? gap / closing : 1e9f);
+				// ...caught before it reaches its side (the midline toward their base at its speed), or not at all: Pawns (87)
+				// chased Grunts (81) and Incisors (85) - three ops 'target gone', 0 killed - while raiders hit our extractors
+				// (damage taken 1080 vs dealt 151 at 4:00, swe110). A raider standing at a spot (speed ~0) stays a target.
+				if (t > 0.f && t < 1e8f) {
+					const float dUs = basePos.distance2D(cp[i]), dThem = AiEnemyBasePos().distance2D(cp[i]);
+					const float tEsc = AiMax(0.f, (dThem - dUs) * 0.5f) / AiMax(1.f, cspd[i]);
+					if (t > tEsc) t = 1e9f;
+				}
 			}
 			// The defence is what fights there while we kill the target: enemies within reach of it for as long as the
 			// fight lasts (its health over our dps; they answer once it starts). Counting everything that could reach the
