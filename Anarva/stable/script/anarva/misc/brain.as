@@ -5631,6 +5631,7 @@ void Update()
 		fRange /= AiMax(1.f, float(pool.length()));
 		array<float> score(cp.length());
 		array<float> dfc(cp.length());
+		array<float> tFi(cp.length());  // the free units' time to kill each target (detachments must arrive within it)
 		// An unscouted spot isn't undefended: expect the enemy's towers per extractor among what we've seen, at their mean
 		// threat (live). Taken as 0, ten lone Pawns raided nine spots at 5:40 and light lasers killed 8 of them (Canis vs
 		// Cortex, cmd_m19); Armada winners there face 6.2 towers by 8:00 the other way round (replays.db, 28 games).
@@ -5658,6 +5659,7 @@ void Update()
 			// spot during our whole march (60 s+) put BARb's whole army, commander included, on every lone raider: no op
 			// was ever made, defend=0 while Favs and Flashes killed 13 producers (Eye of Horus 1v1, 2026-11-25).
 			const float tFight = chp[i] / AiMax(1e-3f, freeDps);
+			tFi[i] = tFight;
 			// the same test a running op must keep passing (what can reach the squad on its way, not only at the
 			// target): launched on the target alone, 269 of 292 raids pulled back at once (Canis 2026-11-26)
 			// on the way: an enemy fights the squad only where it can reach the path by the time the squad is there - here
@@ -5726,7 +5728,10 @@ void Update()
 			// first) until it can be won, if it is worth more than those raids (players pull raiders back when the base
 			// is hit: on Feast of Hades our Grunts raided far spots one by one while Gators killed our extractors and
 			// Command skipped them, strength 1.1 vs 4.3, round 20).
-			if (S <= need && cid[best] >= 0 && Assess::OnOurSide(cp[best])) {
+			// Not only when the free units can't win: under the square law every unit added lowers the loss, and a raid unit
+			// that kills nothing gives up little - with "only if we can't win" two Blitzes fought Incisors on our side
+			// (strength 3.4 vs 2.2, ~1000 damage taken for 120 killed) while two more raided empty spots and killed 0 (swe78)
+			if (cid[best] >= 0 && Assess::OnOurSide(cp[best])) {
 				// A detachment, not whole ops: the units nearest the raid, from ops worth less than what it threatens, one
 				// by one until they beat it; the rest keep their task (owner, 2026-11-26: the cheapest units that beat the
 				// raider). Each op gives up its value in the share of strength it loses.
@@ -5742,14 +5747,24 @@ void Update()
 				array<bool> du2(du.length());
 				float S2 = S, given = 0.f, metal2 = metal;
 				array<int> takeIdx;
-				while (S2 <= need) {
+				// the fight is on from the squad's arrival until it has killed the target: a unit arriving after that misses it
+				float tSquad = 0.f;
+				for (uint q = 0; q < pick.length(); ++q)
+					tSquad = AiMax(tSquad, pick[q].GetPos(ai.frame).distance2D(cp[best]) / AiMax(1.f, pick[q].circuitDef.speed));
+				const float tEnd = tSquad + tFi[best];
+				while (true) {
 					int nk = -1;
 					for (uint k = 0; k < du.length(); ++k) if (!du2[k] && (nk < 0 || dd[k] < dd[nk])) nk = int(k);
 					if (nk < 0) break;
 					du2[nk] = true;
+					if (dd[nk] / AiMax(1.f, du[nk].circuitDef.speed) > tEnd) break;  // nearest first: the rest are later still
 					const float e = EffThreat(du[nk].circuitDef);
+					const float g = ops[dop[nk]].value * e / AiMax(1e-3f, opS[dop[nk]]);
+					// while it can't be won every unit counts (as before); once it can, a unit joins when the loss it saves
+					// beats what its raid gives up
+					if (S2 > need && FightGain(cv[best], S2 + e, dfc[best], metal2 + du[nk].circuitDef.costM) - FightGain(cv[best], S2, dfc[best], metal2) <= g) break;
 					S2 += e; metal2 += du[nk].circuitDef.costM;
-					given += ops[dop[nk]].value * e / AiMax(1e-3f, opS[dop[nk]]);
+					given += g;
 					takeIdx.insertLast(nk);
 				}
 				if (takeIdx.length() > 0 && FightGain(cv[best], S2, dfc[best], metal2) > FightGain(cv[best], S, dfc[best], metal) + given) {
