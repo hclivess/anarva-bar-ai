@@ -166,3 +166,15 @@ Building by building (runs/friend2, BUILT lines; distances from start):
 - **Vritrasura:** extractors 11/19/29 s (178-202), 2 solars, wind, bot lab 70 s; constructors 79/102/125/171/184 s then ~10 more by 5:45, 2 rez bots; extractors claimed across the map by 6:00 at 904-4709 (13 by 6:00, 39 all game, 22 upgraded to moho); energy 54 winds, 12 advanced solars, 4 fusions; 29 construction turrets; air plant 7:19, advanced lab 10:41, two T3 gantries 15:32 and 21:57. Army: a few Warriors early (31 all game), 192 Ticks, then Marauders, Razorbacks, Vanguards.
 - **Anarva:** extractor 12 s, then 5 winds, extractors 66/77 s; vehicle plant 114 s AND bot lab 134 s; 1 constructor by 5:40; Pawns/Blitz stream from 2:30; 13 extractors all game, 0 mohos, 0 fusions, 8 construction turrets; advanced lab 17:09 (42 failed starts); factories idle 13:45-25:00 (lost orders).
 - **The reason (not the numbers):** expansion is the first investment - constructors back to back to every reachable spot, the army only what holds that spread (cheap raiders), then scaling (mohos, fusion, build power that spends the income), tech when the economy carries it. Our constructor value must see the far spots paying; a second T1 factory only when it adds what the first can't.
+
+## 1v1 winners' lab output by 3:00 (replays.db, 107 winner team-games, 2026-11-27)
+
+Built table, frames <= 5400, mobile non-commander units by the winning team (q1 / median / q3):
+- first armed (non-builder) unit: 76 / 95 / 117 s
+- constructors before the first armed unit: 0 / 1 / 2
+- constructors by 3:00: 2 / 3 / 4
+- army metal by 3:00: 234 / 341 / 430
+
+Reason (not a target): the lab interleaves - one constructor, then army ready for the first raid (~95-135 s), constructors
+mixed in after; the commander carries the early economy. Anarva (swe100-105): 3 constructors first, first armed unit
+150-196 s, army 54-162 by 3:00.
