@@ -1044,7 +1044,30 @@ void Update()
 	array<float> tr(assets.length());
 	for (uint k = 0; k < assets.length(); ++k)
 		tr[k] = AiMax(1.f, armyAt.distance2D(Intel::CellCenter(assets[k])) / ourSpeed);
-	array<array<float>> watched(assets.length());  // per asset: angles of the picks watching it
+	// Each cell's value per asset is fixed for this update (warning x staleness x our metal there) except the direction
+	// term, which shrinks as picks watch that asset from nearby angles: computed once, the direction kept per cell and
+	// asset and updated by each new pick. (Recomputed for every cell and asset against every earlier pick at every pick,
+	// Scout::Update took ~90% of the script's time - 1373 ms a game minute, 34 ms at once by minute 4 against a 33 ms
+	// frame - and the CPU hit 100% in the owner's friend game at minute 26, #121.)
+	const uint nA = assets.length();
+	array<float> base(uint(n) * nA, 0.f), angA(uint(n) * nA, 0.f), dirA(uint(n) * nA, 1.f), add0(n, 0.f);
+	array<bool> eligible(n, false);
+	for (int c = 0; c < n; ++c) {
+		const float age = float(ai.frame - lastSeen[c]) / SECOND;
+		if (age <= 0.f && dots[c] <= 0.f) continue;
+		if (covered[c]) continue;  // a known turret holds it: a scout dies there before it learns anything new
+		eligible[c] = true;
+		add0[c] = dots[c] * meanCost + raidable[c];
+		const AIFloat3 cc = Intel::CellCenter(c);
+		for (uint k = 0; k < nA; ++k) {
+			const AIFloat3 ac = Intel::CellCenter(assets[k]);
+			const float d = AiMax(1.f, cc.distance2D(ac));
+			const float warn = AiMin(d / speed, tr[k]) / tr[k];
+			const float stale = AiMin(1.f, age * speed / d);
+			base[uint(c) * nA + k] = ours[assets[k]] * warn * stale;
+			angA[uint(c) * nA + k] = atan2(cc.z - ac.z, cc.x - ac.x);
+		}
+	}
 	array<AIFloat3> tp; array<float> tv;
 	topValue = 0.f; worthy = 0;
 	const float scoutCost = cheapest is null ? 1e9f : Economist::MetalValue(cheapest);
@@ -1052,26 +1075,10 @@ void Update()
 	for (uint pick = 0; pick < uint(n); ++pick) {
 		int best = -1; float bestV = 0.f;
 		for (int c = 0; c < n; ++c) {
-			if (picked[c]) continue;
-			const AIFloat3 cc = Intel::CellCenter(c);
-			const float age = float(ai.frame - lastSeen[c]) / SECOND;
-			if (age <= 0.f && dots[c] <= 0.f) continue;
-			if (covered[c]) continue;  // a known turret holds it: a scout dies there before it learns anything new
-			float v = dots[c] * meanCost + raidable[c];
-			for (uint k = 0; k < assets.length(); ++k) {
-				const AIFloat3 ac = Intel::CellCenter(assets[k]);
-				const float d = AiMax(1.f, cc.distance2D(ac));
-				const float warn = AiMin(d / speed, tr[k]) / tr[k];
-				const float stale = AiMin(1.f, age * speed / d);
-				float dir = 1.f;
-				const float ang = atan2(cc.z - ac.z, cc.x - ac.x);
-				for (uint w = 0; w < watched[k].length(); ++w) {
-					float da = AiMax(ang - watched[k][w], watched[k][w] - ang);
-					if (da > Pi()) da = 2.f * Pi() - da;
-					dir = AiMin(dir, da / Pi());
-				}
-				v += ours[assets[k]] * warn * stale * dir;
-			}
+			if (picked[c] || !eligible[c]) continue;
+			float v = add0[c];
+			const uint o = uint(c) * nA;
+			for (uint k = 0; k < nA; ++k) v += base[o + k] * dirA[o + k];
 			if (v > bestV) { bestV = v; best = c; }
 		}
 		if (best < 0 || bestV <= scoutCost) break;
@@ -1079,11 +1086,18 @@ void Update()
 		value[best] = bestV;
 		if (bestV > topValue) topValue = bestV;
 		++worthy;
-		const AIFloat3 bc = Intel::CellCenter(best);
-		tp.insertLast(bc); tv.insertLast(bestV);
-		for (uint k = 0; k < assets.length(); ++k) {
-			const AIFloat3 ac = Intel::CellCenter(assets[k]);
-			watched[k].insertLast(atan2(bc.z - ac.z, bc.x - ac.x));
+		tp.insertLast(Intel::CellCenter(best)); tv.insertLast(bestV);
+		// the new pick watches each asset from its angle: every cell's direction term against that asset shrinks to how
+		// far round from it the cell lies (0 same way .. 1 opposite), as the old per-pick loop computed it
+		for (uint k = 0; k < nA; ++k) {
+			const float a0 = angA[uint(best) * nA + k];
+			for (int c = 0; c < n; ++c) {
+				if (!eligible[c] || picked[c]) continue;
+				const uint ix = uint(c) * nA + k;
+				float da = AiMax(angA[ix] - a0, a0 - angA[ix]);
+				if (da > Pi()) da = 2.f * Pi() - da;
+				dirA[ix] = AiMin(dirA[ix], da / Pi());
+			}
 		}
 	}
 	aiMilitaryMgr.SetScoutTargets(tp, tv);
@@ -6989,52 +7003,82 @@ void OnUnitDestroyed(CCircuitUnit@ unit)
 		Recycler::advFactories = AiMax(0, Recycler::advFactories - 1);
 }
 
+// Anarva: the script's own profile per game minute (owner, 2026-11-27: CPU at 100% vs Anarva): per module the summed and
+// worst milliseconds of its update, the five heaviest logged as [ANV-PROF] once a minute.
+namespace Prof {
+array<string> names; array<double> sums, maxs;
+void Add(const string& in n, double t0)
+{
+	const double ms = AiClockMs() - t0;
+	int k = names.find(n);
+	if (k < 0) { k = int(names.length()); names.insertLast(n); sums.insertLast(0.0); maxs.insertLast(0.0); }
+	sums[k] += ms; if (ms > maxs[k]) maxs[k] = ms;
+}
+void Report()
+{
+	string txt = "";
+	array<bool> used(names.length(), false);
+	for (int r = 0; r < 6; ++r) {
+		int b = -1;
+		for (uint k = 0; k < names.length(); ++k) if (!used[k] && (b < 0 || sums[k] > sums[b])) b = int(k);
+		if (b < 0) break;
+		used[b] = true;
+		txt += " " + names[b] + " " + int(sums[b]) + "ms/max " + int(maxs[b]);
+	}
+	AiLog("[ANV-PROF] f=" + ai.frame + " heaviest per minute:" + txt);
+	for (uint k = 0; k < names.length(); ++k) { sums[k] = 0.0; maxs[k] = 0.0; }
+}
+}  // namespace Prof
+
 void Update()  // every 30 frames
 {
-	CheckSide();
-	Check::Update();
-	Awareness::Update();
-	Command::RaidTick();
-	Check::Micro();
+	{ const double pt = AiClockMs(); CheckSide(); Prof::Add("CheckSide", pt); }
+	{ const double pt = AiClockMs(); Check::Update(); Prof::Add("Check::Update", pt); }
+	{ const double pt = AiClockMs(); Awareness::Update(); Prof::Add("Awareness::Update", pt); }
+	{ const double pt = AiClockMs(); Command::RaidTick(); Prof::Add("Command::RaidTick", pt); }
+	{ const double pt = AiClockMs(); Check::Micro(); Prof::Add("Check::Micro", pt); }
 	aiSwitchHighGroundArty = true;
 	aiSwitchHeightSquads = true;
 	aiSwitchScoutMap = true;
 	aiSwitchEngageSeen = true;
 	aiSwitchFocusFire = true;
 	aiSwitchStrafe = true;
-	Intel::Update();
-	Assess::Update();
-	Director::Update();
+	{ const double pt = AiClockMs(); Intel::Update(); Prof::Add("Intel::Update", pt); }
+	{ const double pt = AiClockMs(); Assess::Update(); Prof::Add("Assess::Update", pt); }
+	{ const double pt = AiClockMs(); Director::Update(); Prof::Add("Director::Update", pt); }
 	// the core values builder jobs and smooths energy demand over the same horizon as the script (it was never set:
 	// the core ran on a 1-second horizon)
-	Economist::MeasureExtraction();
-	Economist::UpdateProducerLife();
+	{ const double pt = AiClockMs(); Economist::MeasureExtraction(); Prof::Add("Economist::MeasureExtraction", pt); }
+	{ const double pt = AiClockMs(); Economist::UpdateProducerLife(); Prof::Add("Economist::UpdateProducerLife", pt); }
 	aiMilitaryMgr.SetValueHorizon(Economist::ProducerLife());
 	aiMilitaryMgr.SetProducerLife((Economist::producerLosses > 0) ? Economist::MeasuredLife() : 0.f);  // feedback to job values
 	// (BARb's attack/raid quotas and the core raid task's targets are gone: no combat unit is in a BARb task any more;
 	// Brain::Command decides each fight from its own defence estimate)
-	Opening::Update();  // map-based opening, re-planned after every job (#94)
-	Command::Update();  // Anarva's own army (BARb squads, recalls and holds retired)
+	// map-based opening, re-planned after every job (#94)
+	{ const double pt = AiClockMs(); Opening::Update(); Prof::Add("Opening::Update", pt); }
+	// Anarva's own army (BARb squads, recalls and holds retired)
+	{ const double pt = AiClockMs(); Command::Update(); Prof::Add("Command::Update", pt); }
 	// every module re-decides on the engine's own slow-update tick (no per-module polling periods)
-	Recycler::Update();
-	Strategic::Update(Intel::jamAlert);
-	Scout::Update();
-	EcoPos::Update();
-	RezLab::Update();
-	MexPorc::Update();
-	SquadLog();
-	Radar::Update();
-	Storage::Update();
-	Storage::UpdateEnergy();
-	CommDefendUpdate();
-	CommGuardUpdate();
-	CommCloakUpdate();
-	BuilderSafeUpdate();
-	ReclaimUpdate();
-	Recycler::EcoReclaimUpdate();
-	Recycler::NanoUpdate();
+	{ const double pt = AiClockMs(); Recycler::Update(); Prof::Add("Recycler::Update", pt); }
+	{ const double pt = AiClockMs(); Strategic::Update(Intel::jamAlert); Prof::Add("Strategic::Update", pt); }
+	{ const double pt = AiClockMs(); Scout::Update(); Prof::Add("Scout::Update", pt); }
+	{ const double pt = AiClockMs(); EcoPos::Update(); Prof::Add("EcoPos::Update", pt); }
+	{ const double pt = AiClockMs(); RezLab::Update(); Prof::Add("RezLab::Update", pt); }
+	{ const double pt = AiClockMs(); MexPorc::Update(); Prof::Add("MexPorc::Update", pt); }
+	{ const double pt = AiClockMs(); SquadLog(); Prof::Add("SquadLog", pt); }
+	{ const double pt = AiClockMs(); Radar::Update(); Prof::Add("Radar::Update", pt); }
+	{ const double pt = AiClockMs(); Storage::Update(); Prof::Add("Storage::Update", pt); }
+	{ const double pt = AiClockMs(); Storage::UpdateEnergy(); Prof::Add("Storage::UpdateEnergy", pt); }
+	{ const double pt = AiClockMs(); CommDefendUpdate(); Prof::Add("CommDefendUpdate", pt); }
+	{ const double pt = AiClockMs(); CommGuardUpdate(); Prof::Add("CommGuardUpdate", pt); }
+	{ const double pt = AiClockMs(); CommCloakUpdate(); Prof::Add("CommCloakUpdate", pt); }
+	{ const double pt = AiClockMs(); BuilderSafeUpdate(); Prof::Add("BuilderSafeUpdate", pt); }
+	{ const double pt = AiClockMs(); ReclaimUpdate(); Prof::Add("ReclaimUpdate", pt); }
+	{ const double pt = AiClockMs(); Recycler::EcoReclaimUpdate(); Prof::Add("Recycler::EcoReclaimUpdate", pt); }
+	{ const double pt = AiClockMs(); Recycler::NanoUpdate(); Prof::Add("Recycler::NanoUpdate", pt); }
 
 	if (ai.frame % MINUTE < SECOND) {
+		Prof::Report();
 		if (commander !is null) {
 			const AIFloat3 cp = commander.GetPos(ai.frame);
 			AiLog("[ANV] commander at (" + int(cp.x) + "," + int(cp.z) + ") dist-from-base=" + int(HasBase() ? basePos.distance2D(cp) : -1.f)
