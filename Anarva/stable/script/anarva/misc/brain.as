@@ -5784,17 +5784,13 @@ void Update()
 					for (uint e = 0; e < n1; ++e) if (ed1[e] !is null && ed1[e].IsMobile() && ed1[e].GetSustainedDps() > 0.f) seenArmed += 1.f;
 					if (seenArmed > 0.f || Economist::lossPos.length() > 0) due = seenArmed;
 				}
-				if (Production::OurArmyCount() < due) {
+				{
+					// home is worth what these units save standing at home: the raid losses they remove on the spots we hold
+					// (EcoPos::DefenceGain - the same raid model the plant values them by; on the old one-extractor guess the
+					// plant built fighters for home and Command sent them raiding, home stayed empty and every new fighter
+					// read as valuable as the first: army 660 vs 301 with constructors 3 vs 5, swe71)
 					float home = 0.f;
-					// one extractor lost: its metal + its yield for the time a constructor takes to build it again
-					const CCircuitDef@ con = EcoPos::CheapestConstructor();
-					const float rebuild = (con !is null) ? Economist::mexT1.buildTime / AiMax(1.f, con.buildSpeed) : 0.f;
-					const float mexLoss = Economist::MetalValue(Economist::mexT1)
-						+ Economist::Extract(Economist::mexT1.GetName()) * MexPorc::SpotMetalAt(Opening::Home(), Economist::mexT1) * rebuild;
-					for (uint k = 0; k < pick.length(); ++k) {
-						const float sU = Opening::Strength(pick[k].circuitDef), R = AiMax(1e-3f, Opening::raidStrength);
-						home += mexLoss * ((sU >= R) ? 1.f : (sU / R) * (sU / R));
-					}
+					for (uint k = 0; k < pick.length(); ++k) home += EcoPos::DefenceGain(pick[k].circuitDef, Opening::Home());
 					if (FightGain(cv[best], S, dfc[best], metal) <= home) {
 						AiLog("[ANV-CMD] stay home: raid spot (" + int(cp[best].x) + "," + int(cp[best].z) + ") worth " + int(cv[best]) + " <= home " + int(home) + " (" + F1(due) + " raiders due, " + int(Production::OurArmyCount()) + " fighters)");
 						continue;
