@@ -2933,6 +2933,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	for (uint k = 0; k < kE.length(); ++k) kLog += " " + kName[k] + " " + int(kS[k]) + "/" + int(kE[k]);
 	CCircuitDef@ bestDef = null; float bestRatio = 0.f, bestV = 0.f; int bestJob = -1;  // 0 fight, 1 build, 2 scout
 	CCircuitDef@ bestFightDef = null; float bestFightRatio = 0.f, bestFightV = 0.f;  // the best fighter (the plan's split)
+	CCircuitDef@ bestConDef = null; float bestConRatio = 0.f, bestConV = 0.f;  // the best constructor (the plan's split)
 	float uBest = 0.f;  // the strongest fighter this lab offers (the army the scout's information is for)
 	for (uint i = 0; i < opts.length(); ++i) {
 		CCircuitDef@ od = ai.GetCircuitDef(opts[i]);
@@ -3050,6 +3051,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			bestJob = (v == vScout) ? 2 : ((v == vBuild) ? 1 : 0);
 		}
 		if (vFight > 0.f && v == vFight && ratio > bestFightRatio) { bestFightRatio = ratio; @bestFightDef = d; bestFightV = v; }
+		if (vBuild > 0.f && v == vBuild && ratio > bestConRatio) { bestConRatio = ratio; @bestConDef = d; bestConV = v; }
 	}
 	// The lab's output follows the split the opener's plan chose (its army rate holds the spots its constructors
 	// claim): while the army's share of what the lab has built is below the plan's, the best fighter is built - the
@@ -3066,6 +3068,19 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		if (offF < offC) {
 			why += " | plan split " + F2(pS) + ": fighter leaves it " + int(offF) + " off, constructor " + int(offC);
 			@bestDef = bestFightDef; bestRatio = bestFightRatio; bestV = bestFightV; bestJob = 0;
+		}
+	}
+	// ...both ways: an army over the plan's share yields to the constructor that brings the mix nearer (our lab reached
+	// 0.64 army by 4:00 against the plan's 0.48 and winners' ~0.45 - 3 constructors and 4-7 extractors vs their 5 and 8:
+	// replays.db, 60 bot-lab 1v1 winners; swe115)
+	else if (Opening::planArmyShare > 0.f && bestConDef !is null && bestJob == 0) {
+		const float pS = Opening::planArmyShare;
+		const float mC = bestConDef.costM, mF = bestDef.costM;
+		const float dC = labArmyM - pS * (labArmyM + labConM + mC), dF = labArmyM + mF - pS * (labArmyM + labConM + mF);
+		const float offC = (dC < 0.f) ? -dC : dC, offF = (dF < 0.f) ? -dF : dF;
+		if (offC < offF) {
+			why += " | plan split " + F2(pS) + ": constructor leaves it " + int(offC) + " off, fighter " + int(offF);
+			@bestDef = bestConDef; bestRatio = bestConRatio; bestV = bestConV; bestJob = 1;
 		}
 	}
 	if (bestDef is null) {
