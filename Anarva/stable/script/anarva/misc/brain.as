@@ -5101,6 +5101,7 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 		// the lab after (Canis winners: extractors at 9/16/23 s, two plants, lab at ~61 s, replays.db; ours took the lab
 		// at 28 s as soon as it was affordable and had 6-7 extractors by 4:00 against their 9).
 		float firstGain = 0.f, firstCost = 0.f; string firstName = ""; int firstOpt = -1;
+		float altDiff = -1e30f; string altName = "-";  // the best alternative's plan value less the lab now's (logged)
 		if (noWait && carried) {
 			const float drawEq = drawM + drawE / AiMax(1e-3f, Economist::energyPerMetal);
 			const float conSpeed = (L.con !is null) ? AiMax(1.f, L.con.speed) : AiMax(1.f, speed);
@@ -5133,6 +5134,7 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 				// extractors before the lab (19 s each), lab 81 s, static 305 vs 550 at 1:00 (swe93; winners' lab 56-69 s)
 				const float vFirst = Value(w, s0.t, Hl), vNow = Value(t, s0.t, Hl);
 				const float cost = AiMax(0.f, gain - (vFirst - vNow));  // logged as before: what the lab loses by it
+				if (gain - cost > altDiff) { altDiff = gain - cost; altName = (opts[a].kind == 0) ? ("spot " + opts[a].spot) : opts[a].def.GetName(); }
 				if (gain - cost > firstGain - firstCost) { firstGain = gain; firstCost = cost; firstName = (opts[a].kind == 0) ? ("spot " + opts[a].spot) : opts[a].def.GetName(); firstOpt = int(a); }
 			}
 		}
@@ -5145,7 +5147,7 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 		}
 		if (noWait && carried && firstGain <= firstCost) {
 			best = lab;
-			why = "lab: affordable now; income " + F1(s0.mInc) + " M/s, " + int(s0.eInc) + " E/s covers its production (" + F1(drawM) + " M/s, " + int(drawE) + " E/s)";
+			why = "lab: affordable now; income " + F1(s0.mInc) + " M/s, " + int(s0.eInc) + " E/s covers its production (" + F1(drawM) + " M/s, " + int(drawE) + " E/s); best first: " + altName + " " + int(altDiff);
 			return 1.f;
 		}
 		why = (noWait ? "" : "lab not affordable yet; ") + (needM > 0.f ? ("metal " + F1(s0.mInc) + "/s short of " + F1(drawM) + "; ") : "")
