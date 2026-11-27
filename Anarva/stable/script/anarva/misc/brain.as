@@ -5317,6 +5317,7 @@ void Pickets(array<CCircuitUnit@>@ freeUnits)
 		}
 	}
 	array<bool> used(freeUnits.length(), false), covered(site.length(), false);
+	const AIFloat3 holdPt = HoldPoint(freeUnits);  // where these units stand otherwise (a picket's cost is its defence there)
 	dictionary now;
 	while (true) {
 		int bs = -1, bu = -1; float bestNet = 0.f, bestV = 0.f, bestC = 0.f, bestT = 0.f, bestL = 0.f, bestW = 0.f;
@@ -5347,8 +5348,14 @@ void Pickets(array<CCircuitUnit@>@ freeUnits)
 				const float w2 = Production::WinShare(us, seenE[k]);
 				if (seenLoss[k] * w2 > V) { V = seenLoss[k] * w2; win = w2; tKill = siteHp[k] / AiMax(1e-3f, seenD[k]); lm = seenLoss[k]; }
 			}
+			// ...on the shared ledger as well: what it saves standing at this site against what it saves at the squad's
+			// hold point (EcoPos::DefenceGain both - the raid model with measured raids, raiders staying on our side). Its
+			// cost as the plant's whole-game value per metal (~540-1080 against a site's loss of ~100) let no picket pay:
+			// "pickets 0" while raiders took our far extractors (swe110-128)
+			const float vLedger = EcoPos::DefenceGain(ud, site[k]);
+			if (vLedger > V) { V = vLedger; win = 1.f; tKill = siteHp[k] / AiMax(1e-3f, Opening::raidDps); }
 			if (V <= 0.f) continue;
-			const float C = ud.costM * AiMax(0.f, Production::lastBestRatio);
+			const float C = EcoPos::DefenceGain(ud, holdPt);
 			if (V - C > bestNet) { bestNet = V - C; bs = int(k); bu = nu; bestV = V; bestC = C; bestT = tKill; bestL = lm; bestW = win; }
 		}
 		if (bs < 0) break;
