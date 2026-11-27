@@ -4488,7 +4488,14 @@ float TailGrowth(const Sim@ s, float end)
 	const Lab@ L = labs[s.lab];
 	const float mexBuild = Economist::mexT1.buildTime / AiMax(1.f, L.con.buildSpeed);
 	const float conCost = Economist::MetalValue(L.con), mexCost = Economist::MetalValue(Economist::mexT1);
-	const float conEvery = AiMax(L.conTime, L.con.costM / AiMax(1e-3f, s.mInc));
+	// The lab runs on what it gets of the income: the commander keeps building after it (its own extractors and plants)
+	// and in a stall the engine shares metal by draw - the lab's draw against the commander's (its build power x an
+	// extractor's metal per build-second, unit facts). On a lab standing at one extractor's income the constructors came
+	// at its full rate in the plan and the plan put the lab first (45 s, one extractor before it); 1v1 winners build 3
+	// extractors and ~3 plants first and the lab at ~64 s (replays.db, 106 winners: 66 with three) - the income the lab runs on
+	const float comDraw = ComDef().buildSpeed * Economist::mexT1.costM / AiMax(1.f, Economist::mexT1.buildTime);
+	const float labMetal = (s.mInc < L.spend + comDraw) ? AiMin(L.spend, s.mInc * L.spend / AiMax(1e-3f, L.spend + comDraw)) : L.spend;
+	const float conEvery = AiMax(L.conTime, L.con.costM / AiMax(1e-3f, labMetal));
 	const float span = AiMax(1.f, end - s.labAt);
 	const float life = AiMax(1.f, Economist::ProducerLife());
 	const float cStr = Strength(ComDef());
@@ -4504,7 +4511,7 @@ float TailGrowth(const Sim@ s, float end)
 		const float sp = plants[pk].buildTime / AiMax(1.f, L.con.buildSpeed) / mk;
 		if (plantSecPerE <= 0.f || sp < plantSecPerE) plantSecPerE = sp;
 	}
-	float best = 0.f, bestArmy = AiMin(s.mInc, L.spend);  // no claims: the whole lab output is army
+	float best = 0.f, bestArmy = labMetal;  // no claims: the whole lab output is army
 	float W = 0.f; int k = 0;
 	for (uint j = 0; j < tailOrder.length(); ++j) {
 		if (s.usedSpot[tailOrder[j]]) continue;
@@ -4516,7 +4523,7 @@ float TailGrowth(const Sim@ s, float end)
 		// constructors made by then, their lab time and metal; the rest of the lab's output is army
 		const float conUsed = AiMin(float(k), (tk - s.labAt) / AiMax(1.f, conEvery) + 1.f);
 		const float labFree = AiMax(0.f, 1.f - conUsed * L.conTime / span);
-		const float armyMps = AiMax(0.f, AiMin(L.spend * labFree, s.mInc - conUsed * L.con.costM / span));
+		const float armyMps = AiMax(0.f, AiMin(labMetal * labFree, s.mInc - conUsed * L.con.costM / span));
 		const float wNear = RaidWindowM(s, end, cStr, armyMps), wFar = RaidWindowM(s, end, 0.f, armyMps);
 		// the raid is in one place at a time: over its window it kills as many claimed spots as its damage allows (as
 		// Value counts the plan's own producers), each costing itself and its yield for half the window. As "every spot

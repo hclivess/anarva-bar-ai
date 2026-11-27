@@ -185,3 +185,10 @@ q1 / median / q3 by frame 7200: extractors 6 / 8 / 10; of them by the commander 
 the commander's farthest point from its start 90 / 322 / 1392. Reason (not a target): the commander takes the near three, the
 lab keeps two streams going - constructors that claim the rest and the army (~341 by 3:00) - at a total the income carries.
 Anarva (swe108-115): extractors 4-7, constructors 3-4, the lab metal-stalled.
+
+## 1v1 winners' opener: extractors before the lab (replays.db, 106 winner team-games, 2026-11-27)
+
+Static builds before the first factory: extractors q1/median/q3 2 / 3 / 3 (3 in 66 games, 2 in 16, 1 in 11); energy 2 / 3 / 4;
+the lab stands at 56 / 64 / 72 s. Commonest orders: MMMEEL (17), MMMEEEL (11), MMEEEL (7). Reason (not a target): the lab
+draws ~4.8 M/s and runs on what the income gives it after the commander's own building - three extractors first is the
+income it runs on. Anarva (swe94-130): extractor, solar, lab at 45 s.
