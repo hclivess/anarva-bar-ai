@@ -47,7 +47,12 @@ and record it here. A blind spot is fixed when first met, not worked around.
 | weapon accuracy, spread, reload vs burst | unit files, via gen_facts | effective dps against small and fast units |
 | splash falloff (edge effectiveness) | unit files | splash damage away from the centre |
 | paralysis (EMP), slow, veterancy | unit files, unit state | strength of EMP units, veteran units |
-| the enemy army we can't see | estimate from their income and time (not a fact) | fights against a mostly unseen army (we saw 1-15 units of 5000+ metal) |
+| the enemy army we can't see (partly: RaidExists since 2026-11-27, from their lab and income) | estimate from their income and time (not a fact) | fights against a mostly unseen army (we saw 1-15 units of 5000+ metal) |
+| their lab's split between raiders and constructors (a player reads it from the units seen and the clock) | estimate from their lab, income and what was seen | the unseen army: RaidExists turned all their income into raiders, 1.6-3.5x the truth (sight gaps, swe156-160) |
+| seen units as a cap on the estimate (a seen army lowers the model, not only raises it) | the units seen and their last-seen time | swe160: 3 corak seen, the model said 14.5 |
+| memory of enemy units seen earlier (where, how many, heading) | a per-unit last-seen record | the raid threat between sightings |
+| their expected extractor count from the clock and their start | their spots by distance, their constructors' walk | raid targets for an idle army; we saw 0 of their 3-5 to 3:00 (swe151-155) |
+| which plant they opened (bot lab or vehicle plant) | the first lab or units seen; inferable from the first raiders | the raider type modelled (corak from corlab while BARb opened a vehicle plant, swe157/159) |
 | the core's remaining unit getters | `CCircuitDef` (run `tools/sight_audit.py`) | as needed |
 
 - **Game build blocks** (BAR Build Blocking API, team rules param `unitdef_blocked_<id>`: terrain_wind, terrain_water, terrain_geothermal): exposed 2026-11-26 - the core sets blocked defs unavailable (`CBuilderManager::Watchdog`, [ANV-BLOCKED]).
