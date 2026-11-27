@@ -458,7 +458,7 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
-index e4c1d126..4eab8321 100644
+index e4c1d126..64d861b6 100644
 --- a/src/circuit/module/BuilderManager.cpp
 +++ b/src/circuit/module/BuilderManager.cpp
 @@ -6,9 +6,13 @@
@@ -1731,6 +1731,25 @@ index e4c1d126..4eab8321 100644
  		if (!isLost && (task->GetType() == IUnitTask::Type::BUILDER)) {
  			IBuilderTask* taskB = static_cast<IBuilderTask*>(task);
  			Unit* u = worker->GetUnit();
+@@ -1530,7 +2245,17 @@ void CBuilderManager::Watchdog()
+ 			}
+ 		}
+ 		if (isLost) {
+-			task->OnUnitMoveFailed(worker);
++			// Anarva (#118, owner: "you cancelled t2 lab 5 times"): a builder with an empty queue lost its order - send the
++			// same order again. BARb nudged it 256 elmos in a spread direction (OnUnitMoveFailed), which replaced the order,
++			// expired and counted a failure; after the retries the job was aborted and its site blocked: the advanced lab
++			// failed to start 42 times and stood at 17:09 against the opponent's 10:41 (owner's friend game, 2026-11-27)
++			if (task->GetType() == IUnitTask::Type::BUILDER) {
++				circuit->LOG("[ANV-REISSUE] f=%i %s order lost: re-sent", circuit->GetLastFrame(), worker->GetCircuitDef()->GetDef()->GetName());
++				NoteOrder(worker->GetId(), circuit->GetLastFrame());
++				static_cast<IBuilderTask*>(task)->Reissue(worker);
++			} else {
++				task->OnUnitMoveFailed(worker);
++			}
+ 		}
+ 	}
+ 
 diff --git a/src/circuit/module/BuilderManager.h b/src/circuit/module/BuilderManager.h
 index 559a0abf..48eb5f17 100644
 --- a/src/circuit/module/BuilderManager.h
@@ -5976,10 +5995,21 @@ index 172d4c26..072a9045 100644
  					case SBuildInfo::Condition::ALWAYS:
  					default: break;
 diff --git a/src/circuit/task/builder/BuilderTask.h b/src/circuit/task/builder/BuilderTask.h
-index 27cb124a..6ee57e6f 100644
+index 27cb124a..629090a8 100644
 --- a/src/circuit/task/builder/BuilderTask.h
 +++ b/src/circuit/task/builder/BuilderTask.h
-@@ -145,6 +145,10 @@ protected:
+@@ -83,6 +83,10 @@ protected:
+ 	virtual void Cancel() override;
+ 
+ 	virtual bool Execute(CCircuitUnit* unit);
++public:
++	// Anarva: the watchdog re-sends a lost order (instead of BARb's nudge away, #118)
++	bool Reissue(CCircuitUnit* unit) { return Execute(unit); }
++protected:
+ 
+ public:
+ 	virtual void OnUnitIdle(CCircuitUnit* unit) override;
+@@ -145,6 +149,10 @@ protected:
  	float shake;  // Alter/randomize position by offset
  	CCircuitDef* buildDef;
  	bool canAutoAbort;
