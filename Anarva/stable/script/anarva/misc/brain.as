@@ -5598,6 +5598,7 @@ void Order(CCircuitUnit@ u, const string& in key, int kind, const AIFloat3& in p
 // all. A fixed "S x trade > D" gate skipped a Pawn raid at our base 7 times at 11.0 vs 11.4 while it killed 1880
 // metal of economy (Theta, round 30): an even fight for that much is taken by any player.
 array<AIFloat3> shownPos; array<float> shownDef; array<float> shownReach;  // defences fights revealed (pulled back)
+dictionary lostIds;  // raiders an op lost while they moved (targets again once they stand)
 // Lanchester square law, as the fights play out: the stronger side wins and loses metal x (D/S)^2; the weaker loses all
 // it sent and kills (S/D)^2 of what it faces. (WinShare S/(S+D) read as a probability of winning gave a squad 5.5x the
 // defence a 15% chance of losing everything: 31 units pulled back from undefended raid spots within a second, and an
@@ -5685,6 +5686,9 @@ void Update()
 			const float vAway = (dist > 0.f) ? (eVel[ti].x * away.x + eVel[ti].z * away.z) / dist * SECOND : 0.f;
 			if (dist > rng && vAway >= slow) alive = false;  // ends below as "target gone"
 		}
+		// a raider we lost while it moved is not chased again while it moves: it is caught when it stops to attack
+		// (one Incisor drew four ops in a row on our side, each 'target gone' in 2-6 s, swe113)
+		if (!alive && op.enemyId >= 0) lostIds.set("" + op.enemyId, true);
 		if (op.enemyId < 0 && AiIsInLOS(op.pos)) {
 			bool there = false;
 			for (uint i = 0; i < n && !there; ++i)
@@ -5830,6 +5834,11 @@ void Update()
 			bool taken = false;
 			for (uint o = 0; o < ops.length() && !taken; ++o) if (ops[o].enemyId == eIds[i]) taken = true;
 			if (taken) continue;
+			{
+				const string lk = "" + eIds[i];
+				const bool moving = eDef[i].IsMobile() && eVel[i].Length2D() * SECOND >= 1.f;
+				if (lostIds.exists(lk)) { if (moving) continue; lostIds.delete(lk); }
+			}
 			cp.insertLast(ePos[i]); cv.insertLast(EnemyValue(i, H) + OursThreatened(i, all, fc.distance2D(ePos[i]) / fSpeed)); cid.insertLast(eIds[i]);
 			chp.insertLast(eHp[i] * eDef[i].health);
 			cspd.insertLast(eDef[i].IsMobile() ? eVel[i].Length2D() * SECOND : 0.f);  // how fast it moves now
