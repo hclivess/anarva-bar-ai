@@ -2764,7 +2764,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		}
 	}
 	// theirs, as seen
-	float eAir = 0.f, eSurf = 0.f;
+	float eAir = 0.f, eSurf = 0.f, eExist = 0.f;  // (eExist: their army anywhere, for scouting)
 	{
 		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
@@ -2784,7 +2784,11 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		// only those that could have arrived by now: built since their lab and walked here (raidArrive includes the walk).
 		// Counted from their lab, the floor read 747 at 1:13 - all their income in raiders - and the first fighter lifted
 		// the win share 0 -> 0.29 of the whole stake: a Blitz before the first constructor in every game (swe71-74)
-		eSurf = AiMax(eSurf, AiMax(sSurf, AiMax(RaidFloor(tNow), RaidExists(tNow))));
+		eSurf = AiMax(eSurf, AiMax(sSurf, RaidFloor(tNow)));
+		// what exists anywhere (their lab's raiders by now) is what a scout can find; a fighter answers what can reach us
+		// by its ready time (counted for the fights, the lab made fighters only: 1 builder at 2:00 against the winners' 3
+		// and 251 army against their 86 - vs_winners, swe156-160)
+		eExist = AiMax(eSurf, RaidExists(tNow));
 	}
 	// Their growth as seen: the strongest surface strength we have seen, and when. A unit ordered now fights the army
 	// that is there when it is ready, so it is valued against that: now + measured growth x (its build + walk) (sight,
@@ -3005,7 +3009,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			// ...the enemy it meets is the one there when it is ready: the raiders that can have arrived by then count (at
 			// "arrived by now" the first fighter was valued 0 until the raid was due and came 5 s after it, army 141 vs 215
 			// at 3:00, swe76: the raid model put their first raid at 164 s, our first Blitz 169 s)
-			const float eReady = AiMax(eSurf * grow, RaidExists(float(ai.frame) / SECOND + tReady));
+			const float eReady = AiMax(eSurf * grow, RaidFloor(float(ai.frame) / SECOND + tReady));
 			float vSurf = (eReady > 0.f) ? stakeSurf * FighterShare(sSurf, us, eReady) : 0.f;
 			if (kESum > 0.f) {
 				vSurf = 0.f;
@@ -3069,11 +3073,11 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			// stake x (share at the low end - share at the high end) - the most a wrong guess can cost the build. A scout
 			// earns it if it lives to see their base (measured scout life against the walk). Without it no scout went out,
 			// the plant built against an imagined army that grows with our income, and BARb's 386 at 3:00 was unseen (swe102-104)
-			if (Scout::scouts.length() == 0 && eSurf > peakE && d.losRadius > 0.f) {
+			if (Scout::scouts.length() == 0 && eExist > peakE && d.losRadius > 0.f) {
 				const float walk = AiEnemyBasePos().distance2D(fpos) / AiMax(1.f, d.speed);
 				const float alive = AiMax(0.f, 1.f - walk / AiMax(1.f, Scout::Life()));
 				const float sB = sSurf + uBest;
-				const float vInfo = stakeSurf * AiMax(0.f, SquareShare(sB, peakE) - SquareShare(sB, eSurf)) * alive;
+				const float vInfo = AiMax(stakeSurf, stake * (noneYet ? 1.f : 0.f)) * AiMax(0.f, SquareShare(sB, peakE) - SquareShare(sB, eExist)) * alive;
 				if (vInfo > vScout) { vScout = vInfo; terms += " info " + int(vInfo); }
 			}
 		}
