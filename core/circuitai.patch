@@ -5514,7 +5514,7 @@ index fcc4c984..71fead41 100644
  
  	float prevCost = query->GetCostAt(endPos, range);
 diff --git a/src/circuit/task/builder/BuilderTask.cpp b/src/circuit/task/builder/BuilderTask.cpp
-index 172d4c26..2d56e337 100644
+index 172d4c26..072a9045 100644
 --- a/src/circuit/task/builder/BuilderTask.cpp
 +++ b/src/circuit/task/builder/BuilderTask.cpp
 @@ -6,6 +6,8 @@
@@ -5568,15 +5568,28 @@ index 172d4c26..2d56e337 100644
  	if ((target == nullptr) && geom::is_valid(buildPos)) {
  		SetBuildPos(-RgtVector);
  	}
-@@ -250,6 +261,7 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+@@ -250,14 +261,25 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
  	executors.insert(unit);
  
  	CCircuitAI* circuit = manager->GetCircuit();
+-	TRY_UNIT(circuit, unit,
+-		unit->CmdPriority(ClampPriority());
+-	)
 +	circuit->GetBuilderManager()->NoteOrder(unit->GetId(), circuit->GetLastFrame());  // Anarva: the watchdog waits a pass for it
- 	TRY_UNIT(circuit, unit,
- 		unit->CmdPriority(ClampPriority());
- 	)
-@@ -257,7 +269,7 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
++	// Anarva: in a metal stall (the bank holds less than a second of what we pull) a builder on a job that makes no metal
++	// is passive - it takes only spare metal - so extractor builds get the metal first: they cost least and pay back
++	// soonest. All active, 6 constructors on 106 extractor picks at 0-1 metal shared the bank with solars, radar and a
++	// nano, and we had 5 extractors against BARb's 7 at 5:00 (swe48). Out of a stall all builders are active again.
++	{
++		CEconomyManager* em = circuit->GetEconomyManager();
++		const bool stall = em->GetMetalCur() < em->GetMetalPull();
++		const bool makesMetal = (buildDef != nullptr) && (buildDef->GetExtractsM() > 0.f);
++		const float prio = (stall && !makesMetal) ? 0.f : ClampPriority();
++		TRY_UNIT(circuit, unit,
++			unit->CmdPriority(prio);
++		)
++	}
+ 
  	const int frame = circuit->GetLastFrame();
  	if (target != nullptr) {
  		TRY_UNIT(circuit, unit,
@@ -5585,7 +5598,7 @@ index 172d4c26..2d56e337 100644
  		)
  		return true;
  	}
-@@ -265,23 +277,43 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+@@ -265,23 +287,43 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
  		&& circuit->GetMap()->IsPossibleToBuildAt(buildDef->GetDef(), buildPos, facing))
  	{
  		TRY_UNIT(circuit, unit,
@@ -5633,7 +5646,7 @@ index 172d4c26..2d56e337 100644
  			)
  			return true;
  		}
-@@ -296,7 +328,7 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+@@ -296,7 +338,7 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
  
  	if (geom::is_valid(buildPos)) {
  		TRY_UNIT(circuit, unit,
@@ -5642,7 +5655,7 @@ index 172d4c26..2d56e337 100644
  		)
  	} else {
  		if (geom::is_in_range(circuit->GetSetupManager()->GetBasePos(), position, searchRadius)) {  // base must be full
-@@ -312,6 +344,114 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
+@@ -312,6 +354,114 @@ bool IBuilderTask::Execute(CCircuitUnit* unit)
  
  void IBuilderTask::OnUnitIdle(CCircuitUnit* unit)
  {
@@ -5757,7 +5770,7 @@ index 172d4c26..2d56e337 100644
  	if (++buildFails <= 2) {  // Workaround due to engine's ability randomly disregard orders
  		Execute(unit);
  	} else if (buildFails <= TASK_RETRIES) {
-@@ -328,7 +468,7 @@ void IBuilderTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
+@@ -328,7 +478,7 @@ void IBuilderTask::OnUnitDamaged(CCircuitUnit* unit, CEnemyInfo* attacker)
  	const int frame = circuit->GetLastFrame();
  	CCircuitDef* cdef = unit->GetCircuitDef();
  	const float healthPerc = unit->GetHealthPercent();
@@ -5766,7 +5779,7 @@ index 172d4c26..2d56e337 100644
  		if (healthPerc < cdef->GetSelfDHP()) {
  			unit->CmdSelfD(true);
  		}
-@@ -407,7 +547,7 @@ void IBuilderTask::UpdateTarget(CCircuitUnit* unit)
+@@ -407,7 +557,7 @@ void IBuilderTask::UpdateTarget(CCircuitUnit* unit)
  	SetTarget(unit);
  
  	CCircuitAI* circuit = manager->GetCircuit();
@@ -5775,7 +5788,7 @@ index 172d4c26..2d56e337 100644
  	for (CCircuitUnit* ass : units) {
  		TRY_UNIT(circuit, ass,
  			ass->CmdRepair(unit, UNIT_CMD_OPTION, frame);
-@@ -437,9 +577,13 @@ CCircuitUnit* IBuilderTask::GetNextAssignee()
+@@ -437,9 +587,13 @@ CCircuitUnit* IBuilderTask::GetNextAssignee()
  	return unit;
  }
  
@@ -5790,7 +5803,7 @@ index 172d4c26..2d56e337 100644
  		UpdatePath(unit);  // Execute(unit) within OnTravelEnd
  	}
  }
-@@ -448,14 +592,13 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -448,14 +602,13 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  {
  	CCircuitAI* circuit = manager->GetCircuit();
  
@@ -5809,7 +5822,7 @@ index 172d4c26..2d56e337 100644
  	{
  		manager->AbortTask(this);
  		return false;
-@@ -482,12 +625,12 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -482,12 +635,12 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  		// NOTE: helps with obstructed factory, but not with blocked building plan.
  		//       @see CTerrainManager::CheckObstruct and its issues.
  		if ((cdef->GetMobileId() >= 0) && circuit->GetTerrainManager()->IsObstruct(pos)) {
@@ -5824,7 +5837,7 @@ index 172d4c26..2d56e337 100644
  				)
  			}
  			return true;
-@@ -514,10 +657,8 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -514,10 +667,8 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  			}
  			TRY_UNIT(circuit, unit,
  				unit->CmdBARPriority(prio ? 1.f : 0.f);
@@ -5837,7 +5850,7 @@ index 172d4c26..2d56e337 100644
  			)
  			return true;
  		}
-@@ -530,13 +671,48 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
+@@ -530,13 +681,48 @@ bool IBuilderTask::Reevaluate(CCircuitUnit* unit)
  	if (unit->IsAttrNoDisrupt()) {
  		return true;
  	}
@@ -5889,7 +5902,7 @@ index 172d4c26..2d56e337 100644
  		manager->AssignTask(unit, task);
  		return false;
  	}
-@@ -577,7 +753,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
+@@ -577,7 +763,7 @@ void IBuilderTask::UpdatePath(CCircuitUnit* unit)
  	CPathFinder* pathfinder = circuit->GetPathfinder();
  	std::shared_ptr<IPathQuery> query = pathfinder->CreatePathSingleQuery(
  			unit, circuit->GetThreatMap(),
@@ -5898,7 +5911,7 @@ index 172d4c26..2d56e337 100644
  	pathQueries[unit] = query;
  
  	pathfinder->RunQuery(circuit->GetScheduler().get(), query, [this](const IPathQuery* query) {
-@@ -828,7 +1004,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
+@@ -828,7 +1014,10 @@ void IBuilderTask::ExecuteChain(SBuildChain* chain)
  						}
  					} break;
  					case SBuildInfo::Condition::CHANCE: {
