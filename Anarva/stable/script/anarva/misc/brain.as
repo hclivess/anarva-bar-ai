@@ -2683,7 +2683,10 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	{
 		const float tNow = float(ai.frame) / SECOND;
 		const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
-		const float nR = AiMax(0.f, tNow - Opening::raidLabAt - Opening::raidUnitTime) * rate;
+		// only those that could have arrived by now: built since their lab and walked here (raidArrive includes the walk).
+		// Counted from their lab, the floor read 747 at 1:13 - all their income in raiders - and the first fighter lifted
+		// the win share 0 -> 0.29 of the whole stake: a Blitz before the first constructor in every game (swe71-74)
+		const float nR = AiMax(0.f, tNow - Opening::raidArrive) * rate + ((tNow >= Opening::raidArrive) ? 1.f : 0.f);
 		eSurf = AiMax(eSurf, AiMax(sSurf, nR * Opening::raidStrength));
 	}
 	// Their growth as seen: the strongest surface strength we have seen, and when. A unit ordered now fights the army
@@ -2886,7 +2889,9 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			const float ua = sqrt(AiMax(0.f, d.airThrDmg) * hp);
 			const float tReady = d.buildTime / AiMax(1.f, fdef.buildSpeed) + dist / AiMax(1.f, d.speed);
 			const float grow = (eSurf > 0.f) ? 1.f + growthE * tReady / eSurf : 1.f;  // the enemy when it is ready, as a factor
-			float vSurf = stakeSurf * (WinShare(sSurf + us, eSurf * grow) - WinShare(sSurf, eSurf * grow));
+			// no enemy army there to fight (none seen, none could have arrived): a fighter wins nothing yet - its worth is
+			// its defence and raid value (the share term read 1 for any fighter against nothing)
+			float vSurf = (eSurf > 0.f) ? stakeSurf * (WinShare(sSurf + us, eSurf * grow) - WinShare(sSurf, eSurf * grow)) : 0.f;
 			if (kESum > 0.f) {
 				vSurf = 0.f;
 				for (uint k = 0; k < kE.length(); ++k) {
