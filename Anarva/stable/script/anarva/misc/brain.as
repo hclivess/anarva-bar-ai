@@ -5755,6 +5755,7 @@ void Update()
 			else if (Facts::ExtractsMetal(ed.GetName()) > 0.f) eMexes += 1.f;
 		}
 		const float unseenDefence = (eTowers > 0.f) ? AiMin(1.f, eTowers / AiMax(1.f, eMexes)) * eTowerThreat / eTowers : 0.f;
+		const float unseenArmy = AiMax(0.f, AiMax(Economist::lastEnemySeen, Director::OurPower()) - Economist::KnownEnemyThreat());
 		const array<float> cv0 = cv;  // each target's own value, before the groups are summed
 		for (uint i = 0; i < cp.length(); ++i) {
 			// a moving target is reached when we catch it: the gap beyond our range over how fast we close on it (its
@@ -5781,6 +5782,10 @@ void Update()
 			const AIFloat3 midW = (fc + cp[i]) * 0.5f;
 			dfc[i] = AiMax(AiMax(Cover(cp[i], AiMax(tFight, t)), Cover(midW, t * 0.5f)), Cover(fc, 0.f));
 			if (cid[i] < 0) dfc[i] = AiMax(dfc[i], unseenDefence);
+			// ...and on their side the part of their army we don't see can be there (they field at least what we do and the
+			// most we have seen of them): taken as undefended, each raid spot got the single nearest Pawn, which pulled back
+			// within a second of the Incisor it met (swe96-97; 1 Pawn 169 vs Incisor 277, 2 together 294)
+			if (cid[i] < 0 && !Assess::OnOurSide(cp[i])) dfc[i] = AiMax(dfc[i], unseenArmy);
 			// what a fight revealed holds until we see the place again: then what we see there is the defence
 			for (int k = int(shownPos.length()) - 1; k >= 0; --k) {
 				if (AiIsInLOS(shownPos[k])) { shownPos.removeAt(k); shownDef.removeAt(k); shownReach.removeAt(k); continue; }
