@@ -269,6 +269,20 @@ The scripts see the battlefield through a bridge the patch adds:
 Unit facts the bridge can't see (build options, stockpile times, extraction, upkeep, geothermal vents,
 commander metal make) are generated from the game's unit files by `tools/gen_facts.py` into `misc/facts.as`.
 
+It reads from either source, told apart by whether the path holds `packages/`:
+
+```
+python tools/gen_facts.py <units_dir> misc/facts.as   # evaluates each units/*.lua on its own
+python tools/gen_facts.py <data_dir>  misc/facts.as   # runs the whole definition chain
+```
+
+The second runs `init.lua → gamedata/unitdefs.lua → gamedata/unitdefs_post.lua` under LuaJIT and
+reads the `.sdp` pool directly, so it needs no `rapid_extract.py` step and sees what the game ends up
+with. The two agree exactly on extraction, upkeep, build options, EMP, crawling bombs and resurrect
+for every unit per-file evaluation sees; what it adds is raptor costs (which `unitdefs_post.lua`
+assigns) and the scavenger variants, which are generated and so have no file to evaluate. Neither is
+in play in a 1v1, which is why the per-file source remains the default.
+
 ## Install
 
 You need Beyond All Reason installed and started at least once (so it has downloaded an engine).
@@ -362,7 +376,8 @@ Yes. Only the player hosting the AI needs it installed (see [Anarva/README.md](A
 - Developer tools in `tools/`:
   - `batch.py` and `run_match.py`: headless matches, including 1vN.
   - `replay_db.py`: the replay database.
-  - `gen_facts.py`: unit facts.
+  - `gen_facts.py`: unit facts, from extracted `units/` or from the full definition chain
+    (`tools/lua/unitdefs_host.lua` provides the engine environment the chain needs).
   - `analyze_maps.py`: map analysis.
 
 License: GPL-2.0, the same as CircuitAI and Beyond All Reason, which this is derived from.
