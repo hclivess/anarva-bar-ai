@@ -3095,7 +3095,10 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// ...judged on the mix after each choice: the one that leaves the lab's output nearer the plan's split (a constructor
 	// first when nothing is built yet; measured before the choice, the first unit was a 270-metal Warrior at 47 s and no
 	// constructor came until 108 s, swe107)
-	if (Opening::planArmyShare > 0.f && bestFightDef !is null && bestJob == 1) {
+	// ...toward army only while their army is the stronger (what it is for: holding the claims against their raids); with
+	// ours ahead the fighter's own value above parity decides - forced on, the lab kept to 0.79 army with ours 2x theirs at
+	// 3:00 and income 8.9 vs 11.2-13.5 stopped four games of five (swe141-145)
+	if (Opening::planArmyShare > 0.f && bestFightDef !is null && bestJob == 1 && sSurf < eSurf) {
 		const float pS = Opening::planArmyShare;
 		const float mC = bestDef.costM, mF = bestFightDef.costM;
 		const float dC = labArmyM - pS * (labArmyM + labConM + mC), dF = labArmyM + mF - pS * (labArmyM + labConM + mF);
