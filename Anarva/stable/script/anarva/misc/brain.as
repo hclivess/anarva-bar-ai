@@ -2717,8 +2717,12 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	const float flow = (aiEconomyMgr.metal.income + aiEconomyMgr.energy.income / AiMax(1e-3f, Economist::energyPerMetal)) * H0;
 	// feedback: what raids have been taking, at the measured rate over the horizon, is what an army stops
 	const float stake = Strategic::ownedMetal + Assess::EnemyValue() + flow + Economist::LossRate() * H0;
+	// split by what they field; with nothing fielded yet the threat to come is the raid model's - surface raiders - so it
+	// is all surface (split by zeros, stakeSurf was 0 and a fighter ready for the first raid was worth nothing: the
+	// first Blitz at 175 s against a raid due at 164 s, army 141 vs 301 at 3:00, swe77)
+	const bool noneYet = (eAir + eSurf) <= 0.f;
 	const float eAll = AiMax(1e-3f, eAir + eSurf);
-	const float stakeAir = stake * eAir / eAll, stakeSurf = stake * eSurf / eAll;
+	const float stakeAir = noneYet ? 0.f : stake * eAir / eAll, stakeSurf = noneYet ? stake : stake * eSurf / eAll;
 	const float H = AiMax(1.f, Economist::Horizon());
 	const float dist = Brain::Assess::frontDist > 0.f ? Brain::Assess::frontDist : fpos.distance2D(them) * 0.5f;
 	array<AIFloat3> theirSpots;
