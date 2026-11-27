@@ -8204,7 +8204,7 @@ index c89d4a41..f65c8587 100644
  			auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
  			if ((cand == nullptr)  // no self-check
 diff --git a/src/circuit/task/static/RecruitTask.cpp b/src/circuit/task/static/RecruitTask.cpp
-index a4ef0f95..79ecfb8f 100644
+index a4ef0f95..e892088f 100644
 --- a/src/circuit/task/static/RecruitTask.cpp
 +++ b/src/circuit/task/static/RecruitTask.cpp
 @@ -5,7 +5,10 @@
@@ -8218,7 +8218,7 @@ index a4ef0f95..79ecfb8f 100644
  #include "module/EconomyManager.h"
  #include "module/FactoryManager.h"
  #include "terrain/TerrainManager.h"
-@@ -69,19 +72,83 @@ void CRecruitTask::Update()
+@@ -69,19 +72,87 @@ void CRecruitTask::Update()
  	}
  
  	CCircuitAI* circuit = manager->GetCircuit();
@@ -8236,7 +8236,11 @@ index a4ef0f95..79ecfb8f 100644
 +				if ((bd != nullptr) && (bd->GetExtractsM() > 0.f)) { mexBuilding = true; break; }
 +			}
 +		}
-+		const float prio = ((em->GetMetalCur() < em->GetMetalPull()) && mexBuilding) ? 0.f : ClampPriority();
++		// ...but only while the lab builds a constructor (the same expansion the extractor is part of): a fighter was chosen
++		// by value over another constructor - over more extractors - so starving it overrules that choice (Pawns 18-27 s
++		// apart with the bank at 0, army 54 vs 386 at 3:00 while our buildings led 1195 vs 940, swe95)
++		const bool conUnit = (buildDef != nullptr) && (buildDef->GetBuildSpeed() > 0.f);
++		const float prio = ((em->GetMetalCur() < em->GetMetalPull()) && mexBuilding && conUnit) ? 0.f : ClampPriority();
 +		for (CCircuitUnit* unit : units) {
 +			TRY_UNIT(circuit, unit,
 +				unit->CmdPriority(prio);
@@ -8308,7 +8312,7 @@ index a4ef0f95..79ecfb8f 100644
  	if (State::DISENGAGE == state) {
  		if (hasMetal) {
  			state = State::ROAM;  // Not wait
-@@ -93,20 +160,16 @@ void CRecruitTask::Update()
+@@ -93,20 +164,16 @@ void CRecruitTask::Update()
  			}
  		}
  	} else {
@@ -8334,7 +8338,7 @@ index a4ef0f95..79ecfb8f 100644
  	Cancel();
  
  	CCircuitAI* circuit = manager->GetCircuit();
-@@ -140,6 +203,8 @@ void CRecruitTask::Cancel()
+@@ -140,6 +207,8 @@ void CRecruitTask::Cancel()
  				params.push_back(cmdId);
  			}
  		}
@@ -8343,7 +8347,7 @@ index a4ef0f95..79ecfb8f 100644
  		TRY_UNIT(circuit, unit,
  			unit->CmdRemove(std::move(params), UNIT_COMMAND_OPTION_ALT_KEY | UNIT_COMMAND_OPTION_CONTROL_KEY);
  		)
-@@ -183,8 +248,26 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -183,8 +252,26 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  	}
  
  	if (geom::is_valid(buildPos)) {
@@ -8371,7 +8375,7 @@ index a4ef0f95..79ecfb8f 100644
  		)
  	} else {
  		manager->AbortTask(this);
-@@ -195,6 +278,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -195,6 +282,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  
  void CRecruitTask::OnUnitIdle(CCircuitUnit* unit)
  {
