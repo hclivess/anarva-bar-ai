@@ -4948,8 +4948,12 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 				// later than the raid can arrive (#41). Charged for the whole delay, the opener built one extractor before
 				// the lab while BARb built two and three solars before its plant: metal 6.6 vs 8.9 at 2:00 - the first stat
 				// to swing (tools/swing.py, sw1).
-				const float tR = raidArrive;
-				const float cost = drawEq * (AiMax(0.f, w.t + L.unitTime - tR) - AiMax(0.f, t.t + L.unitTime - tR));
+				// ...and judged as the plans themselves: this one first then the lab, against the lab now - both valued to the
+				// same end, with the lab's constructors claiming what is left (the tail; in the lab-now plan this spot is
+				// among them). Charged only past the raid, a lab delay cost nothing against Cortex's raid at 203 s: two far
+				// extractors before the lab (19 s each), lab 81 s, static 305 vs 550 at 1:00 (swe93; winners' lab 56-69 s)
+				const float vFirst = Value(w, s0.t, Hl), vNow = Value(t, s0.t, Hl);
+				const float cost = AiMax(0.f, gain - (vFirst - vNow));  // logged as before: what the lab loses by it
 				if (gain - cost > firstGain - firstCost) { firstGain = gain; firstCost = cost; firstName = (opts[a].kind == 0) ? ("spot " + opts[a].spot) : opts[a].def.GetName(); firstOpt = int(a); }
 			}
 		}
