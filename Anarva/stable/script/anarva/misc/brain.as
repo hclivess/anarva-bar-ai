@@ -4438,6 +4438,9 @@ void PrepareTail(const array<AIFloat3>@ sp, const array<float>@ si, const array<
 		for (uint k = 1; k < idx.length(); ++k) if (d[k] < d[m]) m = k;
 		const int i = idx[m];
 		const float dUs = d[m], dThem = t.distance2D(sp[i]);
+		// they claim as we do: the spots nearer them are theirs (counted, every free spot on the map made the tail lose ~310
+		// per second of lab delay and the lab always came first - diag1-4)
+		if (dUs >= dThem) { idx.removeAt(m); d.removeAt(m); continue; }
 		tailOrder.insertLast(i); tailDist.insertLast(dUs);
 		tailYield.insertLast(si[i] * ext * ((dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f));
 		idx.removeAt(m); d.removeAt(m);
