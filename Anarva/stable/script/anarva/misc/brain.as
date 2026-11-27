@@ -6180,16 +6180,29 @@ AIFloat3 HoldPoint(const array<CCircuitUnit@>@ units)
 	// strongest seen), so no point reaches every spot in time; what a player holds is where the squad is nearest, on
 	// average, to everything it defends - the median point of our extractors and the base (the spot with the least
 	// summed distance to them): raids anywhere are answered soonest from there.
+	// ...each weighted by what raids are expected to take there (the ledger's raid model: raids over the horizon x the
+	// loss of one), the base at the extractors' mean: weighted alike, the squad held by the base while Grunts killed our
+	// far extractors 1352-1810 out and the army dealt 0 damage by 4:00 (swe112)
 	const array<CCircuitUnit@>@ mx = Economist::mexes;
+	const float Hd = AiMax(1.f, Economist::Horizon());
+	CCircuitDef@ con = EcoPos::CheapestConstructor();
+	array<float> w(mx.length());
+	float wSum = 0.f;
+	for (uint m = 0; m < mx.length(); ++m) {
+		const AIFloat3 qm = mx[m].GetPos(ai.frame);
+		w[m] = AiMax(1e-3f, EcoPos::SpotRaids(qm, Hd, qm, 0.f) * MexPorc::RaidLoss(mx[m], con));
+		wSum += w[m];
+	}
+	const float wBase = (mx.length() > 0) ? wSum / float(mx.length()) : 1.f;
 	AIFloat3 best = basePos; float bestSum = 1e30f;
 	for (uint c = 0; c <= mx.length(); ++c) {
 		const AIFloat3 q = (c < mx.length()) ? mx[c].GetPos(ai.frame) : basePos;
-		float sum = q.distance2D(basePos);
-		for (uint m = 0; m < mx.length(); ++m) sum += mx[m].GetPos(ai.frame).distance2D(q);
+		float sum = wBase * q.distance2D(basePos);
+		for (uint m = 0; m < mx.length(); ++m) sum += w[m] * mx[m].GetPos(ai.frame).distance2D(q);
 		if (sum < bestSum) { bestSum = sum; best = q; }
 	}
-	const float bestV = bestSum / float(AiMax(1, int(mx.length()) + 1));
-	if (ai.frame - lastHoldPtLog >= MINUTE) { lastHoldPtLog = ai.frame; AiLog("[ANV-CMD] hold at (" + int(best.x) + "," + int(best.z) + "): mean distance " + int(bestV) + " to " + mx.length() + " extractors and the base"); }
+	const float bestV = bestSum / AiMax(1e-3f, wSum + wBase);
+	if (ai.frame - lastHoldPtLog >= MINUTE) { lastHoldPtLog = ai.frame; AiLog("[ANV-CMD] hold at (" + int(best.x) + "," + int(best.z) + "): raid-weighted mean distance " + int(bestV) + " to " + mx.length() + " extractors and the base"); }
 	return best;
 }
 string Status() { return "ops=" + ops.length() + " created=" + created + " pulledBack=" + retreats; }
