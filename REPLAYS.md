@@ -178,3 +178,10 @@ Built table, frames <= 5400, mobile non-commander units by the winning team (q1 
 Reason (not a target): the lab interleaves - one constructor, then army ready for the first raid (~95-135 s), constructors
 mixed in after; the commander carries the early economy. Anarva (swe100-105): 3 constructors first, first armed unit
 150-196 s, army 54-162 by 3:00.
+
+## 1v1 bot-lab winners' expansion to 4:00 (replays.db, 60 winner team-games whose first lab was armlab/corlab, 2026-11-27)
+
+q1 / median / q3 by frame 7200: extractors 6 / 8 / 10; of them by the commander (cbuild) 3 / 3 / 4; constructors 4 / 5 / 6;
+the commander's farthest point from its start 90 / 322 / 1392. Reason (not a target): the commander takes the near three, the
+lab keeps two streams going - constructors that claim the rest and the army (~341 by 3:00) - at a total the income carries.
+Anarva (swe108-115): extractors 4-7, constructors 3-4, the lab metal-stalled.
