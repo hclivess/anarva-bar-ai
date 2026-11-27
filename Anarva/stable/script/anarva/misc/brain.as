@@ -2907,9 +2907,15 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				if (vR > vFight) { vFight = vR; terms += " raid " + int(vR); }
 			}
 			vFight *= AiMax(0.f, 1.f - dist / AiMax(1.f, d.speed) / H);
+			// ...just in time (#41): its defence counts once building something else first would make it late - now plus two
+			// of its build times past the earliest raid's arrival. Counted from the start, the plant made a fighter before its
+			// first constructor though no raid comes before ~3 min: one constructor short at 2:00 (swe58)
 			{
-				const float vD = EcoPos::DefenceGain(d, fpos);
-				if (vD > vFight) { vFight = vD; terms += " defence " + int(vD); }
+				const float tB = d.buildTime / AiMax(1.f, fdef.buildSpeed);
+				if (float(ai.frame) / SECOND + 2.f * tB >= Opening::raidArrive) {
+					const float vD = EcoPos::DefenceGain(d, fpos);
+					if (vD > vFight) { vFight = vD; terms += " defence " + int(vD); }
+				}
 			}
 		}
 		// information is worth what we can do with it: the share of a fight our forces could contest (a warning saves
