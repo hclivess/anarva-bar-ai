@@ -4442,13 +4442,20 @@ float TailGrowth(const Sim@ s, float end)
 		if (s.usedSpot[tailOrder[j]]) continue;
 		++k;
 		W += tailDist[j] / AiMax(1.f, L.con.speed) + mexBuild + tailYield[j] * L.eRatio * plantSecPerE;
-		const float tk = s.labAt + (-conEvery + sqrt(conEvery * conEvery + 2.f * conEvery * W));
+		// the claim times, the constructors they take and the army the rest of the lab's output makes - one account: the
+		// constructors come as often as the lab's share left by the army allows. Timed at the lab's full rate the plan read
+		// its claims at 104/132/154 s while half the lab went to army - it asked for 3 constructors, BARb had 5 and 5
+		// extractors to our 4 at 4:00 (swe108)
+		float cE = conEvery, tk = 0.f, conUsed = 0.f, armyMps = 0.f;
+		for (int pass = 0; pass < 2; ++pass) {
+			tk = s.labAt + (-cE + sqrt(cE * cE + 2.f * cE * W));
+			conUsed = AiMin(float(k), (tk - s.labAt) / AiMax(1.f, cE) + 1.f);
+			const float labFree = AiMax(0.f, 1.f - conUsed * L.conTime / span);
+			armyMps = AiMax(0.f, AiMin(L.spend * labFree, s.mInc - conUsed * L.con.costM / span));
+			cE = conEvery / AiMax(1e-3f, 1.f - AiMin(1.f, armyMps / AiMax(1e-3f, L.spend)));
+		}
 		if (tk >= end) break;
 		tks.insertLast(tk); ys.insertLast(tailYield[j]); nears.insertLast(tailDist[j] <= reachHome);
-		// constructors made by then, their lab time and metal; the rest of the lab's output is army
-		const float conUsed = AiMin(float(k), (tk - s.labAt) / AiMax(1.f, conEvery) + 1.f);
-		const float labFree = AiMax(0.f, 1.f - conUsed * L.conTime / span);
-		const float armyMps = AiMax(0.f, AiMin(L.spend * labFree, s.mInc - conUsed * L.con.costM / span));
 		const float wNear = RaidWindowM(s, end, cStr, armyMps), wFar = RaidWindowM(s, end, 0.f, armyMps);
 		// the raid is in one place at a time: over its window it kills as many claimed spots as its damage allows (as
 		// Value counts the plan's own producers), each costing itself and its yield for half the window. As "every spot
@@ -4466,7 +4473,7 @@ float TailGrowth(const Sim@ s, float end)
 		if (nF > 0.f) v -= kF * (mexCost + yF / nF * wFar / 2.f);
 		float conCharge = 0.f;
 		for (int ci = 0; ci < int(ceil(conUsed)); ++ci) {
-			const float share = AiMin(1.f, AiMax(0.f, end - (s.labAt + float(ci) * conEvery)) / life);
+			const float share = AiMin(1.f, AiMax(0.f, end - (s.labAt + float(ci) * cE)) / life);
 			conCharge += conCost * share * AiMin(1.f, conUsed - float(ci));
 		}
 		if (v - conCharge > best) { best = v - conCharge; bestArmy = armyMps; }
