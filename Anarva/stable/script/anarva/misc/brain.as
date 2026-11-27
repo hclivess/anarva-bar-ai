@@ -305,11 +305,13 @@ namespace EcoPos {
  * per metal against a Rover's 5.9-10.8 and the plant's first constructor came at 125-158 s; winners 91 s, swe30-32.)
  */
 float SpotLife(const AIFloat3& in q) { return SpotLifeWith(q, q, 0.f); }
-// ...with one more defender of speed extraSpeed standing at extraAt (0: none)
-float SpotLifeWith(const AIFloat3& in q, const AIFloat3& in extraAt, float extraSpeed)
+// ...with one more defender of speed extraSpeed standing at extraAt (0: none); floored by the threat horizon unless
+// `floored` is false (a difference with and without a defender: both floored, it read 0 whenever raids came sooner
+// than the horizon - the fighter's defence value never showed, swe64)
+float SpotLifeWith(const AIFloat3& in q, const AIFloat3& in extraAt, float extraSpeed, bool floored = true)
 {
-	const float floorH = AiMax(1.f, Economist::Horizon());
-	if (Opening::raidSpeed <= 0.f || Opening::raidDps <= 0.f || Economist::mexT1 is null) return floorH;
+	const float floorH = floored ? AiMax(1.f, Economist::Horizon()) : 1.f;
+	if (Opening::raidSpeed <= 0.f || Opening::raidDps <= 0.f || Economist::mexT1 is null) return floored ? floorH : 1e9f;
 	const float tNow = float(ai.frame) / SECOND;
 	const float tFirst = AiMax(0.f, Opening::raidArrive - tNow);
 	const float cycle = 2.f * AiEnemyBasePos().distance2D(q) / AiMax(1.f, Opening::raidSpeed);
@@ -333,7 +335,7 @@ float SpotLifeWith(const AIFloat3& in q, const AIFloat3& in extraAt, float extra
 	const float perSite = tKill + gap / AiMax(1.f, Opening::raidSpeed);
 	const float cleared = (answer < 1e29f) ? AiMax(1.f, answer / AiMax(1.f, perSite)) : nSites;
 	const float P = AiMin(1.f, cleared / nSites) * (1.f - hold);
-	if (P <= 0.f) return floorH;
+	if (P <= 0.f) return floored ? floorH : 1e9f;  // held against every raid: it never falls to one
 	return AiMax(floorH, tFirst + cycle * (1.f / P - 1.f));
 }
 // A fighter at home is worth the raid losses it prevents: each producer of ours loses its raid loss once per life
@@ -353,7 +355,7 @@ float DefenceGain(const CCircuitDef@ d, const AIFloat3& in at)
 	for (uint i = 0; i < mine.length(); ++i) {
 		if (!Economist::IsProducer(mine[i].circuitDef)) continue;
 		const AIFloat3 q = mine[i].GetPos(ai.frame);
-		const float L0 = AiMax(1.f, SpotLife(q)), L1 = AiMax(1.f, SpotLifeWith(q, at, d.speed));
+		const float L0 = AiMax(1.f, SpotLifeWith(q, q, 0.f, false)), L1 = AiMax(1.f, SpotLifeWith(q, at, d.speed, false));
 		gain += MexPorc::RaidLoss(mine[i], con) * AiMax(0.f, 1.f / L0 - 1.f / L1) * Hd;
 	}
 	return gain * odds;
