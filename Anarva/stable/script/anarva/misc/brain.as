@@ -477,17 +477,15 @@ void Update()
 		// Players expand behind their army: a spot on their side of the map is ours only as far as our army controls
 		// it, our strength / (ours + theirs) (20 constructors and an army of 54-420 against the winners' 15 and
 		// 648-3395: spots nobody could hold drove constructor production, Gasbag Grabens 2026-11-25)
-		const float control = Production::ArmyControl();
-		// our side is held too, by the army, the commander and our armed buildings: the raids come there first (a
-		// spot at home counted in full while the enemy's 1387 strength faced our 24 - the lab built 14 constructors
-		// and army 0 at minute 4 against the winners' 656, Gasbag 2026-11-25)
-		const float homeControl = Production::ArmyControl(true);
 		for (int i = 0; i < ns2; ++i)
 			if (mso2[i] && !OwnSpot(msp2[i])) {
 				// weighted by the share we keep: how much sooner we reach the spot than they do
 				const float dUs = basePos.distance2D(msp2[i]), dThem = AiEnemyBasePos().distance2D(msp2[i]);
 				float keep = (dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f;
-				keep *= (dThem < dUs) ? control : homeControl;
+				// (x our army's map control - dropped: the spot's raid risk is its life (SpotLife: raids against our answer
+				// there), counted twice it made every far spot worthless with a small early army - Anarva sent no constructor
+				// past ~2000 while [AoW]Vritrasura claimed spots 904-4709 out by 6:00 and won on expansion: 39 extractors vs
+				// 13 (owner's friend game 2026-11-27, REPLAYS.md))
 				claimWork += keep * (dUs / conSpeed + conBuild);
 				claimYield += keep * msi2[i] * ext;
 				spWork.insertLast(dUs / conSpeed + conBuild); spYield.insertLast(keep * msi2[i] * ext); spLife.insertLast(SpotLife(msp2[i]));
@@ -552,7 +550,10 @@ void Update()
 	}
 	const bool work = unclaimed > 0 && unemployed == 0 && conDef !is null && saved > Economist::MetalValue(conDef) && Director::ratio >= 1.f;
 	// the value Production weighs against every other unit: the yield saved, while every constructor has a job
-	constructorValue = (unclaimed > 0 && unemployed == 0) ? saved : 0.f;
+	// the gain of one more over all of them, idle ones included (vN1 - vN): an idle or assisting constructor already
+	// lowers it. The old gate "any constructor without a building job -> 0" read 0 whenever one assisted the lab or
+	// waited on a lost order, and the plant made army instead: 2 constructors by 5:40 against Vritrasura's ~15
+	constructorValue = (unclaimed > 0) ? saved : 0.f;
 	if (ai.frame - conLogFrame >= SECOND * 30) {
 		conLogFrame = ai.frame;
 		AiLog("[ANV-CONVAL] spots " + spWork.length() + " unclaimed " + unclaimed + " unemployed " + unemployed + " N " + int(N) + " H " + int(Hc)
