@@ -2897,52 +2897,10 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				}
 				terms += " per-type " + int(vSurf) + " grow " + F2(grow);
 			}
-			// the first raids, valued by the loss a fighter prevents (#41/#103, "army by the first raid"): the opener's raid
-			// model (unit facts, setup) says how many raiders their lab has by the time this unit is ready; while they
-			// outnumber our fighters, each fighter that beats one in a duel stops its kill rate on our producers (its dps
-			// x our producers' metal per health) over the horizon. As a share of a bigger enemy's fight the same raid
-			// made fighters worth less (Pawn 0.71 vs constructor 2.08, army 54 vs 215 at 3:00, swe4).
-			if (Opening::raidRate > 0.f && mPerHp > 0.f) {
-				const float tUp = float(ai.frame) / SECOND + d.buildTime / AiMax(1.f, fdef.buildSpeed);
-				// their raider rate is the lab's build speed AND what their income pays for (they earn as we do: our income over
-				// a raider's metal) - on build speed alone it read 6.3 raiders at ~2:00 against BARb's real 86 metal of army,
-				// and the lab made Ticks and no constructors (swe6: army 504 vs 215 but metal 8.9 vs 11.2 at 3:00)
-				const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
-				float nR = AiMax(0.f, tUp - Opening::raidLabAt) * rate;
-				// once raiders have been seen, how many there are is what scouting showed (Production's memory of enemy
-				// types, most seen at once), not the model - the model has them spend every metal on raiders and read dozens
-				// by 4:00: 12 Pawns in a row after two constructors, metal 6.6 vs 20.4 (swe10)
-				{
-					float seenArmed = 0.f;
-					const array<string>@ mk = memMax.getKeys();
-					for (uint q = 0; q < mk.length(); ++q) {
-						CCircuitDef@ md = ai.GetCircuitDef(mk[q]);
-						if (md is null || md.GetSustainedDps() <= 0.f) continue;
-						int c = 0; if (!memMax.get(mk[q], c)) c = 0;
-						seenArmed += float(c);
-					}
-					if (seenArmed > 0.f) nR = seenArmed;
-				}
-				if (nR > nOurs) {
-					// in the raider's own measure, sqrt(dps x health) both sides (SurfPower is on the core's threat scale: the
-					// duel read 0.01-0.02, swe5)
-					// the square law, as every fight is judged (FightGain): at least as strong it stops the raider; weaker, it
-					// kills (s/R)^2 of it and dies. As a share s/(s+R) a Tick read half a Grunt's worth per far less metal and
-					// four Ticks died to Grunts at 3:33-3:53 beside the extractors they were meant to keep (swe9)
-					const float sR = Opening::Strength(d), R = AiMax(1e-3f, Opening::raidStrength);
-					const float duel = (sR >= R) ? 1.f : (sR / R) * (sR / R);
-					// a fighter now instead of later answers the raid one lab slot sooner (its build time): that is the loss it
-					// prevents, not the raid's damage over the whole horizon (10711 s early: 85492, the whole stake - the lab made
-					// no constructor in its first 12 units and the base fell behind, buildings 665 vs 850 at 3:00, swe7)
-					// ...and as long as the raid will have gone unanswered when it is ready: before the raid arrives a fighter one
-					// slot later is as good (one slot); after, each slot without one lets it go on. Over the whole horizon the
-					// lab made no constructor (swe7); over one slot alone it made only constructors, army 0 vs 146 at 2:00 (swe8).
-					const float slot = d.buildTime / AiMax(1.f, fdef.buildSpeed);
-					const float unanswered = AiMax(slot, tUp - Opening::raidArrive);
-					const float vRaid = AiMin(stakeSurf, Opening::raidDps * mPerHp * unanswered * duel);
-					if (vRaid > vSurf) { vSurf = vRaid; terms += " firstRaid " + int(vRaid) + " (" + F1(nR) + " raiders, duel " + F2(duel) + ")"; }
-				}
-			}
+			// (The first-raid term - a fighter valued by the raid's kill rate while raiders outnumber our fighters - is retired:
+			// raid defence is valued once, on the plant's ledger (EcoPos::DefenceGain: the raids it removes on the spots we
+			// hold, the commander answering at home). Both on, the first unit was a Blitz at a fixed 2752 in every game, the
+			// constructor at 11.88 per metal against its 14.13 - swe71-73.)
 			if (gE.length() > 0) {
 				float vG = 0.f;
 				for (uint g = 0; g < gE.length(); ++g) {
