@@ -2919,6 +2919,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	string kLog = "";
 	for (uint k = 0; k < kE.length(); ++k) kLog += " " + kName[k] + " " + int(kS[k]) + "/" + int(kE[k]);
 	CCircuitDef@ bestDef = null; float bestRatio = 0.f, bestV = 0.f; int bestJob = -1;  // 0 fight, 1 build, 2 scout
+	CCircuitDef@ bestFightDef = null; float bestFightRatio = 0.f, bestFightV = 0.f;  // the best fighter (the plan's split)
 	float uBest = 0.f;  // the strongest fighter this lab offers (the army the scout's information is for)
 	for (uint i = 0; i < opts.length(); ++i) {
 		CCircuitDef@ od = ai.GetCircuitDef(opts[i]);
@@ -3035,6 +3036,19 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			bestRatio = ratio; @bestDef = d; bestV = v;
 			bestJob = (v == vScout) ? 2 : ((v == vBuild) ? 1 : 0);
 		}
+		if (vFight > 0.f && v == vFight && ratio > bestFightRatio) { bestFightRatio = ratio; @bestFightDef = d; bestFightV = v; }
+	}
+	// The lab's output follows the split the opener's plan chose (its army rate holds the spots its constructors
+	// claim): while the army's share of what the lab has built is below the plan's, the best fighter is built - the
+	// largest deficit against the plan's mix. Constructors won pick after pick by 0.1-1.7 per metal and the plan's
+	// assumed army (3.7 M/s) never came: claims 156/169 s then none, 4 extractors vs 8 at 4:00 under 515 army (swe106).
+	if (Opening::planArmyShare > 0.f && bestFightDef !is null && bestJob == 1) {
+		const float total = labArmyM + labConM;
+		const float share = (total > 0.f) ? labArmyM / total : 0.f;
+		if (share < Opening::planArmyShare) {
+			why += " | plan split: army " + F2(share) + " < " + F2(Opening::planArmyShare);
+			@bestDef = bestFightDef; bestRatio = bestFightRatio; bestV = bestFightV; bestJob = 0;
+		}
 	}
 	if (bestDef is null) {
 		AiLog("[ANV-PROD] " + fdef.GetName() + ": no unit adds value now:" + why);
@@ -3146,8 +3160,16 @@ void FillMix(Mix@ m, const array<string>@ opts)
 // (Without these, sqrt(dps x health) per metal made the Flea our best fighter: 14-16 per game, short test s32.)
 // metal fielded per our army type (all built), for the live efficiency: damage dealt per metal invested in the type
 dictionary builtMetal;
+float labArmyM = 0.f, labConM = 0.f;  // metal the labs have built as army and as constructors (the plan's split)
 void OnBuilt(CCircuitUnit@ u)
 {
+	{
+		const CCircuitDef@ bd = u.circuitDef;
+		if (bd.IsMobile() && !bd.IsRoleAny(Unit::Role::COMM.mask)) {
+			if (bd.buildSpeed > 0.f) labConM += bd.costM;
+			else if (IsArmy(bd)) labArmyM += bd.costM;
+		}
+	}
 	if (!IsArmy(u.circuitDef) || u.circuitDef.GetSustainedDps() <= 0.f) return;
 	double m = 0; if (!builtMetal.get(u.circuitDef.GetName(), m)) m = 0;
 	builtMetal.set(u.circuitDef.GetName(), m + double(u.circuitDef.costM));
@@ -4358,6 +4380,7 @@ void PrepareTail(const array<AIFloat3>@ sp, const array<float>@ si, const array<
 // nonstop, and their lab raiders nonstop from all income - every claimed spot read lost, the commander's extractors
 // alone decided the start: the corner, lab at ~100 s, buildings 460 vs 690-750 at 2:00, swe84-88).
 float tailArmyMps = -1.f;  // the army metal/s of the tail's chosen plan (Value's raid window uses it); -1: none
+float planArmyShare = -1.f;  // the chosen start plan's share of the lab's output on army (the plant follows it); -1: none
 // The time in [raidArrive, end] the raid outnumbers what answers it: cStr (the commander, where it is) plus our army
 // at armyMps from the lab's first unit, against their raiders at the same metal per second.
 float RaidWindowM(const Sim@ s, float end, float cStr, float armyMps)
@@ -4806,7 +4829,11 @@ AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3&
 		const float terr = 0.f;
 		AiLog("[ANV-START] candidate (" + int(planHome.x) + "," + int(planHome.z) + ") value " + int(v) + " [" + Describe(os, 0.f, H) + " tail " + int(TailGrowth(os, H)) + " (" + tailWhy + ")"
 			+ " con " + ((os.lab >= 0 && labs[os.lab].con !is null) ? labs[os.lab].con.GetName() : "none") + " raid " + int(raidArrive) + " H " + int(H) + "]");
-		if (v > bestV) { bestV = v; bestP = planHome; }
+		if (v > bestV) {
+			bestV = v; bestP = planHome;
+			// the split of the lab's output the chosen plan maximises (TailGrowth's army rate over the lab's output)
+			planArmyShare = (os.lab >= 0 && tailArmyMps >= 0.f) ? AiMin(1.f, tailArmyMps / AiMax(1e-3f, AiMin(os.mInc, labs[os.lab].spend))) : -1.f;
+		}
 	}
 	planning = false; ready = false; raidArrive = 1e9f;
 	return bestP;
