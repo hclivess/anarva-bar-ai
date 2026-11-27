@@ -3218,7 +3218,11 @@ float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 	float reachW = 0.f, allW = 0.f;
 	for (uint k = 0; k < m.w.length(); ++k) {
 		allW += m.w[k];
-		if (!(m.range[k] > d.GetMaxRange() && m.speed[k] >= d.speed)) reachW += m.w[k];
+		// ...and a faster enemy picks its fights: we reach the share of its raids our speed covers in the same time
+		// (ours / theirs). Counted whole, a Hammer (46) read as an answer to Grunts (81) and Incisors (85) and was the
+		// lab's second unit; the same code made 336 army by 3:00 with a Rocketeer there and 238 with the Hammer (swe110/111)
+		if (!(m.range[k] > d.GetMaxRange() && m.speed[k] >= d.speed))
+			reachW += m.w[k] * ((m.speed[k] > d.speed) ? d.speed / AiMax(1.f, m.speed[k]) : 1.f);
 	}
 	const float reachShare = (allW > 0.f) ? reachW / allW : 1.f;
 	if (reachShare <= 0.f) { terms = "(unreachable: outranged and outrun)"; return 0.f; }
