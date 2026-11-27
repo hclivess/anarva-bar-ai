@@ -7079,7 +7079,16 @@ void Update()  // every 30 frames
 	// the core ran on a 1-second horizon)
 	{ const double pt = AiClockMs(); Economist::MeasureExtraction(); Prof::Add("Economist::MeasureExtraction", pt); }
 	{ const double pt = AiClockMs(); Economist::UpdateProducerLife(); Prof::Add("Economist::UpdateProducerLife", pt); }
-	aiMilitaryMgr.SetValueHorizon(Economist::ProducerLife());
+	// the core values builder jobs over how long a producer pays: at least the raid model's life of our extractors
+	// (EcoPos::SpotLife - the same life the constructor value counts). Over ProducerLife alone (~200-300 s early) the core
+	// ranked an extractor at 546 builder-ms per metal against a construction turret's 151 and the constructors the plant
+	// built for extraction built turrets: 35 turret picks to 16 extractor, 3 extractors at 3:00 (swe55)
+	{
+		float sum = 0.f; int nl = 0;
+		for (uint i = 0; i < Economist::mexes.length(); ++i) { sum += EcoPos::SpotLife(Economist::mexes[i].GetPos(ai.frame)); ++nl; }
+		const float modelLife = (nl > 0) ? sum / float(nl) : EcoPos::SpotLife(HasBase() ? basePos : commander.GetPos(ai.frame));
+		aiMilitaryMgr.SetValueHorizon(AiMax(Economist::ProducerLife(), modelLife));
+	}
 	aiMilitaryMgr.SetProducerLife((Economist::producerLosses > 0) ? Economist::MeasuredLife() : 0.f);  // feedback to job values
 	// (BARb's attack/raid quotas and the core raid task's targets are gone: no combat unit is in a BARb task any more;
 	// Brain::Command decides each fight from its own defence estimate)

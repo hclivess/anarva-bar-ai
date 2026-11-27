@@ -1770,21 +1770,22 @@ index e4c1d126..c5969b9f 100644
  	}
  
 diff --git a/src/circuit/module/BuilderManager.h b/src/circuit/module/BuilderManager.h
-index 559a0abf..48eb5f17 100644
+index 559a0abf..29f56c29 100644
 --- a/src/circuit/module/BuilderManager.h
 +++ b/src/circuit/module/BuilderManager.h
-@@ -244,6 +244,10 @@ namespace TaskB {
+@@ -244,6 +244,11 @@ namespace TaskB {
  class CBuilderManager final: public ITaskModule {
  public:
  	friend class CBuilderScript;
 +	// Anarva: the frame each worker was last given an order, and the watchdog pass that first saw its queue empty
 +	void NoteOrder(ICoreUnit::Id id, int frame) { anvOrderFrame[id] = frame; anvEmptySince.erase(id); }
++	const std::set<CCircuitUnit*>& GetWorkers() const { return workers; }  // Anarva: the factory checks extractor jobs
 +	std::map<ICoreUnit::Id, int> anvOrderFrame, anvEmptySince;
 +	int anvBlockFrame = -1000000; std::map<int, int> anvBlockedMax;  // the game's blocked unit defs: id -> their own limit
  
  	CBuilderManager(CCircuitAI* circuit);
  	virtual ~CBuilderManager();
-@@ -262,7 +266,7 @@ public:
+@@ -262,7 +267,7 @@ public:
  
  	CCircuitDef* GetTerraDef() const { return terraDef; }
  
@@ -1793,7 +1794,7 @@ index 559a0abf..48eb5f17 100644
  	unsigned int GetWorkerCount() const { return workers.size(); }
  	void AddBuildPower(CCircuitUnit* unit);
  	void DelBuildPower(CCircuitUnit* unit);
-@@ -353,7 +357,6 @@ private:
+@@ -353,7 +358,6 @@ private:
  	std::set<CCircuitUnit*> workers;
  	std::map<CCircuitUnit*, std::shared_ptr<IPathQuery>> costQueries;  // IPathQuery owner
  	std::map<CCircuitUnit*, int> dangerTime;  // unit: frame
@@ -8041,21 +8042,45 @@ index c89d4a41..f65c8587 100644
  			auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
  			if ((cand == nullptr)  // no self-check
 diff --git a/src/circuit/task/static/RecruitTask.cpp b/src/circuit/task/static/RecruitTask.cpp
-index a4ef0f95..65b2f073 100644
+index a4ef0f95..7953ebc6 100644
 --- a/src/circuit/task/static/RecruitTask.cpp
 +++ b/src/circuit/task/static/RecruitTask.cpp
-@@ -5,6 +5,7 @@
+@@ -5,7 +5,10 @@
   *      Author: rlcevg
   */
  
 +#include "Log.h"
  #include "task/static/RecruitTask.h"
++#include "task/builder/BuilderTask.h"  // Anarva: extractor jobs
++#include "module/BuilderManager.h"
  #include "module/EconomyManager.h"
  #include "module/FactoryManager.h"
-@@ -69,19 +70,44 @@ void CRecruitTask::Update()
+ #include "terrain/TerrainManager.h"
+@@ -69,19 +72,65 @@ void CRecruitTask::Update()
  	}
  
  	CCircuitAI* circuit = manager->GetCircuit();
++	// Anarva: in a metal stall, while a builder is on an extractor, the factory takes only spare metal (passive): the
++	// extractor pays the metal back and the factory then runs faster. Active, the plant drew the empty bank against the
++	// extractor builds and our constructors' extractors stood at 195-253 s, 4 at 4:00 vs BARb's 8 (swe56). Out of the
++	// stall, or with no extractor being built, the factory runs at its task's priority.
++	{
++		CEconomyManager* em = circuit->GetEconomyManager();
++		bool mexBuilding = false;
++		for (CCircuitUnit* w : circuit->GetBuilderManager()->GetWorkers()) {
++			IUnitTask* t = w->GetTask();
++			if ((t != nullptr) && (t->GetType() == IUnitTask::Type::BUILDER)) {
++				const CCircuitDef* bd = static_cast<IBuilderTask*>(t)->GetBuildDef();
++				if ((bd != nullptr) && (bd->GetExtractsM() > 0.f)) { mexBuilding = true; break; }
++			}
++		}
++		const float prio = ((em->GetMetalCur() < em->GetMetalPull()) && mexBuilding) ? 0.f : ClampPriority();
++		for (CCircuitUnit* unit : units) {
++			TRY_UNIT(circuit, unit,
++				unit->CmdPriority(prio);
++			)
++		}
++	}
 +	// Anarva: an order given but not in the factory a full check later (no build queued, no unit of ours started) was lost
 +	// on the way - re-issue it. Issued once and trusted, the factories sat with empty queues for ~70 s per unit from minute
 +	// 13 to 25 with both banks full (owner's friend game, Supreme Isthmus 2026-11-27, replay FACT lines q0 while "executing";
@@ -8103,7 +8128,7 @@ index a4ef0f95..65b2f073 100644
  	if (State::DISENGAGE == state) {
  		if (hasMetal) {
  			state = State::ROAM;  // Not wait
-@@ -93,20 +119,16 @@ void CRecruitTask::Update()
+@@ -93,20 +142,16 @@ void CRecruitTask::Update()
  			}
  		}
  	} else {
@@ -8129,7 +8154,7 @@ index a4ef0f95..65b2f073 100644
  	Cancel();
  
  	CCircuitAI* circuit = manager->GetCircuit();
-@@ -140,6 +162,8 @@ void CRecruitTask::Cancel()
+@@ -140,6 +185,8 @@ void CRecruitTask::Cancel()
  				params.push_back(cmdId);
  			}
  		}
@@ -8138,7 +8163,7 @@ index a4ef0f95..65b2f073 100644
  		TRY_UNIT(circuit, unit,
  			unit->CmdRemove(std::move(params), UNIT_COMMAND_OPTION_ALT_KEY | UNIT_COMMAND_OPTION_CONTROL_KEY);
  		)
-@@ -183,8 +207,26 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -183,8 +230,26 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  	}
  
  	if (geom::is_valid(buildPos)) {
@@ -8166,7 +8191,7 @@ index a4ef0f95..65b2f073 100644
  		)
  	} else {
  		manager->AbortTask(this);
-@@ -195,6 +237,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -195,6 +260,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  
  void CRecruitTask::OnUnitIdle(CCircuitUnit* unit)
  {
