@@ -4494,7 +4494,7 @@ float TailGrowth(const Sim@ s, float end)
 	// at its full rate in the plan and the plan put the lab first (45 s, one extractor before it); 1v1 winners build 3
 	// extractors and ~3 plants first and the lab at ~64 s (replays.db, 106 winners: 66 with three) - the income the lab runs on
 	const float comDraw = ComDef().buildSpeed * Economist::mexT1.costM / AiMax(1.f, Economist::mexT1.buildTime);
-	const float labMetal = (s.mInc < L.spend + comDraw) ? AiMin(L.spend, s.mInc * L.spend / AiMax(1e-3f, L.spend + comDraw)) : L.spend;
+	const float labMetal = AiMin(s.mInc, L.spend);  // (the income share by draw moved the start to a one-spot corner, diag1-3; kept out until the start choice accounts for it)
 	const float conEvery = AiMax(L.conTime, L.con.costM / AiMax(1e-3f, labMetal));
 	const float span = AiMax(1.f, end - s.labAt);
 	const float life = AiMax(1.f, Economist::ProducerLife());
@@ -5108,7 +5108,8 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 		// the lab after (Canis winners: extractors at 9/16/23 s, two plants, lab at ~61 s, replays.db; ours took the lab
 		// at 28 s as soon as it was affordable and had 6-7 extractors by 4:00 against their 9).
 		float firstGain = 0.f, firstCost = 0.f; string firstName = ""; int firstOpt = -1;
-		float altDiff = -1e30f; string altName = "-";  // the best alternative's plan value less the lab now's (logged)
+		float altDiff = -1e30f; string altName = "-", altAll = "";  // the alternatives' plan values less the lab now's (logged)
+		float altNearD = 1e30f; string altNear = "";
 		if (noWait && carried) {
 			const float drawEq = drawM + drawE / AiMax(1e-3f, Economist::energyPerMetal);
 			const float conSpeed = (L.con !is null) ? AiMax(1.f, L.con.speed) : AiMax(1.f, speed);
@@ -5120,6 +5121,21 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 				Sim@ w = Copy(s0);
 				Apply(w, opts[a], bp, speed);
 				const float mexDone = w.t;
+				// ...with the energy that lets its metal be spent: production takes both at the lab's energy per metal, so an
+				// extractor alone added nothing while energy bound (plan rate 3.0 with it and without, the lab 37 s later:
+				// -6222 at the nearest spot, the lab always first); 1v1 winners build 3 extractors and ~3 plants before the lab
+				// (replays.db, 106 winners: MMMEEL, MMMEEEL most common). If energy no longer covers the metal, the plant that
+				// makes the most energy per second of commander time comes first too.
+				if (opts[a].kind == 0 && w.eInc < w.mInc * L.eRatio) {
+					int pb = -1; float pr = 0.f;
+					for (uint b = 0; b < opts.length(); ++b) {
+						if (opts[b].kind != 1) continue;
+						const float tb = opts[b].def.buildTime / AiMax(1.f, bp) + Walk(w.pos, opts[b].pos, speed);
+						const float rb = opts[b].yieldE / AiMax(1e-3f, tb);
+						if (rb > pr) { pr = rb; pb = int(b); }
+					}
+					if (pb >= 0) Apply(w, opts[pb], bp, speed);
+				}
 				Apply(w, opts[lab], bp, speed);
 				const float tt = mexDone - s0.t;
 				const float tByCon = w.t + L.conTime + opts[lab].pos.distance2D(opts[a].pos) / conSpeed;
@@ -5142,6 +5158,11 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 				const float vFirst = Value(w, s0.t, Hl), vNow = Value(t, s0.t, Hl);
 				const float cost = AiMax(0.f, gain - (vFirst - vNow));  // logged as before: what the lab loses by it
 				if (gain - cost > altDiff) { altDiff = gain - cost; altName = (opts[a].kind == 0) ? ("spot " + opts[a].spot) : opts[a].def.GetName(); }
+				if (opts[a].kind == 0 && opts[a].pos.distance2D(s0.pos) < altNearD) {
+					altNearD = opts[a].pos.distance2D(s0.pos);
+					altNear = " | nearest spot first: [" + Describe(w, s0.t, Hl) + " V " + int(vFirst) + "] vs lab now: [" + Describe(t, s0.t, Hl) + " V " + int(vNow) + "]";
+				}
+				altAll += " " + ((opts[a].kind == 0) ? ("spot" + opts[a].spot + "@" + int(opts[a].pos.distance2D(s0.pos))) : opts[a].def.GetName()) + "=" + int(gain - cost);
 				if (gain - cost > firstGain - firstCost) { firstGain = gain; firstCost = cost; firstName = (opts[a].kind == 0) ? ("spot " + opts[a].spot) : opts[a].def.GetName(); firstOpt = int(a); }
 			}
 		}
@@ -5154,7 +5175,7 @@ float Bottleneck(const Sim@ s0, const array<Opt@>@ opts, float bp, float speed, 
 		}
 		if (noWait && carried && firstGain <= firstCost) {
 			best = lab;
-			why = "lab: affordable now; income " + F1(s0.mInc) + " M/s, " + int(s0.eInc) + " E/s covers its production (" + F1(drawM) + " M/s, " + int(drawE) + " E/s); best first: " + altName + " " + int(altDiff);
+			why = "lab: affordable now; income " + F1(s0.mInc) + " M/s, " + int(s0.eInc) + " E/s covers its production (" + F1(drawM) + " M/s, " + int(drawE) + " E/s); best first: " + altName + " " + int(altDiff) + altNear;
 			return 1.f;
 		}
 		why = (noWait ? "" : "lab not affordable yet; ") + (needM > 0.f ? ("metal " + F1(s0.mInc) + "/s short of " + F1(drawM) + "; ") : "")
