@@ -4335,12 +4335,22 @@ float TailGrowth(const Sim@ s, float end)
 	const float cStr = Strength(ComDef());
 	const float reachHome = DefenceReach(Economist::mexT1);
 	array<float> tks, ys; array<bool> nears;
+	// a claim is also the energy its metal needs (the lab's energy per metal): its share of a plant's build at the
+	// constructor's power, the cheapest in build time per energy (unit facts). Claims alone read the second claim at
+	// ~91 s; the constructors also built four solars and took the second at 148 s (swe98)
+	float plantSecPerE = 0.f;
+	for (uint pk = 0; pk < plants.length(); ++pk) {
+		const float mk = aiEconomyMgr.GetEnergyMake(plants[pk]);
+		if (mk <= 0.f) continue;
+		const float sp = plants[pk].buildTime / AiMax(1.f, L.con.buildSpeed) / mk;
+		if (plantSecPerE <= 0.f || sp < plantSecPerE) plantSecPerE = sp;
+	}
 	float best = 0.f, bestArmy = AiMin(s.mInc, L.spend);  // no claims: the whole lab output is army
 	float W = 0.f; int k = 0;
 	for (uint j = 0; j < tailOrder.length(); ++j) {
 		if (s.usedSpot[tailOrder[j]]) continue;
 		++k;
-		W += tailDist[j] / AiMax(1.f, L.con.speed) + mexBuild;
+		W += tailDist[j] / AiMax(1.f, L.con.speed) + mexBuild + tailYield[j] * L.eRatio * plantSecPerE;
 		const float tk = s.labAt + (-conEvery + sqrt(conEvery * conEvery + 2.f * conEvery * W));
 		if (tk >= end) break;
 		tks.insertLast(tk); ys.insertLast(tailYield[j]); nears.insertLast(tailDist[j] <= reachHome);
