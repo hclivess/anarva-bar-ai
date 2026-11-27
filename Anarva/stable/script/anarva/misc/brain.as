@@ -338,6 +338,37 @@ float SpotLifeWith(const AIFloat3& in q, const AIFloat3& in extraAt, float extra
 	if (P <= 0.f) return floored ? floorH : 1e9f;  // held against every raid: it never falls to one
 	return AiMax(floorH, tFirst + cycle * (1.f / P - 1.f));
 }
+// One raid model for the plant's ledger (#65 note in PROGRESS: constructors and fighters on one ledger): the raids
+// expected to hit a spot at q over the next Hr seconds - none before the first can arrive, then one round trip of a
+// raider apart, each hitting q with the chance P that it clears q before our answer (as SpotLifeWith). A raided
+// extractor is rebuilt, so each raid costs one RaidLoss, not the spot.
+float SpotRaids(const AIFloat3& in q, float Hr, const AIFloat3& in extraAt, float extraSpeed)
+{
+	if (Opening::raidSpeed <= 0.f || Opening::raidDps <= 0.f || Economist::mexT1 is null) return 0.f;
+	const float tNow = float(ai.frame) / SECOND;
+	const float tFirst = AiMax(0.f, Opening::raidArrive - tNow);
+	const float cycle = AiMax(1.f, 2.f * AiEnemyBasePos().distance2D(q) / AiMax(1.f, Opening::raidSpeed));
+	const float tKill = Economist::mexT1.health / AiMax(1e-3f, Opening::raidDps);
+	float answer = 1e30f;
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	for (uint k = 0; k < mine.length(); ++k) {
+		const CCircuitDef@ kd = mine[k].circuitDef;
+		if (kd.IsMobile() && kd.surfThrDmg > 0.f && kd.buildSpeed <= 0.f)
+			answer = AiMin(answer, mine[k].GetPos(ai.frame).distance2D(q) / AiMax(1.f, kd.speed));
+	}
+	if (extraSpeed > 0.f) answer = AiMin(answer, extraAt.distance2D(q) / extraSpeed);
+	const float hold = (answer < 1e29f) ? AiMin(1.f, tKill / AiMax(1e-3f, answer)) : 0.f;
+	const float nSites = float(Economist::mexes.length() + 1);
+	float gap = 0.f;
+	for (uint k = 0; k < Economist::mexes.length(); ++k) {
+		const float dk = Economist::mexes[k].GetPos(ai.frame).distance2D(q);
+		if (gap == 0.f || dk < gap) gap = dk;
+	}
+	const float perSite = tKill + gap / AiMax(1.f, Opening::raidSpeed);
+	const float cleared = (answer < 1e29f) ? AiMax(1.f, answer / AiMax(1.f, perSite)) : nSites;
+	const float P = AiMin(1.f, cleared / nSites) * (1.f - hold);
+	return AiMax(0.f, Hr - tFirst) / cycle * P;
+}
 // A fighter at home is worth the raid losses it prevents: each producer of ours loses its raid loss once per life
 // (SpotLife: the raids against our answer there); one more fighter standing at the factory answers sooner, so every
 // producer lives longer. Gain over the horizon: sum of loss x (1/life now - 1/life with it), x its square-law odds
@@ -345,7 +376,9 @@ float SpotLifeWith(const AIFloat3& in q, const AIFloat3& in extraAt, float extra
 // army 31 vs 240 at 3:00, swe53 - a player builds the army that keeps what was claimed.)
 float DefenceGain(const CCircuitDef@ d, const AIFloat3& in at)
 {
-	if (d is null || d.speed <= 0.f || d.GetSustainedDps() <= 0.f || Opening::raidStrength <= 0.f) return 0.f;
+	// a surface defender only: what can't shoot the raiders protects nothing (a Whistler was the first unit at 73 s on
+	// strength alone, swe65)
+	if (d is null || d.speed <= 0.f || d.GetSustainedDps() <= 0.f || d.surfThrDmg <= 0.f || Opening::raidStrength <= 0.f) return 0.f;
 	const float sU = Opening::Strength(d), R = Opening::raidStrength;
 	const float odds = (sU >= R) ? 1.f : (sU / R) * (sU / R);
 	const float Hd = AiMax(1.f, Economist::Horizon());
@@ -355,8 +388,8 @@ float DefenceGain(const CCircuitDef@ d, const AIFloat3& in at)
 	for (uint i = 0; i < mine.length(); ++i) {
 		if (!Economist::IsProducer(mine[i].circuitDef)) continue;
 		const AIFloat3 q = mine[i].GetPos(ai.frame);
-		const float L0 = AiMax(1.f, SpotLifeWith(q, q, 0.f, false)), L1 = AiMax(1.f, SpotLifeWith(q, at, d.speed, false));
-		gain += MexPorc::RaidLoss(mine[i], con) * AiMax(0.f, 1.f / L0 - 1.f / L1) * Hd;
+		const float r0 = SpotRaids(q, Hd, q, 0.f), r1 = SpotRaids(q, Hd, at, d.speed);
+		gain += MexPorc::RaidLoss(mine[i], con) * AiMax(0.f, r0 - r1);
 	}
 	return gain * odds;
 }
@@ -496,6 +529,7 @@ void Update()
 	// horizon is long while we own the commander's 2700 metal) while the winners run 7 by minute 4.
 	float claimWork = 0.f, claimYield = 0.f;  // constructor-seconds; metal/s the free spots would yield us
 	array<float> spWork, spYield, spLife;  // per free spot: walk + build seconds, metal/s kept, its life (SpotLife)
+	array<AIFloat3> spPos;
 	CCircuitDef@ conDef = CheapestConstructor();
 	if (conDef !is null && Economist::mexT1 !is null && HasBase()) {
 		const float conSpeed = AiMax(1.f, conDef.speed);
@@ -515,7 +549,7 @@ void Update()
 				// 13 (owner's friend game 2026-11-27, REPLAYS.md))
 				claimWork += keep * (dUs / conSpeed + conBuild);
 				claimYield += keep * msi2[i] * ext;
-				spWork.insertLast(dUs / conSpeed + conBuild); spYield.insertLast(keep * msi2[i] * ext); spLife.insertLast(SpotLife(msp2[i]));
+				spWork.insertLast(dUs / conSpeed + conBuild); spYield.insertLast(keep * msi2[i] * ext); spLife.insertLast(SpotLife(msp2[i])); spPos.insertLast(msp2[i]);
 			}
 	}
 	const float N = float(AiMax(1, int(aiBuilderMgr.GetWorkerCount())));
@@ -529,7 +563,7 @@ void Update()
 	// killed the extractors - metal 6.6 vs BARb 18.1 and army 270 vs 637 at 4:00, swing.py sw5)
 	for (uint a = 0; a < spWork.length(); ++a)
 		for (uint b = a + 1; b < spWork.length(); ++b)
-			if (spWork[b] < spWork[a]) { const float tw = spWork[a]; spWork[a] = spWork[b]; spWork[b] = tw; const float ty = spYield[a]; spYield[a] = spYield[b]; spYield[b] = ty; const float tl = spLife[a]; spLife[a] = spLife[b]; spLife[b] = tl; }
+			if (spWork[b] < spWork[a]) { const float tw = spWork[a]; spWork[a] = spWork[b]; spWork[b] = tw; const float ty = spYield[a]; spYield[a] = spYield[b]; spYield[b] = ty; const float tl = spLife[a]; spLife[a] = spLife[b]; spLife[b] = tl; const AIFloat3 tp = spPos[a]; spPos[a] = spPos[b]; spPos[b] = tp; }
 	// each claimed extractor pays for its own life (SpotLife: the raids against our answer there); Hc for the log
 	const float Hc = AiMax(1.f, Economist::Horizon());
 	// feedback (owner: "ignores losses? is there no feedback loop?"): a claimed extractor yields until the horizon or
@@ -538,9 +572,13 @@ void Update()
 	float vN = 0.f, vN1 = 0.f, cum = 0.f;
 	for (uint j = 0; j < spWork.length(); ++j) {
 		cum += spWork[j];
-		const float Lj = AiMin(Lm, spLife[j]);  // measured life, once producers have died, bounds the model's
-		vN += spYield[j] * AiMax(0.f, Lj - cum / N);
-		vN1 += spYield[j] * AiMax(0.f, Lj - cum / (N + 1.f));
+		// on the ledger: a claimed spot yields from its claim to the horizon less the raids that hit it there (each a
+		// RaidLoss: the extractor + its yield until rebuilt) - the same horizon and raid model as the fighter's value. Capped
+		// at its "life" it read worthless whenever raids came early (core: extractor 461 vs assisting 213, swe60-63)
+		const float tN = cum / N, tN1 = cum / (N + 1.f);
+		const float lossJ = Economist::MetalValue(Economist::mexT1) + spYield[j] * (spWork[j]);
+		vN += AiMax(0.f, spYield[j] * AiMax(0.f, Hc - tN) - SpotRaids(spPos[j], AiMax(0.f, Hc - tN), spPos[j], 0.f) * lossJ);
+		vN1 += AiMax(0.f, spYield[j] * AiMax(0.f, Hc - tN1) - SpotRaids(spPos[j], AiMax(0.f, Hc - tN1), spPos[j], 0.f) * lossJ);
 	}
 	float saved = (vN1 - vN) * Economist::MetalShare();
 	// ...and it is build power: it spends metal that otherwise sits unspent (income + bank over a producer's life, less
