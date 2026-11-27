@@ -3124,6 +3124,9 @@ float OurArmyCount()
 }
 float SurfPower(const CCircuitDef@ d, Mix@ m, string& out terms)
 {
+	// no weapon that can target land: no ground power (sustained dps is the best over air/surface/water - an anti-air
+	// Jethro read 9.72 per metal as a ground fighter with no air seen, the bot lab's second unit, swe91)
+	if (d.surfThrDmg <= 0.f) { terms = "(no ground weapon)"; return 0.f; }
 	// #116 design (1): against an enemy that outranges us and is at least as fast, we never close - it backs off and
 	// fires; our power against it is nothing, not "a little less" (gapDmg). The share of the mix (by weight) we can
 	// reach scales our power. Pawns (180, speed 87) against Mists (700) and Wolverines (710) traded 0.31-0.65 (REPLAYS.md)
