@@ -2784,7 +2784,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		// only those that could have arrived by now: built since their lab and walked here (raidArrive includes the walk).
 		// Counted from their lab, the floor read 747 at 1:13 - all their income in raiders - and the first fighter lifted
 		// the win share 0 -> 0.29 of the whole stake: a Blitz before the first constructor in every game (swe71-74)
-		eSurf = AiMax(eSurf, AiMax(sSurf, RaidFloor(tNow)));
+		eSurf = AiMax(eSurf, AiMax(sSurf, AiMax(RaidFloor(tNow), RaidExists(tNow))));
 	}
 	// Their growth as seen: the strongest surface strength we have seen, and when. A unit ordered now fights the army
 	// that is there when it is ready, so it is valued against that: now + measured growth x (its build + walk) (sight,
@@ -3005,7 +3005,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			// ...the enemy it meets is the one there when it is ready: the raiders that can have arrived by then count (at
 			// "arrived by now" the first fighter was valued 0 until the raid was due and came 5 s after it, army 141 vs 215
 			// at 3:00, swe76: the raid model put their first raid at 164 s, our first Blitz 169 s)
-			const float eReady = AiMax(eSurf * grow, RaidFloor(float(ai.frame) / SECOND + tReady));
+			const float eReady = AiMax(eSurf * grow, RaidExists(float(ai.frame) / SECOND + tReady));
 			float vSurf = (eReady > 0.f) ? stakeSurf * FighterShare(sSurf, us, eReady) : 0.f;
 			if (kESum > 0.f) {
 				vSurf = 0.f;
@@ -3357,6 +3357,17 @@ float HitChance(float shotSpeed, float range, float targetSpeed, float targetRad
 float WinShare(float S, float E) { return (S + E > 0.f) ? S / (S + E) : 0.f; }
 // The raiders' strength that can be at our spots by game time t (the opener's raid model: their lab, raider rate capped
 // by the income they earn as we do, the walk): none before the first raid can arrive, one when it does.
+// The raiders their lab has made by game time t, wherever they are (a player infers them from the clock and their lab:
+// the bot read their army 0 until contact while BARb had 43-266 at 2:00 - sight gaps, swe151-155): from their lab and
+// one raider's build, at the lab's rate capped by the income they earn as we do.
+float RaidExists(float t)
+{
+	if (Opening::raidRate <= 0.f) return 0.f;
+	const float t0 = Opening::raidLabAt + Opening::raidUnitTime;
+	if (t < t0) return 0.f;
+	const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
+	return ((t - t0) * rate + 1.f) * Opening::raidStrength;
+}
 float RaidFloor(float t)
 {
 	if (Opening::raidRate <= 0.f || t < Opening::raidArrive) return 0.f;
@@ -6523,7 +6534,7 @@ void Update()
 		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
 		const uint n = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
 		for (uint i = 0; i < n; ++i)
-			if (ed[i] !is null && ed[i].IsMobile() && ed[i].defDmg > 0.f) enemyArmy += ec[i];
+			if (ed[i] !is null && ed[i].IsMobile() && ed[i].defDmg > 0.f && !ed[i].IsRoleAny(Unit::Role::COMM.mask)) enemyArmy += ec[i];  // army, not the commander (read 3098 vs 820 real, swe151)
 	}
 	const float killed = Assess::killedTotal - lastKilled, lost = (Assess::lostNearTotal + Assess::lostFarTotal) - lastLost;
 	lastKilled = Assess::killedTotal; lastLost = Assess::lostNearTotal + Assess::lostFarTotal;
