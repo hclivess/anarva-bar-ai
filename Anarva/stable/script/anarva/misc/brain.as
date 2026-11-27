@@ -3017,6 +3017,9 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	last = bestDef.GetName();
 	if (bestJob == 0) lastBestRatio = bestRatio;
 	if (conRatioNow > 0.f || lastBestRatio > 0.f) aiMilitaryMgr.SetValuePerMetal(lastBestRatio, conRatioNow);  // lab build power (core)
+	// the lab's unit now, for the core's stall split: a fighter's value per metal against the extractor jobs' (a
+	// constructor or scout: 0, the extractors it serves come first)
+	aiMilitaryMgr.SetArmyVpm((bestJob == 0) ? bestRatio : 0.f);
 	AiLog("[ANV-PROD] " + fdef.GetName() + " -> " + bestDef.GetName() + " as " + (bestJob == 2 ? "scout" : (bestJob == 1 ? "constructor" : "fighter"))
 		+ " (value " + int(bestV) + " per metal " + F2(bestRatio) + "; S air/surf " + int(sAir) + "/" + int(sSurf) + " E " + int(eAir) + "/" + int(eSurf) + "; per type ours/theirs" + kLog + ")" + " |" + why);
 	return aiFactoryMgr.Enqueue(TaskS::Recruit(bestJob == 1 ? Task::RecruitType::BUILDPOWER : Task::RecruitType::FIREPOWER,
