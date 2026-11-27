@@ -8192,7 +8192,7 @@ index c89d4a41..f65c8587 100644
  			auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
  			if ((cand == nullptr)  // no self-check
 diff --git a/src/circuit/task/static/RecruitTask.cpp b/src/circuit/task/static/RecruitTask.cpp
-index a4ef0f95..13005442 100644
+index a4ef0f95..79ecfb8f 100644
 --- a/src/circuit/task/static/RecruitTask.cpp
 +++ b/src/circuit/task/static/RecruitTask.cpp
 @@ -5,7 +5,10 @@
@@ -8206,7 +8206,7 @@ index a4ef0f95..13005442 100644
  #include "module/EconomyManager.h"
  #include "module/FactoryManager.h"
  #include "terrain/TerrainManager.h"
-@@ -69,19 +72,79 @@ void CRecruitTask::Update()
+@@ -69,19 +72,83 @@ void CRecruitTask::Update()
  	}
  
  	CCircuitAI* circuit = manager->GetCircuit();
@@ -8246,7 +8246,16 @@ index a4ef0f95..13005442 100644
 +		delayMeasured = true;
 +		maxStartDelay = std::max(maxStartDelay, circuit->GetLastFrame() - issuedFrame);
 +	}
-+	const int waitFrames = (maxStartDelay > 0) ? 2 * maxStartDelay : FRAMES_PER_SEC;
++	// before any delay is measured: one build time of the unit at the factory's power - a lost order costs at most that
++	// much idle time, while a delayed one re-sent at 1 s arrived twice and the copies were cancelled at 1-4% (the first
++	// order of the game took 34+ frames; two constructors lost at our plant, swe83/85/86; removing the copy before the
++	// re-send destroyed the delayed original instead, swe86)
++	int waitFrames = 2 * maxStartDelay;
++	if (maxStartDelay <= 0) {
++		float bp = 0.f;
++		for (CCircuitUnit* u : units) bp = std::max(bp, u->GetCircuitDef()->GetBuildSpeed());
++		waitFrames = (int)(buildDef->GetBuildTime() / std::max(1.f, bp) * FRAMES_PER_SEC);
++	}
 +	if (buildIssued && (target == nullptr) && (circuit->GetLastFrame() - issuedFrame >= std::max(FRAMES_PER_SEC, waitFrames))) {
 +		CUnitAPI* unitAPI = circuit->GetUnitAPI();
 +		for (CCircuitUnit* unit : units) {
@@ -8260,12 +8269,7 @@ index a4ef0f95..13005442 100644
 +				circuit->LOG("[ANV-FAC] f=%i re-issue %s (order lost: queue %i, %i frames after)", circuit->GetLastFrame(),
 +					buildDef->GetDef()->GetName(), cmdSize, circuit->GetLastFrame() - issuedFrame);
 +				issuedFrame = circuit->GetLastFrame();
-+				// remove any copy first, then build: the engine runs one AI's commands in the order sent, so a delayed
-+				// original that arrives is removed before the new order lands - exactly one in the queue either way (a
-+				// delayed original and its re-sent copy both arrived, and the next finish's cancel destroyed the copy the
-+				// factory had started: a constructor at 1% "died" at our own plant, swe83/swe85)
 +				TRY_UNIT(circuit, unit,
-+					unit->CmdRemove({-(float)buildDef->GetId()}, UNIT_COMMAND_OPTION_ALT_KEY | UNIT_COMMAND_OPTION_CONTROL_KEY);
 +					unit->CmdBuild(buildDef, unit->GetPos(circuit->GetLastFrame()), UNIT_NO_FACING, 0, NO_EXPIRY);
 +				)
 +			}
@@ -8292,7 +8296,7 @@ index a4ef0f95..13005442 100644
  	if (State::DISENGAGE == state) {
  		if (hasMetal) {
  			state = State::ROAM;  // Not wait
-@@ -93,20 +156,16 @@ void CRecruitTask::Update()
+@@ -93,20 +160,16 @@ void CRecruitTask::Update()
  			}
  		}
  	} else {
@@ -8318,7 +8322,7 @@ index a4ef0f95..13005442 100644
  	Cancel();
  
  	CCircuitAI* circuit = manager->GetCircuit();
-@@ -140,6 +199,8 @@ void CRecruitTask::Cancel()
+@@ -140,6 +203,8 @@ void CRecruitTask::Cancel()
  				params.push_back(cmdId);
  			}
  		}
@@ -8327,7 +8331,7 @@ index a4ef0f95..13005442 100644
  		TRY_UNIT(circuit, unit,
  			unit->CmdRemove(std::move(params), UNIT_COMMAND_OPTION_ALT_KEY | UNIT_COMMAND_OPTION_CONTROL_KEY);
  		)
-@@ -183,8 +244,26 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -183,8 +248,26 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  	}
  
  	if (geom::is_valid(buildPos)) {
@@ -8355,7 +8359,7 @@ index a4ef0f95..13005442 100644
  		)
  	} else {
  		manager->AbortTask(this);
-@@ -195,6 +274,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -195,6 +278,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  
  void CRecruitTask::OnUnitIdle(CCircuitUnit* unit)
  {

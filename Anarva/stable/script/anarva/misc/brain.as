@@ -4326,8 +4326,17 @@ float TailGrowth(const Sim@ s, float end)
 		// started at (1306,3328) with one spot near while every player on our side stood at (1431,3555) or (936,2562)
 		// with two spots 104-167 out, built at 9 and 16 s (replays.db ea25036b, 18a2046b, 57d1df6a; swe38)
 		const float conUsed = AiMin(float(k), (tk - s.labAt) / AiMax(1.f, conEvery) + 1.f);  // made by then (the first at once)
-		best = AiMax(best, v - conUsed * conCost);
-		if (k <= 3) tailWhy += " k" + k + "@" + int(tk) + " hold " + F2(hold) + " v " + int(v) + " cons " + int(conUsed * conCost);
+		// a constructor is a capital good: it goes on claiming after the horizon, so the horizon pays the share of its
+		// working life it uses (made at labAt + i conEvery, worn over the measured producer life). Charged whole against
+		// the claims inside a ~265 s horizon, the tail read 0 at every start (first claims +22..+211 against 162 each, swe86)
+		const float life = AiMax(1.f, Economist::ProducerLife());
+		float conCharge = 0.f;
+		for (int ci = 0; ci < int(ceil(conUsed)); ++ci) {
+			const float share = AiMin(1.f, AiMax(0.f, end - (s.labAt + float(ci) * conEvery)) / life);
+			conCharge += conCost * share * AiMin(1.f, conUsed - float(ci));
+		}
+		best = AiMax(best, v - conCharge);
+		if (k <= 3) tailWhy += " k" + k + "@" + int(tk) + " hold " + F2(hold) + " v " + int(v) + " cons " + int(conCharge) + " (life " + int(life) + ")";
 	}
 	return best;
 }
