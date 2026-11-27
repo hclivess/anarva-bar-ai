@@ -304,7 +304,9 @@ namespace EcoPos {
  * could take everything. (Every investment over the threat horizon alone, ~200 s early: a constructor scored 0.6-2.8
  * per metal against a Rover's 5.9-10.8 and the plant's first constructor came at 125-158 s; winners 91 s, swe30-32.)
  */
-float SpotLife(const AIFloat3& in q)
+float SpotLife(const AIFloat3& in q) { return SpotLifeWith(q, q, 0.f); }
+// ...with one more defender of speed extraSpeed standing at extraAt (0: none)
+float SpotLifeWith(const AIFloat3& in q, const AIFloat3& in extraAt, float extraSpeed)
 {
 	const float floorH = AiMax(1.f, Economist::Horizon());
 	if (Opening::raidSpeed <= 0.f || Opening::raidDps <= 0.f || Economist::mexT1 is null) return floorH;
@@ -319,6 +321,7 @@ float SpotLife(const AIFloat3& in q)
 		if (kd.IsMobile() && kd.surfThrDmg > 0.f && kd.buildSpeed <= 0.f)
 			answer = AiMin(answer, mine[k].GetPos(ai.frame).distance2D(q) / AiMax(1.f, kd.speed));
 	}
+	if (extraSpeed > 0.f) answer = AiMin(answer, extraAt.distance2D(q) / extraSpeed);
 	const float hold = (answer < 1e29f) ? AiMin(1.f, tKill / AiMax(1e-3f, answer)) : 0.f;
 	// sites one raid clears before the answer, out of ours (the new one included); no army: it clears them all
 	const float nSites = float(Economist::mexes.length() + 1);
@@ -332,6 +335,28 @@ float SpotLife(const AIFloat3& in q)
 	const float P = AiMin(1.f, cleared / nSites) * (1.f - hold);
 	if (P <= 0.f) return floorH;
 	return AiMax(floorH, tFirst + cycle * (1.f / P - 1.f));
+}
+// A fighter at home is worth the raid losses it prevents: each producer of ours loses its raid loss once per life
+// (SpotLife: the raids against our answer there); one more fighter standing at the factory answers sooner, so every
+// producer lives longer. Gain over the horizon: sum of loss x (1/life now - 1/life with it), x its square-law odds
+// against one raider. (Valued only by its share of a global win, the plant made constructors only once expansion paid:
+// army 31 vs 240 at 3:00, swe53 - a player builds the army that keeps what was claimed.)
+float DefenceGain(const CCircuitDef@ d, const AIFloat3& in at)
+{
+	if (d is null || d.speed <= 0.f || d.GetSustainedDps() <= 0.f || Opening::raidStrength <= 0.f) return 0.f;
+	const float sU = Opening::Strength(d), R = Opening::raidStrength;
+	const float odds = (sU >= R) ? 1.f : (sU / R) * (sU / R);
+	const float Hd = AiMax(1.f, Economist::Horizon());
+	CCircuitDef@ con = CheapestConstructor();
+	float gain = 0.f;
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	for (uint i = 0; i < mine.length(); ++i) {
+		if (!Economist::IsProducer(mine[i].circuitDef)) continue;
+		const AIFloat3 q = mine[i].GetPos(ai.frame);
+		const float L0 = AiMax(1.f, SpotLife(q)), L1 = AiMax(1.f, SpotLifeWith(q, at, d.speed));
+		gain += MexPorc::RaidLoss(mine[i], con) * AiMax(0.f, 1.f / L0 - 1.f / L1) * Hd;
+	}
+	return gain * odds;
 }
 bool wantConstructor = false;  // (kept for the status line)
 float constructorValue = 0.f; int conLogFrame = -100000; float spendLog = 0.f;  // metal-eq one more constructor saves (Production compares it with every other unit)
@@ -2882,6 +2907,10 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				if (vR > vFight) { vFight = vR; terms += " raid " + int(vR); }
 			}
 			vFight *= AiMax(0.f, 1.f - dist / AiMax(1.f, d.speed) / H);
+			{
+				const float vD = EcoPos::DefenceGain(d, fpos);
+				if (vD > vFight) { vFight = vD; terms += " defence " + int(vD); }
+			}
 		}
 		// information is worth what we can do with it: the share of a fight our forces could contest (a warning saves
 		// nothing when the army can't answer - 29 Fleas and 3 fighters at our 25 strength against 3789, round 20)
