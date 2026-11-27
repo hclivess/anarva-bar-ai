@@ -400,7 +400,8 @@ float DefenceGain(const CCircuitDef@ d, const AIFloat3& in at)
 	return gain * odds;
 }
 bool wantConstructor = false;  // (kept for the status line)
-float constructorValue = 0.f; int conLogFrame = -100000; float spendLog = 0.f;  // metal-eq one more constructor saves (Production compares it with every other unit)
+float constructorValue = 0.f; int conLogFrame = -100000; float spendLog = 0.f;
+int conValueFrame = -1;  // when constructorValue was computed (the plant's choice recomputes it if older)  // metal-eq one more constructor saves (Production compares it with every other unit)
 array<AIFloat3> raidPos; array<float> raidVal;  // expected enemy economy (Command objectives)
 // the cheapest mobile constructor any factory we own can build (unit facts via Facts::BuildOptions)
 CCircuitDef@ CheapestConstructor()
@@ -625,6 +626,7 @@ void Update()
 	// lowers it. The old gate "any constructor without a building job -> 0" read 0 whenever one assisted the lab or
 	// waited on a lost order, and the plant made army instead: 2 constructors by 5:40 against Vritrasura's ~15
 	constructorValue = (unclaimed > 0) ? saved : 0.f;
+	conValueFrame = ai.frame;
 	if (ai.frame - conLogFrame >= SECOND * 30) {
 		conLogFrame = ai.frame;
 		AiLog("[ANV-CONVAL] spots " + spWork.length() + " unclaimed " + unclaimed + " unemployed " + unemployed + " N " + int(N) + " H " + int(Hc)
@@ -2872,7 +2874,12 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		string terms = "";  // the fight terms, logged with each candidate
 		if (d.IsRoleAny(Unit::Role::BUILDER.mask) && d.buildSpeed > 0.f) {
 			// the value is claiming free spots: only for a builder that can build an extractor
-			if (Economist::mexT1 !is null && d.CanBuild(Economist::mexT1)) vBuild = EcoPos::constructorValue;
+			// computed now: at the plant's first choice the value was from before the plant existed (no constructor type,
+			// 1.15 per metal against a Blitz's 14.13 - three Blitzes before the first constructor, swe72)
+			if (Economist::mexT1 !is null && d.CanBuild(Economist::mexT1)) {
+				if (EcoPos::conValueFrame != ai.frame) EcoPos::Update();
+				vBuild = EcoPos::constructorValue;
+			}
 		} else if (d.GetSustainedDps() > 0.f) {
 			const float hp = AiMax(1.f, d.health);
 			const float us = SurfPower(d, mix, terms);
