@@ -2907,6 +2907,11 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	string kLog = "";
 	for (uint k = 0; k < kE.length(); ++k) kLog += " " + kName[k] + " " + int(kS[k]) + "/" + int(kE[k]);
 	CCircuitDef@ bestDef = null; float bestRatio = 0.f, bestV = 0.f; int bestJob = -1;  // 0 fight, 1 build, 2 scout
+	float uBest = 0.f;  // the strongest fighter this lab offers (the army the scout's information is for)
+	for (uint i = 0; i < opts.length(); ++i) {
+		CCircuitDef@ od = ai.GetCircuitDef(opts[i]);
+		if (od !is null && od.IsMobile() && od.surfThrDmg > 0.f && od.buildSpeed <= 0.f) uBest = AiMax(uBest, Opening::Strength(od));
+	}
 	float conRatioNow = 0.f;  // the constructor's value per metal this pick
 	string why = "";
 	for (uint i = 0; i < opts.length(); ++i) {
@@ -2997,6 +3002,18 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			const float tB = d.buildTime / AiMax(1.f, fdef.buildSpeed);
 			if (Scout::scouts.length() == 0 && float(ai.frame) / SECOND + 2.f * tB >= Opening::raidArrive)
 				vScout = AiMax(vScout, Scout::WarningValue(d));
+			// ...and what knowing their army is worth while it is unseen: our estimate spans the strongest we have seen to
+			// the floor we assume, and the fight of the army we are building (ours + one more) differs across that span by
+			// stake x (share at the low end - share at the high end) - the most a wrong guess can cost the build. A scout
+			// earns it if it lives to see their base (measured scout life against the walk). Without it no scout went out,
+			// the plant built against an imagined army that grows with our income, and BARb's 386 at 3:00 was unseen (swe102-104)
+			if (Scout::scouts.length() == 0 && eSurf > peakE && d.losRadius > 0.f) {
+				const float walk = AiEnemyBasePos().distance2D(fpos) / AiMax(1.f, d.speed);
+				const float alive = AiMax(0.f, 1.f - walk / AiMax(1.f, Scout::Life()));
+				const float sB = sSurf + uBest;
+				const float vInfo = stakeSurf * AiMax(0.f, SquareShare(sB, peakE) - SquareShare(sB, eSurf)) * alive;
+				if (vInfo > vScout) { vScout = vInfo; terms += " info " + int(vInfo); }
+			}
 		}
 		const float v = AiMax(vFight, AiMax(vBuild, vScout));
 		const float ratio = v / AiMax(1.f, Economist::CostNow(d));  // energy at its price now (binding or not)
