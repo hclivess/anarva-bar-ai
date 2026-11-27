@@ -4312,7 +4312,12 @@ float TailGrowth(const Sim@ s, float end)
 			const float tResp = tailDist[j] / AiMax(1.f, L.answer.speed);
 			hold = AiMin(1.f, tKill / AiMax(1e-3f, tResp));
 		}
-		v += tailYield[j] * hold * (end - tk) - mexCost;
+		// ...and only once a raid can come: until then nothing kills it (the commander's own extractors in the plan are
+		// counted in full; at hold over the whole horizon a constructor's spot read ~0.4 of one and the tail 0 at almost
+		// every start - the corner start with three commander extractors and the lab at 109 s beat the two-spot
+		// clusters the winners use (lab 56-69 s, replays.db ea25036b), buildings 460 vs 750 at 2:00, swe84)
+		const float tSafe = AiMin(end, AiMax(tk, raidArrive));
+		v += tailYield[j] * ((tSafe - tk) + hold * (end - tSafe)) - mexCost;
 		// constructors needed to claim them by then: one per rate x elapsed time... their cost. The claims stop where the
 		// next spot no longer pays for its share of constructors - players don't expand at a loss: charged for every spot
 		// on the map, the tail read -1072 to -1497 at every start, the start with the most near spots lost most, and we
