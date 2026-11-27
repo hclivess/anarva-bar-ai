@@ -393,7 +393,20 @@ float SpotRaids(const AIFloat3& in q, float Hr, const AIFloat3& in extraAt, floa
 	const float perSite = tKill + gap / AiMax(1.f, Opening::raidSpeed);
 	const float cleared = (answer < 1e29f) ? AiMax(1.f, answer / AiMax(1.f, perSite)) : nSites;
 	const float P = AiMin(1.f, cleared / nSites) * (1.f - hold);
-	return AiMax(0.f, Hr - tFirst) / cycle * P;
+	const float model = AiMax(0.f, Hr - tFirst) / cycle * P;
+	// ...and at least what has happened here (feedback, owner: "ignores losses? is there no feedback loop?"): the producers
+	// we lost within one raid's reach between sites, at the rate since the first loss, over what is left. The model alone
+	// spread raids over every spot alike: our far extractors fell to raiders the army never met while the defence value
+	// and the hold point read them like the safe ones (swe110-114)
+	float measured = 0.f;
+	if (Economist::lossT.length() > 0) {
+		const float reach = perSite * AiMax(1.f, Opening::raidSpeed);
+		float nNear = 0.f;
+		for (uint j = 0; j < Economist::lossPos.length(); ++j) if (Economist::lossPos[j].distance2D(q) <= reach) nNear += 1.f;
+		const float since = AiMax(1.f, tNow - Economist::lossT[0]);
+		measured = nNear / since * Hr * (1.f - hold);
+	}
+	return AiMax(model, measured);
 }
 // A fighter at home is worth the raid losses it prevents: each producer of ours loses its raid loss once per life
 // (SpotLife: the raids against our answer there); one more fighter standing at the factory answers sooner, so every
@@ -3522,7 +3535,7 @@ void UpdateProducerLife()
 float producerLostMetal = 0.f;  // metal of producers the enemy killed (feedback: what raids take, measured)
 float LossRate() { return producerLostMetal / AiMax(1.f, float(ai.frame) / SECOND); }
 // where producers die: position, metal, and the raiders there (strength sqrt(dps x hp) and dps of the enemies in reach)
-array<AIFloat3> lossPos; array<float> lossM, lossE, lossD;
+array<AIFloat3> lossPos; array<float> lossM, lossE, lossD, lossT;  // (lossT: game seconds of the loss)
 void OnProducerLost(CCircuitUnit@ u)
 {
 	++producerLosses;
@@ -3541,6 +3554,7 @@ void OnProducerLost(CCircuitUnit@ u)
 		// at 50 a lost extractor, pickets rarely beat a unit's place in the army: 0-2 pickets while 15 of 22 extractors
 		// built from 4 to 12 min died (kt1)
 		lossPos.insertLast(p); lossM.insertLast(AiMax(MetalValue(u.circuitDef), MexPorc::RaidLoss(u, EcoPos::CheapestConstructor()))); lossE.insertLast(E); lossD.insertLast(D);
+		lossT.insertLast(float(ai.frame) / SECOND);
 	}
 	if (Covered(u.GetPos(ai.frame), AiGetTeamUnits())) ++coveredLosses; else ++uncoveredLosses;
 }
