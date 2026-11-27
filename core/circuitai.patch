@@ -8117,7 +8117,7 @@ index c89d4a41..f65c8587 100644
  			auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
  			if ((cand == nullptr)  // no self-check
 diff --git a/src/circuit/task/static/RecruitTask.cpp b/src/circuit/task/static/RecruitTask.cpp
-index a4ef0f95..7953ebc6 100644
+index a4ef0f95..01e59633 100644
 --- a/src/circuit/task/static/RecruitTask.cpp
 +++ b/src/circuit/task/static/RecruitTask.cpp
 @@ -5,7 +5,10 @@
@@ -8131,7 +8131,7 @@ index a4ef0f95..7953ebc6 100644
  #include "module/EconomyManager.h"
  #include "module/FactoryManager.h"
  #include "terrain/TerrainManager.h"
-@@ -69,19 +72,65 @@ void CRecruitTask::Update()
+@@ -69,19 +72,74 @@ void CRecruitTask::Update()
  	}
  
  	CCircuitAI* circuit = manager->GetCircuit();
@@ -8163,7 +8163,16 @@ index a4ef0f95..7953ebc6 100644
 +	// ...lost only if the queue holds no build and no unit has started at two checks running: the queue reads empty for
 +	// 3-30 frames after an order, and re-sent at the first empty read the copy arrived too and was cancelled with the
 +	// next finish ("removes 2 queued builds", swe54)
-+	if (buildIssued && (target == nullptr) && (circuit->GetLastFrame() - issuedFrame >= FRAMES_PER_SEC)) {
++	// ...and not before the order could have arrived: twice the slowest delay we have measured between an order and its
++	// unit starting (the queue read empty 34 frames after an order that did arrive - the re-sent copy was cancelled and
++	// counted as a lost Blitz at our own plant, kill share 0.14, swe66)
++	static int maxStartDelay = -1;
++	if (buildIssued && (target != nullptr) && !delayMeasured) {
++		delayMeasured = true;
++		maxStartDelay = std::max(maxStartDelay, circuit->GetLastFrame() - issuedFrame);
++	}
++	const int waitFrames = (maxStartDelay > 0) ? 2 * maxStartDelay : FRAMES_PER_SEC;
++	if (buildIssued && (target == nullptr) && (circuit->GetLastFrame() - issuedFrame >= std::max(FRAMES_PER_SEC, waitFrames))) {
 +		CUnitAPI* unitAPI = circuit->GetUnitAPI();
 +		for (CCircuitUnit* unit : units) {
 +			const int cmdSize = unitAPI->GetCMDQueueSize(unit->GetId());
@@ -8203,7 +8212,7 @@ index a4ef0f95..7953ebc6 100644
  	if (State::DISENGAGE == state) {
  		if (hasMetal) {
  			state = State::ROAM;  // Not wait
-@@ -93,20 +142,16 @@ void CRecruitTask::Update()
+@@ -93,20 +151,16 @@ void CRecruitTask::Update()
  			}
  		}
  	} else {
@@ -8229,7 +8238,7 @@ index a4ef0f95..7953ebc6 100644
  	Cancel();
  
  	CCircuitAI* circuit = manager->GetCircuit();
-@@ -140,6 +185,8 @@ void CRecruitTask::Cancel()
+@@ -140,6 +194,8 @@ void CRecruitTask::Cancel()
  				params.push_back(cmdId);
  			}
  		}
@@ -8238,7 +8247,7 @@ index a4ef0f95..7953ebc6 100644
  		TRY_UNIT(circuit, unit,
  			unit->CmdRemove(std::move(params), UNIT_COMMAND_OPTION_ALT_KEY | UNIT_COMMAND_OPTION_CONTROL_KEY);
  		)
-@@ -183,8 +230,26 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -183,8 +239,26 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  	}
  
  	if (geom::is_valid(buildPos)) {
@@ -8266,7 +8275,7 @@ index a4ef0f95..7953ebc6 100644
  		)
  	} else {
  		manager->AbortTask(this);
-@@ -195,6 +260,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -195,6 +269,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  
  void CRecruitTask::OnUnitIdle(CCircuitUnit* unit)
  {
@@ -8280,16 +8289,17 @@ index a4ef0f95..7953ebc6 100644
  }
  
 diff --git a/src/circuit/task/static/RecruitTask.h b/src/circuit/task/static/RecruitTask.h
-index 6e43edf0..00269bd5 100644
+index 6e43edf0..b157f1f1 100644
 --- a/src/circuit/task/static/RecruitTask.h
 +++ b/src/circuit/task/static/RecruitTask.h
-@@ -47,6 +47,9 @@ public:
+@@ -47,6 +47,10 @@ public:
  private:
  	RecruitType recruitType;
  	float sqradius;
 +	bool buildIssued = false;  // Anarva: our build order is with the factory (until it goes idle)
 +	int issuedFrame = -1;
-+	int emptyChecks = 0;  // Anarva: checks running with no build queued and no unit started  // Anarva: when it was (re-)issued: lost orders are re-issued a check later
++	int emptyChecks = 0;
++	bool delayMeasured = false;  // Anarva: this task's order-to-start delay has been counted  // Anarva: checks running with no build queued and no unit started  // Anarva: when it was (re-)issued: lost orders are re-issued a check later
  };
  
  } // namespace circuit
