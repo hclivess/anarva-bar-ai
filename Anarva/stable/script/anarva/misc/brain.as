@@ -512,13 +512,13 @@ void Update()
 			// spots in that order, each up to what its last sighting allows. Spread evenly, every unseen corner read
 			// equally likely and the Blitzes walked one each to empty far spots: 8 raids, "target gone" after 11-120 s,
 			// 0 killed, the army never fought by 4:00 (swe80)
-			const AIFloat3 eb = AiEnemyBasePos();
+			const AIFloat3 eBase = AiEnemyBasePos();
 			array<int> order;
 			for (uint k = 0; k < rp.length(); ++k) if (!rSeen[k]) order.insertLast(int(k));
 			for (uint a = 1; a < order.length(); ++a) {  // insertion sort by distance from their base
-				const int x = order[a]; const float dx = rp[x].distance2D(eb);
+				const int x = order[a]; const float dx = rp[x].distance2D(eBase);
 				int b = int(a) - 1;
-				while (b >= 0 && rp[order[b]].distance2D(eb) > dx) { order[b + 1] = order[b]; --b; }
+				while (b >= 0 && rp[order[b]].distance2D(eBase) > dx) { order[b + 1] = order[b]; --b; }
 				order[b + 1] = x;
 			}
 			array<float> occ(rp.length());
@@ -934,7 +934,7 @@ void Update()
 			// x warning / horizon. Counted only on our own ground, one radar over the base looked like enough and the second
 			// (valued 158-428) was never taken; a winner put one 1396 out among the far extractors (replays.db d346036b).
 			{
-				const AIFloat3 eb = AiEnemyBasePos();
+				const AIFloat3 eBase = AiEnemyBasePos();
 				const float eSpeed = AiMax(1.f, Director::allSpeed);
 				const float Hw = AiMax(1.f, Economist::Horizon());
 				const float step = AiMax(1.f, R / 4.f);
@@ -1022,7 +1022,7 @@ void TrackFinds()
 // reached our extractors unseen from 3:17 (swe2, blind at 2:00 and 3:00; replays.db, 20 winners)
 float WarningValue(const CCircuitDef@ d)
 {
-	const AIFloat3 eb = AiEnemyBasePos();
+	const AIFloat3 eBase = AiEnemyBasePos();
 	if (!HasBase() || d is null) return 0.f;
 	const float R = AiMax(1.f, d.losRadius);
 	const float eSpeed = AiMax(1.f, Director::allSpeed);
