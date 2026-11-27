@@ -6547,7 +6547,10 @@ void Micro()
 			// by its range edge (winners' squads in contact, REPLAYS.md). Direct-fire units of a squad (Facts::DirectFire)
 			// spread sideways on the line facing the enemy, a footprint apart, each with a clear shot; arcing ones fire over.
 			// A unit that outranges the nearest enemy keeps that distance (it fires while moving - Facts::FiresMoving).
-			if (nk >= 0 && Facts::FiresMoving(d.GetName()) > 0.f && nd < reach + ed[nk].GetMaxRange()) {
+			// ...only when we outrange it (the comment's own purpose): outranged, standing at our reach is still inside
+			// theirs, and a move order every tick stops the shooting - Pawns (180) against Grunts (215) and Incisors (230)
+			// in our base: contact 7, kited 6, fired 3, damage 640 dealt vs 4136 taken at 5:00 (swe116)
+			if (nk >= 0 && Facts::FiresMoving(d.GetName()) > 0.f && nd < reach + ed[nk].GetMaxRange() && reach > ed[nk].GetMaxRange()) {
 				AIFloat3 away = p - ep[nk];
 				const float len = AiMax(1.f, away.Length2D());
 				const float ux = away.x / len, uz = away.z / len;
