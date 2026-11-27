@@ -458,7 +458,7 @@ index ebe35302..aadcb18f 100644
  	float GetThreatAt(CCircuitUnit* unit, const springai::AIFloat3& position) const;
  
 diff --git a/src/circuit/module/BuilderManager.cpp b/src/circuit/module/BuilderManager.cpp
-index e4c1d126..aba83401 100644
+index e4c1d126..944ccc77 100644
 --- a/src/circuit/module/BuilderManager.cpp
 +++ b/src/circuit/module/BuilderManager.cpp
 @@ -1,3 +1,4 @@
@@ -480,7 +480,7 @@ index e4c1d126..aba83401 100644
  #include "map/InfluenceMap.h"
  #include "map/ThreatMap.h"
  #include "resource/MetalManager.h"
-@@ -53,9 +58,754 @@
+@@ -53,9 +58,758 @@
  #include "spring/SpringCallback.h"
  
  #include "Log.h"
@@ -566,15 +566,19 @@ index e4c1d126..aba83401 100644
 +	// ...at the build power actually on energy jobs: counted as all our build power, the shortage read as nearly over,
 +	// extractors kept winning, nobody built a plant and energy sat at 0 from 3:00 with 3 solars all game (swe67). With
 +	// none on energy it lasts: the discount holds for the whole life.
-+	float bpE = 0.f;
++	// ...at the build power on energy jobs plus one builder that takes one now (the fastest of ours), as AnarvaEnergyBinds:
++	// with none on energy it returned "forever", an extractor's metal counted 0 and its upkeep made it negative (yield
++	// -0.21, V -521): constructors built radar, turrets and a nano while energy waited for a plant nobody was on (swe96)
++	float bpE = 0.f, bpOne = 0.f;
 +	for (circuit::CCircuitUnit* w : circuit->GetBuilderManager()->GetWorkers()) {
++		bpOne = std::max(bpOne, w->GetCircuitDef()->GetBuildSpeed());
 +		circuit::IUnitTask* t = w->GetTask();
 +		if ((t == nullptr) || (t->GetType() != circuit::IUnitTask::Type::BUILDER)) continue;
 +		const circuit::CCircuitDef* bd = static_cast<circuit::IBuilderTask*>(t)->GetBuildDef();
 +		if ((bd != nullptr) && (eco->GetEnergyMake(const_cast<circuit::CCircuitDef*>(bd)) > 0.f)) bpE += w->GetCircuitDef()->GetBuildSpeed();
 +	}
-+	if (bpE <= 0.f) return std::numeric_limits<float>::max();
-+	return deficit * perEps / bpE + AnarvaJobWindow(circuit);
++	if (bpE + bpOne <= 0.f) return std::numeric_limits<float>::max();
++	return deficit * perEps / (bpE + bpOne) + AnarvaJobWindow(circuit);
 +}
 +// Anarva: per-frame facts the job valuation asks for every candidate (CPU, #121): whether production has started (a mobile
 +// unit other than the commander exists) and our builders still being built. Looped over all team units per candidate
@@ -1235,7 +1239,7 @@ index e4c1d126..aba83401 100644
  using namespace springai;
  
  CBuilderManager::CBuilderManager(CCircuitAI* circuit)
-@@ -64,7 +814,6 @@ CBuilderManager::CBuilderManager(CCircuitAI* circuit)
+@@ -64,7 +818,6 @@ CBuilderManager::CBuilderManager(CCircuitAI* circuit)
  		, guardCount(0)
  		, buildTasksCount(0)
  		, buildPower(.0f)
@@ -1243,7 +1247,7 @@ index e4c1d126..aba83401 100644
  {
  	circuit->GetScheduler()->RunOnInit(CScheduler::GameJob(&CBuilderManager::Init, this));
  
-@@ -263,11 +1012,11 @@ void CBuilderManager::InitHandlers()
+@@ -263,11 +1016,11 @@ void CBuilderManager::InitHandlers()
  
  	const Json::Value& root = circuit->GetSetupManager()->GetConfig();
  	const Json::Value& retreat = root["retreat"]["builder"];
@@ -1260,7 +1264,7 @@ index e4c1d126..aba83401 100644
  
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  	for (CCircuitDef& cdef : circuit->GetCircuitDefs()) {
-@@ -315,6 +1064,11 @@ void CBuilderManager::InitHandlers()
+@@ -315,6 +1068,11 @@ void CBuilderManager::InitHandlers()
  	ReadConfig();
  }
  
@@ -1272,7 +1276,7 @@ index e4c1d126..aba83401 100644
  void CBuilderManager::ReadConfig()
  {
  	const Json::Value& root = circuit->GetSetupManager()->GetConfig();
-@@ -325,17 +1079,15 @@ void CBuilderManager::ReadConfig()
+@@ -325,17 +1083,15 @@ void CBuilderManager::ReadConfig()
  	if (terraDef == nullptr) {
  		terraDef = circuit->GetEconomyManager()->GetSideInfo().defaultDef;
  	}
@@ -1294,7 +1298,7 @@ index e4c1d126..aba83401 100644
  	for (const std::string& catName : build.getMemberNames()) {
  		auto it = buildNames.find(catName);
  		if (it == buildNames.end()) {
-@@ -467,8 +1219,7 @@ void CBuilderManager::Init()
+@@ -467,8 +1223,7 @@ void CBuilderManager::Init()
  		scheduler->RunJobEvery(CScheduler::GameJob(&CBuilderManager::UpdateIdle, this), interval, offset + 0);
  		scheduler->RunJobEvery(CScheduler::GameJob(&CBuilderManager::Update, this), 1/*interval*/, offset + 1);
  
@@ -1304,7 +1308,7 @@ index e4c1d126..aba83401 100644
  								circuit->GetSkirmishAIId() * WATCHDOG_COUNT + 10);
  	};
  
-@@ -830,7 +1581,7 @@ void CBuilderManager::FallbackTask(CCircuitUnit* unit)
+@@ -830,7 +1585,7 @@ void CBuilderManager::FallbackTask(CCircuitUnit* unit)
  
  	const int frame = circuit->GetLastFrame();
  	const AIFloat3& pos = unit->GetPos(frame);
@@ -1313,7 +1317,7 @@ index e4c1d126..aba83401 100644
  	task->AssignTo(unit);
  	task->Start(unit);
  	static_cast<CBuilderScript*>(script)->TaskAssigned(unit);
-@@ -856,11 +1607,9 @@ bool CBuilderManager::IsBuilderInArea(CCircuitDef* buildDef, const AIFloat3& pos
+@@ -856,11 +1611,9 @@ bool CBuilderManager::IsBuilderInArea(CCircuitDef* buildDef, const AIFloat3& pos
  
  bool CBuilderManager::HasFreeAssists(CCircuitUnit* builder) const
  {
@@ -1327,7 +1331,7 @@ index e4c1d126..aba83401 100644
  }
  
  SBuildChain* CBuilderManager::GetBuildChain(IBuilderTask::BuildType buildType, CCircuitDef* cdef) const
-@@ -941,7 +1690,7 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
+@@ -941,7 +1694,7 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
  	const AIFloat3& pos = unit->GetPos(frame);
  
  	const CCircuitDef* cdef = unit->GetCircuitDef();
@@ -1336,7 +1340,7 @@ index e4c1d126..aba83401 100644
  	if ((cdef->GetPower() > THREAT_MIN)
  		&& (circuit->GetMilitaryManager()->FindBCombatTarget(unit, pos, POWER_MOD, true) != nullptr))
  	{
-@@ -966,30 +1715,8 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
+@@ -966,30 +1719,8 @@ IUnitTask* CBuilderManager::DefaultMakeTask(CCircuitUnit* unit)
  
  	std::shared_ptr<CQueryCostMap> pQuery = std::static_pointer_cast<CQueryCostMap>(query);
  
@@ -1369,7 +1373,7 @@ index e4c1d126..aba83401 100644
  	return unit->IsAttrBase()
  			? MakeEnergizerTask(unit, pQuery.get())
  			: MakeBuilderTask(unit, pQuery.get());
-@@ -1020,8 +1747,8 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1020,8 +1751,8 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
@@ -1380,7 +1384,7 @@ index e4c1d126..aba83401 100644
  
  	constexpr std::array<std::pair<IBuilderTask::BuildType, float>, (int)IBuilderTask::BuildType::_SIZE_> prioTasks = {
  		std::make_pair(IBuilderTask::BuildType::ENERGY, SQUARE(10000.f)),
-@@ -1047,7 +1774,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1047,7 +1778,7 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  	};
  
  	for (const std::pair<IBuilderTask::BuildType, float>& pair : prioTasks) {
@@ -1389,7 +1393,7 @@ index e4c1d126..aba83401 100644
  		for (const IBuilderTask* candidate : GetTasks(pair.first)) {
  			if (!candidate->CanAssignTo(unit)) {
  				continue;
-@@ -1067,8 +1794,9 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1067,8 +1798,9 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  
  				int index = metalMgr->FindNearestCluster(buildPos);
  				const AIFloat3& testPos = (index < 0) ? buildPos : clusters[index].position;
@@ -1401,7 +1405,7 @@ index e4c1d126..aba83401 100644
  					|| !terrainMgr->CanReachAt(unit, buildPos, cdef->GetBuildDistance())  // ensure that path always exists
  					|| (inflMap->GetInfluenceAt(testPos) < -INFL_EPS))  // safety check
  				{
-@@ -1090,45 +1818,109 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
+@@ -1090,45 +1822,109 @@ IBuilderTask* CBuilderManager::MakeEnergizerTask(CCircuitUnit* unit, const CQuer
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -1534,7 +1538,7 @@ index e4c1d126..aba83401 100644
  	return const_cast<IBuilderTask*>(task);
  }
  
-@@ -1142,10 +1934,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1142,10 +1938,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  //	CTerrainManager::CorrectPosition(pos);
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
@@ -1548,7 +1552,7 @@ index e4c1d126..aba83401 100644
  
  	economyMgr->MakeEconomyTasks(pos, unit);
  	const bool isNotReady = !economyMgr->IsExcessed();
-@@ -1162,22 +1953,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1162,22 +1957,9 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
  	const AIFloat3& basePos = circuit->GetSetupManager()->GetBasePos();
@@ -1574,7 +1578,7 @@ index e4c1d126..aba83401 100644
  
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
-@@ -1203,9 +1981,14 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1203,9 +1985,14 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  
  				int index = metalMgr->FindNearestCluster(buildPos);
  				const AIFloat3& testPos = (index < 0) ? buildPos : clusters[index].position;
@@ -1590,7 +1594,7 @@ index e4c1d126..aba83401 100644
  				{
  					continue;
  				}
-@@ -1234,38 +2017,41 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
+@@ -1234,38 +2021,41 @@ IBuilderTask* CBuilderManager::MakeCommTask(CCircuitUnit* unit, const CQueryCost
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -1653,7 +1657,7 @@ index e4c1d126..aba83401 100644
  		}
  	}
  
-@@ -1282,10 +2068,9 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1282,10 +2072,9 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  //	CTerrainManager::CorrectPosition(pos);
  
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
@@ -1667,7 +1671,7 @@ index e4c1d126..aba83401 100644
  
  	// FIXME: MakeEconomyTasks doesn't check CanAssignTo() and may create task irrelevant for unit
  	/*task = */economyMgr->MakeEconomyTasks(pos, unit);
-@@ -1294,7 +2079,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1294,7 +2083,7 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  //	}
  
  	const bool isStalling = economyMgr->IsMetalEmpty() &&
@@ -1676,7 +1680,7 @@ index e4c1d126..aba83401 100644
  							(metalPull > economyMgr->GetPullMtoS() * circuit->GetFactoryManager()->GetMetalPull());
  	const bool isNotReady = !economyMgr->IsExcessed() || isStalling/* || economyMgr->IsEnergyStalling()*/;
  
-@@ -1317,7 +2102,8 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1317,7 +2106,8 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  	const float maxSpeed = cdef->GetSpeed() / pathfinder->GetSquareSize() * COST_BASE;
  	const int buildDistance = std::max<int>(cdef->GetBuildDistance(), pathfinder->GetSquareSize());
  	const float buildSqDistance = SQUARE(buildDistance);
@@ -1686,7 +1690,7 @@ index e4c1d126..aba83401 100644
  	for (const std::set<IBuilderTask*>& tasks : buildTasks) {
  		for (const IBuilderTask* candidate : tasks) {
  			if (!candidate->CanAssignTo(unit)
-@@ -1352,7 +2138,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1352,7 +2142,6 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			float distCost;
  			const float rawSqDist = pos.SqDistance2D(buildPos);  // TODO: add target's radius to rawSqDist
@@ -1694,7 +1698,7 @@ index e4c1d126..aba83401 100644
  			if (rawSqDist < buildSqDistance) {
  				distCost = sqrtf(rawSqDist) / pathfinder->GetSquareSize() * COST_BASE * 0.5f;
  			} else {
-@@ -1364,28 +2149,23 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1364,28 +2153,23 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  
  			distCost = std::max(distCost, COST_BASE);
  
@@ -1738,7 +1742,7 @@ index e4c1d126..aba83401 100644
  		}
  	}
  
-@@ -1396,6 +2176,10 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
+@@ -1396,6 +2180,10 @@ IBuilderTask* CBuilderManager::MakeBuilderTask(CCircuitUnit* unit, const CQueryC
  		task = CreateBuilderTask(pos, unit);
  	}
  
@@ -1749,7 +1753,7 @@ index e4c1d126..aba83401 100644
  	return const_cast<IBuilderTask*>(task);
  }
  
-@@ -1403,7 +2187,7 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1403,7 +2191,7 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  {
  	CTerrainManager* terrainMgr = circuit->GetTerrainManager();
  	if (terrainMgr->IsZoneAlly(position)) {
@@ -1758,7 +1762,7 @@ index e4c1d126..aba83401 100644
  	}
  
  	CEconomyManager* ecoMgr = circuit->GetEconomyManager();
-@@ -1420,10 +2204,13 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1420,10 +2208,13 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  	CMilitaryManager* militaryMgr = circuit->GetMilitaryManager();
  	const float energyIncome = ecoMgr->GetAvgEnergyIncome() * ecoMgr->GetEcoFactor();
  	const float metalIncome = std::min(ecoMgr->GetAvgMetalIncome() * ecoMgr->GetEcoFactor(), energyIncome);
@@ -1775,7 +1779,7 @@ index e4c1d126..aba83401 100644
  		{
  			const std::set<IBuilderTask*>& tasks = GetTasks(IBuilderTask::BuildType::BIG_GUN);
  			if (tasks.empty()) {
-@@ -1445,14 +2232,14 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
+@@ -1445,14 +2236,14 @@ IBuilderTask* CBuilderManager::CreateBuilderTask(const AIFloat3& position, CCirc
  			? circuit->GetFactoryManager()->GetClosestFactory(position)
  			: militaryMgr->GetClosestLeader({IFighterTask::FightType::ATTACK, IFighterTask::FightType::DEFEND}, position);
  	if (vip != nullptr) {
@@ -1793,7 +1797,7 @@ index e4c1d126..aba83401 100644
  }
  
  void CBuilderManager::AddBuildList(CCircuitUnit* unit, int hiddenDefs)
-@@ -1505,6 +2292,32 @@ void CBuilderManager::Watchdog()
+@@ -1505,6 +2296,32 @@ void CBuilderManager::Watchdog()
  {
  	ZoneScopedN(__PRETTY_FUNCTION__);
  
@@ -1826,7 +1830,7 @@ index e4c1d126..aba83401 100644
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  	Resource* metalRes = economyMgr->GetMetalRes();
  	// somehow workers get stuck
-@@ -1514,6 +2327,22 @@ void CBuilderManager::Watchdog()
+@@ -1514,6 +2331,22 @@ void CBuilderManager::Watchdog()
  		}
  		IUnitTask* task = worker->GetTask();
  		bool isLost = !circuit->GetCallback()->Unit_HasCommands(worker->GetId());
@@ -1849,7 +1853,7 @@ index e4c1d126..aba83401 100644
  		if (!isLost && (task->GetType() == IUnitTask::Type::BUILDER)) {
  			IBuilderTask* taskB = static_cast<IBuilderTask*>(task);
  			Unit* u = worker->GetUnit();
-@@ -1530,7 +2359,17 @@ void CBuilderManager::Watchdog()
+@@ -1530,7 +2363,17 @@ void CBuilderManager::Watchdog()
  			}
  		}
  		if (isLost) {
