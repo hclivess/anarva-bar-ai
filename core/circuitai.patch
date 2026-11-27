@@ -1,8 +1,16 @@
 diff --git a/src/circuit/CircuitAI.cpp b/src/circuit/CircuitAI.cpp
-index 40517444..74a337bf 100644
+index 40517444..7a9a3bf4 100644
 --- a/src/circuit/CircuitAI.cpp
 +++ b/src/circuit/CircuitAI.cpp
-@@ -295,6 +295,26 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "CircuitAI.h"
++#include <chrono>  // Anarva: [ANV-CPU]
+ #include "scheduler/Scheduler.h"
+ #include "script/ScriptManager.h"
+ #include "script/InitScript.h"
+@@ -295,6 +296,26 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
  			TRACY_TOPIC_UNIT("EVENT_UNIT_DAMAGED", UnitDamaged, evt->unit);
  
  			CCircuitUnit* unit = GetTeamUnit(evt->unit);
@@ -29,7 +37,7 @@ index 40517444..74a337bf 100644
  			ret = (unit != nullptr)
  					? this->UnitDamaged(unit, evt->attacker, evt->weaponDefId, AIFloat3(evt->dir_posF3))
  					: ERROR_UNIT_DAMAGED;
-@@ -306,6 +326,11 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
+@@ -306,6 +327,11 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
  			CEnemyInfo* attacker = GetEnemyInfo(evt->attacker);
  			CCircuitUnit* unit = GetTeamUnit(evt->unit);
  			if (unit != nullptr) {
@@ -41,7 +49,7 @@ index 40517444..74a337bf 100644
  				ret = this->UnitDestroyed(unit, attacker);
  				UnregisterTeamUnit(unit);
  			} else {
-@@ -373,6 +398,11 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
+@@ -373,6 +399,11 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
  
  			struct SEnemyDamagedEvent* evt = (struct SEnemyDamagedEvent*)data;
  			CEnemyInfo* enemy = GetEnemyInfo(evt->enemy);
@@ -53,7 +61,7 @@ index 40517444..74a337bf 100644
  			ret = (enemy != nullptr) ? this->EnemyDamaged(enemy) : ERROR_ENEMY_DAMAGED;
  		} break;
  		case EVENT_ENEMY_DESTROYED: {
-@@ -381,6 +411,9 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
+@@ -381,6 +412,9 @@ int CCircuitAI::HandleGameEvent(int topic, const void* data)
  			struct SEnemyDestroyedEvent* evt = (struct SEnemyDestroyedEvent*)data;
  			CEnemyInfo* enemy = GetEnemyInfo(evt->enemy);
  			if (enemy != nullptr) {
@@ -63,7 +71,7 @@ index 40517444..74a337bf 100644
  				allyTeam->DyingEnemy(enemy->GetData(), lastFrame);
  				ret = 0;
  			} else {
-@@ -673,6 +706,20 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+@@ -673,6 +707,20 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
  		}
  	}
  
@@ -84,7 +92,7 @@ index 40517444..74a337bf 100644
  	if (isCheating) {
  		cheats->SetEnabled(true);
  		cheats->SetEventsEnabled(true);
-@@ -705,7 +752,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+@@ -705,7 +753,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
  				}
  #endif
  			});
@@ -93,7 +101,7 @@ index 40517444..74a337bf 100644
  #if 0
  		} else if (allyTeam->GetAliveSize() > 2) {
  			// FIXME: Follower AI shares all its mobile non-builder-role units to Leader AI.
-@@ -719,7 +766,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
+@@ -719,7 +767,7 @@ int CCircuitAI::Init(int skirmishAIId, const struct SSkirmishAICallback* sAICall
  					scheduler->RemoveJob(mergeTask);
  				}
  			});
@@ -102,7 +110,32 @@ index 40517444..74a337bf 100644
  #endif
  		}
  	}
-@@ -1530,9 +1577,8 @@ void CCircuitAI::Garbage(CCircuitUnit* unit, const char* reason)
+@@ -812,8 +860,24 @@ int CCircuitAI::Release(int reason)
+ 	return 0;  // signaling: OK
+ }
+ 
++// Anarva: the AI's own time per update (owner, 2026-11-27: "i ran a game of my friend vs anarva and cpu is at 100%"):
++// mean and worst over each game minute, with the unit count, so the loops that grow with the game show up in the log.
++static double anvCpuSum = 0.0, anvCpuMax = 0.0; static int anvCpuN = 0;
+ int CCircuitAI::Update(int frame)
+ {
++	const auto anvT0 = std::chrono::steady_clock::now();
++	struct AnvCpu {
++		CCircuitAI* ai; int frame; std::chrono::steady_clock::time_point t0;
++		~AnvCpu() {
++			const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
++			anvCpuSum += ms; anvCpuMax = std::max(anvCpuMax, ms); ++anvCpuN;
++			if ((frame > 0) && (frame % (FRAMES_PER_SEC * 60) == 0) && (anvCpuN > 0)) {
++				ai->LOG("[ANV-CPU] f=%i min=%i mean %.2f ms max %.1f ms per update (frame budget at 1x: %.1f ms) units %i",
++					frame, frame / (FRAMES_PER_SEC * 60), anvCpuSum / anvCpuN, anvCpuMax, 1000.0 / FRAMES_PER_SEC, (int)ai->GetTeamUnits().size());
++				anvCpuSum = 0.0; anvCpuMax = 0.0; anvCpuN = 0;
++			}
++		}
++	} anvCpu{this, frame, anvT0};
+ 	destroyed.clear();
+ 	lastFrame = frame;
+ 	if (isResigned) {
+@@ -1530,9 +1594,8 @@ void CCircuitAI::Garbage(CCircuitUnit* unit, const char* reason)
  	// NOTE: Happens because engine can send EVENT_UNIT_FINISHED after EVENT_UNIT_DESTROYED.
  	//       Engine should not send events with isDead units.
  	garbage.insert(unit);
@@ -114,7 +147,7 @@ index 40517444..74a337bf 100644
  }
  
  CCircuitUnit* CCircuitAI::GetTeamUnit(ICoreUnit::Id unitId) const
-@@ -1614,16 +1660,20 @@ void CCircuitAI::CreateFakeEnemy(int weaponId, const AIFloat3& startPos, const A
+@@ -1614,16 +1677,20 @@ void CCircuitAI::CreateFakeEnemy(int weaponId, const AIFloat3& startPos, const A
  	}
  	float range = weaponDefs[weaponId].GetRange();
  	const AIFloat3 enemyPos = CTerrainManager::CorrectPosition(startPos, dir, range);  // range adjusted
