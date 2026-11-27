@@ -2964,7 +2964,13 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			// measured once scouts have served (what they found per second over their life), the model before
 			const float mw = Scout::MeasuredWorth();
 			vScout = ((mw >= 0.f) ? AiMin(mw, Scout::NextValue(d)) : Scout::NextValue(d)) * WinShare(sSurf + sAir, eSurf + eAir);
-			if (Scout::scouts.length() == 0) vScout = AiMax(vScout, Scout::WarningValue(d));  // a first scout warns of raids
+			// a first scout warns of raids - from when a raid can come: built one slot later it is still in time while
+			// now + two slots is before the raid (as the fighters' defence value, just in time). Built at once it watched an
+			// empty approach for 100 s and cost the first constructor: a Rover first at 99 s against a raid due at 203 s,
+			// buildings 460 vs 650 at 2:00 (swe83; 1v1 winners' labs make 2-3 constructors first, CLAUDE.md replay view)
+			const float tB = d.buildTime / AiMax(1.f, fdef.buildSpeed);
+			if (Scout::scouts.length() == 0 && float(ai.frame) / SECOND + 2.f * tB >= Opening::raidArrive)
+				vScout = AiMax(vScout, Scout::WarningValue(d));
 		}
 		const float v = AiMax(vFight, AiMax(vBuild, vScout));
 		const float ratio = v / AiMax(1.f, Economist::CostNow(d));  // energy at its price now (binding or not)
