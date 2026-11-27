@@ -159,3 +159,10 @@ Winners answer Cortex with vehicles (Stumpy, Blitz; Bulldog at T2) and towers (l
 Pounders) - not Pawns. Our Pawn/Tick army traded 0.65 / 0.28 (tr1, [ANV-TRADE]). The reason to transpose: armour and
 health that soak a range gap (Stumpy) and speed that closes it (Blitz), judged from unit facts against the mix seen.
 
+
+## Replay view: [AoW]Vritrasura vs Anarva, Supreme Isthmus v2.1 (2026-11-27_01-42-56-937, owner's friend game)
+
+Building by building (runs/friend2, BUILT lines; distances from start):
+- **Vritrasura:** extractors 11/19/29 s (178-202), 2 solars, wind, bot lab 70 s; constructors 79/102/125/171/184 s then ~10 more by 5:45, 2 rez bots; extractors claimed across the map by 6:00 at 904-4709 (13 by 6:00, 39 all game, 22 upgraded to moho); energy 54 winds, 12 advanced solars, 4 fusions; 29 construction turrets; air plant 7:19, advanced lab 10:41, two T3 gantries 15:32 and 21:57. Army: a few Warriors early (31 all game), 192 Ticks, then Marauders, Razorbacks, Vanguards.
+- **Anarva:** extractor 12 s, then 5 winds, extractors 66/77 s; vehicle plant 114 s AND bot lab 134 s; 1 constructor by 5:40; Pawns/Blitz stream from 2:30; 13 extractors all game, 0 mohos, 0 fusions, 8 construction turrets; advanced lab 17:09 (42 failed starts); factories idle 13:45-25:00 (lost orders).
+- **The reason (not the numbers):** expansion is the first investment - constructors back to back to every reachable spot, the army only what holds that spread (cheap raiders), then scaling (mohos, fusion, build power that spends the income), tech when the economy carries it. Our constructor value must see the far spots paying; a second T1 factory only when it adds what the first can't.
