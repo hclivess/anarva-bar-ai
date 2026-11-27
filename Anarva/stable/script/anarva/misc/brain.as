@@ -4337,19 +4337,27 @@ float TailGrowth(const Sim@ s, float end)
 		const float labFree = AiMax(0.f, 1.f - conUsed * L.conTime / span);
 		const float armyMps = AiMax(0.f, AiMin(L.spend * labFree, s.mInc - conUsed * L.con.costM / span));
 		const float wNear = RaidWindowM(s, end, cStr, armyMps), wFar = RaidWindowM(s, end, 0.f, armyMps);
-		float v = 0.f;
+		// the raid is in one place at a time: over its window it kills as many claimed spots as its damage allows (as
+		// Value counts the plan's own producers), each costing itself and its yield for half the window. As "every spot
+		// lost for the whole window" each claim netted -114 at every start (swe89)
+		float v = 0.f, nN = 0.f, nF = 0.f, yN = 0.f, yF = 0.f;
 		for (uint q = 0; q < tks.length(); ++q) {
-			const float wAll = nears[q] ? wNear : wFar;
-			const float wq = (end > raidArrive) ? wAll * AiMax(0.f, end - AiMax(tks[q], raidArrive)) / (end - raidArrive) : 0.f;
-			v += ys[q] * AiMax(0.f, (end - tks[q]) - wq) - mexCost * ((wq > 0.f) ? 2.f : 1.f);
+			v += ys[q] * (end - tks[q]) - mexCost;
+			if (nears[q]) { nN += 1.f; yN += ys[q]; } else { nF += 1.f; yF += ys[q]; }
 		}
+		const float rateR = AiMin(raidRate, armyMps / AiMax(1.f, raidCostM));
+		const float hpM = AiMax(1.f, Economist::mexT1.health);
+		const float kN = AiMin(nN, raidDps * (wNear + rateR * wNear * wNear / 2.f) / hpM);
+		const float kF = AiMin(nF, raidDps * (wFar + rateR * wFar * wFar / 2.f) / hpM);
+		if (nN > 0.f) v -= kN * (mexCost + yN / nN * wNear / 2.f);
+		if (nF > 0.f) v -= kF * (mexCost + yF / nF * wFar / 2.f);
 		float conCharge = 0.f;
 		for (int ci = 0; ci < int(ceil(conUsed)); ++ci) {
 			const float share = AiMin(1.f, AiMax(0.f, end - (s.labAt + float(ci) * conEvery)) / life);
 			conCharge += conCost * share * AiMin(1.f, conUsed - float(ci));
 		}
 		if (v - conCharge > best) { best = v - conCharge; bestArmy = armyMps; }
-		if (k <= 3) tailWhy += " k" + k + "@" + int(tk) + " army " + F1(armyMps) + "/s win " + int(nears[tks.length() - 1] ? wNear : wFar) + " v " + int(v) + " cons " + int(conCharge);
+		if (k <= 3) tailWhy += " k" + k + "@" + int(tk) + " army " + F1(armyMps) + "/s win " + int(wNear) + "/" + int(wFar) + " kills " + F1(kN + kF) + " v " + int(v) + " cons " + int(conCharge);
 	}
 	tailArmyMps = bestArmy;
 	return best;
