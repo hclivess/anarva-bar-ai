@@ -166,8 +166,22 @@ is a decision nobody made.
   with a short headless game before saying it is ready.
 - **Every game: a spectator AND an early stop when outplayed** (owner, 2026-11-26: "always spec + early game stop on
   being outplayed"; "keep to the rules"). No game runs without both: `tools/swing.py` stops it at the swing, a spectator
-  agent writes `docs/spectator/<run>.md` as it plays, and after each stop the decision that caused it is reworked before
-  the next game - never several games back to back without that rework. Hunting for a result is no exception.
+  agent writes `docs/spectator/<run>.md` as it plays. Hunting for a result is no exception.
+- **5 games per change** (owner, 2026-11-27: "yes you can run 5 games per change - with the fucking spectator"). Results on
+  identical code vary as much as one change does (extractors at 4:00: 3-7), so one game can't judge a change. The 5 run
+  one at a time (`tools/batch_vs_winners.sh 151 152 ...`), each with the spectator and the swing stop; the rework comes
+  between changes, not between the 5 games of one change. If the change's mechanism visibly doesn't act in the first game
+  (judge it in the logs), stop the batch and rework instead of spending the other four.
+- **Every batch against the winners** (owner, 2026-11-27: "improve your feedback loop"; "keep testing and converging
+  towards the best players based on flexible rules"): the batch ends with `python tools/vs_winners.py runs/sweA ...` - ours
+  against the 106 1v1 winners in `runs/replays.db`, minute by minute and the opener, gaps ranked by the winners' own
+  spread. The next change targets the top gap, reasoned from why the winners do it (the yardstick, never an AI input).
+- **Every match: sight gaps** (owner, 2026-11-27: "every match you have to compare the spectator output with the bot
+  output to see which real player features it is missing the access to"). The spectator note has a "Sight gaps" section:
+  the truth (harness lines for BARb) against what Anarva logged it knew, minute by minute, each difference classed as in a
+  player's sight or radar, inferable by a player (faction, start, clock, the income shown), or hidden from players too.
+  What a player would have and Anarva lacks is script blindness: expose it and record it in
+  [SCRIPT_SIGHT.md](SCRIPT_SIGHT.md).
 - **End a game the moment we are outplayed** (owner, 2026-11-26: "monitor every stat - energy, metal, army, damage
   taken vs dealt. the moment it swings in the enemy player, you should resign and rework yourself"; "end the spectated
   games early ... when outplayed"). Run games through `tools/swing.py` (it stops the game when a stat favours BARb by more
