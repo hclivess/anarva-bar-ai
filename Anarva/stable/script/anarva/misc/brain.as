@@ -320,7 +320,10 @@ float SpotLifeWith(const AIFloat3& in q, const AIFloat3& in extraAt, float extra
 	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
 	for (uint k = 0; k < mine.length(); ++k) {
 		const CCircuitDef@ kd = mine[k].circuitDef;
-		if (kd.IsMobile() && kd.surfThrDmg > 0.f && kd.buildSpeed <= 0.f)
+		// the commander answers too: in 1v1 it stays home and kills lone raiders at the extractors near it (owner: "the
+		// commander at base in 1v1"; replays.db 1v1 winners median 276 from start at 3-6 min). Left out, the first
+		// extractors read undefended and fighters came before the first constructor (army 330, 1 constructor at 2:00, swe69)
+		if (kd.IsMobile() && kd.surfThrDmg > 0.f && (kd.buildSpeed <= 0.f || mine[k] is commander))
 			answer = AiMin(answer, mine[k].GetPos(ai.frame).distance2D(q) / AiMax(1.f, kd.speed));
 	}
 	if (extraSpeed > 0.f) answer = AiMin(answer, extraAt.distance2D(q) / extraSpeed);
@@ -353,7 +356,10 @@ float SpotRaids(const AIFloat3& in q, float Hr, const AIFloat3& in extraAt, floa
 	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
 	for (uint k = 0; k < mine.length(); ++k) {
 		const CCircuitDef@ kd = mine[k].circuitDef;
-		if (kd.IsMobile() && kd.surfThrDmg > 0.f && kd.buildSpeed <= 0.f)
+		// the commander answers too: in 1v1 it stays home and kills lone raiders at the extractors near it (owner: "the
+		// commander at base in 1v1"; replays.db 1v1 winners median 276 from start at 3-6 min). Left out, the first
+		// extractors read undefended and fighters came before the first constructor (army 330, 1 constructor at 2:00, swe69)
+		if (kd.IsMobile() && kd.surfThrDmg > 0.f && (kd.buildSpeed <= 0.f || mine[k] is commander))
 			answer = AiMin(answer, mine[k].GetPos(ai.frame).distance2D(q) / AiMax(1.f, kd.speed));
 	}
 	if (extraSpeed > 0.f) answer = AiMin(answer, extraAt.distance2D(q) / extraSpeed);
