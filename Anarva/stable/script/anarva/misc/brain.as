@@ -3042,11 +3042,16 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// claim): while the army's share of what the lab has built is below the plan's, the best fighter is built - the
 	// largest deficit against the plan's mix. Constructors won pick after pick by 0.1-1.7 per metal and the plan's
 	// assumed army (3.7 M/s) never came: claims 156/169 s then none, 4 extractors vs 8 at 4:00 under 515 army (swe106).
+	// ...judged on the mix after each choice: the one that leaves the lab's output nearer the plan's split (a constructor
+	// first when nothing is built yet; measured before the choice, the first unit was a 270-metal Warrior at 47 s and no
+	// constructor came until 108 s, swe107)
 	if (Opening::planArmyShare > 0.f && bestFightDef !is null && bestJob == 1) {
-		const float total = labArmyM + labConM;
-		const float share = (total > 0.f) ? labArmyM / total : 0.f;
-		if (share < Opening::planArmyShare) {
-			why += " | plan split: army " + F2(share) + " < " + F2(Opening::planArmyShare);
+		const float pS = Opening::planArmyShare;
+		const float mC = bestDef.costM, mF = bestFightDef.costM;
+		const float dC = labArmyM - pS * (labArmyM + labConM + mC), dF = labArmyM + mF - pS * (labArmyM + labConM + mF);
+		const float offC = (dC < 0.f) ? -dC : dC, offF = (dF < 0.f) ? -dF : dF;
+		if (offF < offC) {
+			why += " | plan split " + F2(pS) + ": fighter leaves it " + int(offF) + " off, constructor " + int(offC);
 			@bestDef = bestFightDef; bestRatio = bestFightRatio; bestV = bestFightV; bestJob = 0;
 		}
 	}
