@@ -4277,31 +4277,6 @@ void PrepareTail(const array<AIFloat3>@ sp, const array<float>@ si, const array<
 // one per (walk + extractor build); the k-th spot comes at labAt + sqrt(2 k conTime / rate). Each yields its kept
 // income to the end of the horizon, less the constructors' cost. (Income held constant after the hand-over made a
 // lab worth nothing until the commander had built everything: lab first 28.7k vs 204k, lab at 6478 s.)
-// The time in [raidArrive, end] the raid outnumbers what answers it: the commander (when it is there, cStr) plus the
-// lab's units from its first one (Value's window, shared so every producer of a plan meets the same raid)
-float RaidWindow(const Sim@ s, float end, float cStr)
-{
-	if (raidArrive >= end || raidStrength <= 0.f) return 0.f;
-	const float rate = AiMin(raidRate, s.mInc / AiMax(1.f, raidCostM));
-	float oursRate = 0.f, tU = end;
-	if (s.lab >= 0) {
-		const Lab@ L = labs[s.lab];
-		const float uRate = AiMin(1.f / AiMax(1e-3f, L.unitTime), s.mInc / AiMax(1.f, L.answer.costM));
-		oursRate = L.strength * uRate;
-		tU = s.labAt + L.unitTime;
-	}
-	float w = 0.f;
-	array<float> ts = {raidArrive, AiMax(raidArrive, AiMin(tU, end)), end};
-	for (uint seg = 0; seg + 1 < ts.length(); ++seg) {
-		const float t0 = ts[seg], t1 = ts[seg + 1];
-		if (t1 <= t0) continue;
-		const float f0 = cStr + oursRate * AiMax(0.f, t0 - tU) - raidStrength * (1.f + rate * (t0 - raidArrive));
-		const float f1 = cStr + oursRate * AiMax(0.f, t1 - tU) - raidStrength * (1.f + rate * (t1 - raidArrive));
-		if (f0 < 0.f && f1 < 0.f) w += t1 - t0;
-		else if (f0 < 0.f || f1 < 0.f) w += (t1 - t0) * ((f0 < 0.f) ? f0 : f1) / (f0 - f1) * ((f0 < 0.f) ? 1.f : -1.f);
-	}
-	return w;
-}
 string tailWhy = "";  // the first claims' inputs, for the start log
 float TailGrowth(const Sim@ s, float end)
 {
@@ -4311,7 +4286,6 @@ float TailGrowth(const Sim@ s, float end)
 	const float mexBuild = Economist::mexT1.buildTime / AiMax(1.f, L.con.buildSpeed);
 	float v = 0.f, best = 0.f; int k = 0;  // best: the most the claims are worth, stopping where they stop paying (0: none)
 	const float conCost = Economist::MetalValue(L.con), mexCost = Economist::MetalValue(Economist::mexT1);
-	const float wNear = RaidWindow(s, end, Strength(ComDef())), wFar = RaidWindow(s, end, 0.f);
 	// constructors come as fast as the lab builds them AND our metal pays for them: early income compounds (more
 	// income, more constructors, spots claimed sooner) - why players start at a spot cluster and take 3 extractors in
 	// the first 20 s
@@ -4334,19 +4308,18 @@ float TailGrowth(const Sim@ s, float end)
 		// response time, at most 1 (unit facts). Counted as always held, far spots made a central start beat the
 		// players' cluster start - which held the map twice on Canis while the central start lost its extractors
 		// (forced-start games, 2026-11-26).
-		// (no separate "hold" probability: the claimed spot meets the raid as the plan's own producers do in Value - with
-		// the commander within its defence reach of home, without it beyond - losing its yield while the raid outnumbers
-		// what answers it, and itself once. As kill time / answer time it read 0.37-0.69 even 200 out while the
-		// commander's own extractors counted in full: the corner start won every game, lab at ~100 s, swe84-87)
-		const bool nearHome = tailDist[j] <= DefenceReach(Economist::mexT1);
-		const float wAll = nearHome ? wNear : wFar;
-		const float wJ = (end > raidArrive) ? wAll * AiMax(0.f, end - AiMax(tk, raidArrive)) / (end - raidArrive) : 0.f;
-		const float hold = (end > tk) ? AiMax(0.f, 1.f - wJ / (end - tk)) : 1.f;  // (logged: the share it yields)
+		float hold = 1.f;
+		if (raidDps > 0.f && L.answer !is null) {
+			const float tKill = Economist::mexT1.health / raidDps;
+			const float tResp = tailDist[j] / AiMax(1.f, L.answer.speed);
+			hold = AiMin(1.f, tKill / AiMax(1e-3f, tResp));
+		}
 		// ...and only once a raid can come: until then nothing kills it (the commander's own extractors in the plan are
 		// counted in full; at hold over the whole horizon a constructor's spot read ~0.4 of one and the tail 0 at almost
 		// every start - the corner start with three commander extractors and the lab at 109 s beat the two-spot
 		// clusters the winners use (lab 56-69 s, replays.db ea25036b), buildings 460 vs 750 at 2:00, swe84)
-		v += tailYield[j] * AiMax(0.f, (end - tk) - wJ) - mexCost * ((wJ > 0.f) ? 2.f : 1.f);  // built, and again if raided
+		const float tSafe = AiMin(end, AiMax(tk, raidArrive));
+		v += tailYield[j] * ((tSafe - tk) + hold * (end - tSafe)) - mexCost;
 		// constructors needed to claim them by then: one per rate x elapsed time... their cost. The claims stop where the
 		// next spot no longer pays for its share of constructors - players don't expand at a loss: charged for every spot
 		// on the map, the tail read -1072 to -1497 at every start, the start with the most near spots lost most, and we
