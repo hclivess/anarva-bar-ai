@@ -2682,12 +2682,10 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 	// army of ours and nothing seen the floor would be 0 and no fighter worth anything
 	{
 		const float tNow = float(ai.frame) / SECOND;
-		const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
 		// only those that could have arrived by now: built since their lab and walked here (raidArrive includes the walk).
 		// Counted from their lab, the floor read 747 at 1:13 - all their income in raiders - and the first fighter lifted
 		// the win share 0 -> 0.29 of the whole stake: a Blitz before the first constructor in every game (swe71-74)
-		const float nR = AiMax(0.f, tNow - Opening::raidArrive) * rate + ((tNow >= Opening::raidArrive) ? 1.f : 0.f);
-		eSurf = AiMax(eSurf, AiMax(sSurf, nR * Opening::raidStrength));
+		eSurf = AiMax(eSurf, AiMax(sSurf, RaidFloor(tNow)));
 	}
 	// Their growth as seen: the strongest surface strength we have seen, and when. A unit ordered now fights the army
 	// that is there when it is ready, so it is valued against that: now + measured growth x (its build + walk) (sight,
@@ -2744,7 +2742,8 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
 		for (uint i = 0; i < ne; ++i) {
 			const CCircuitDef@ d = ed[i];
-			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
+			// their army, as ours (commanders hold home on both sides)
+			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f || d.IsRoleAny(Unit::Role::COMM.mask)) continue;
 			int k = kName.find(d.GetName());
 			if (k < 0) {
 				k = int(kName.length()); kName.insertLast(d.GetName()); kE.insertLast(0.f); kS.insertLast(0.f);
@@ -2784,7 +2783,7 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				const float extra = float(m - c) * AiMax(0.f, 1.f - age / Hm);  // remembered, out of sight, fading over the horizon
 				if (extra <= 0.f) continue;
 				CCircuitDef@ d = ai.GetCircuitDef(mk[q]);
-				if (d is null) continue;
+				if (d is null || d.IsRoleAny(Unit::Role::COMM.mask)) continue;
 				int k = kName.find(d.GetName());
 				if (k < 0) {
 					k = int(kName.length()); kName.insertLast(d.GetName()); kE.insertLast(0.f); kS.insertLast(0.f);
@@ -2893,7 +2892,11 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			const float grow = (eSurf > 0.f) ? 1.f + growthE * tReady / eSurf : 1.f;  // the enemy when it is ready, as a factor
 			// no enemy army there to fight (none seen, none could have arrived): a fighter wins nothing yet - its worth is
 			// its defence and raid value (the share term read 1 for any fighter against nothing)
-			float vSurf = (eSurf > 0.f) ? stakeSurf * (SquareShare(sSurf + us, eSurf * grow) - SquareShare(sSurf, eSurf * grow)) : 0.f;
+			// ...the enemy it meets is the one there when it is ready: the raiders that can have arrived by then count (at
+			// "arrived by now" the first fighter was valued 0 until the raid was due and came 5 s after it, army 141 vs 215
+			// at 3:00, swe76: the raid model put their first raid at 164 s, our first Blitz 169 s)
+			const float eReady = AiMax(eSurf * grow, RaidFloor(float(ai.frame) / SECOND + tReady));
+			float vSurf = (eReady > 0.f) ? stakeSurf * (SquareShare(sSurf + us, eReady) - SquareShare(sSurf, eReady)) : 0.f;
 			if (kESum > 0.f) {
 				vSurf = 0.f;
 				for (uint k = 0; k < kE.length(); ++k) {
@@ -3135,6 +3138,14 @@ float HitChance(float shotSpeed, float range, float targetSpeed, float targetRad
 	return AiMin(1.f, AiMax(1.f, targetRadius) / AiMax(AiMax(1.f, targetRadius), drift));
 }
 float WinShare(float S, float E) { return (S + E > 0.f) ? S / (S + E) : 0.f; }
+// The raiders' strength that can be at our spots by game time t (the opener's raid model: their lab, raider rate capped
+// by the income they earn as we do, the walk): none before the first raid can arrive, one when it does.
+float RaidFloor(float t)
+{
+	if (Opening::raidRate <= 0.f || t < Opening::raidArrive) return 0.f;
+	const float rate = AiMin(Opening::raidRate, aiEconomyMgr.metal.income / AiMax(1.f, Opening::raidCostM));
+	return ((t - Opening::raidArrive) * rate + 1.f) * Opening::raidStrength;
+}
 // The fight's outcome under the square law as a share of what both sides bring (strength-weighted): the enemy share we
 // destroy weighted by E plus our share kept weighted by S, over S + E. Stronger: all of E dies and S keeps 1 - (E/S)^2;
 // weaker: (S/E)^2 of E dies and nothing is kept. 0.5 at parity, like the share; but a weak unit alone is worth what
