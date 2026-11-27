@@ -3002,6 +3002,27 @@ float ArmyControl(bool home = false)
 // The enemy ground units a fighter of ours will meet, weighted by strength: as seen; none seen yet, the units the
 // given factory options field (they build the same class of units). Shared by Production and the factory choice.
 class Mix { array<float> dps, range, w, aoe, shot, speed, rad, cnt; }  // cnt: enemy units an entry stands for (0: hypothetical)
+// The enemy's factories: those their commanders can build (their side from the game setup, AiEnemyCommanders), as a
+// player knows the opponent's faction from the lobby. Empty when the setup names none: then every factory is theirs.
+array<string> enemyFacs; bool enemyFacsRead = false;
+bool IsEnemyFactory(const string& in f)
+{
+	if (!enemyFacsRead) {
+		enemyFacsRead = true;
+		array<string> comms;
+		AiEnemyCommanders(comms);
+		for (uint c = 0; c < comms.length(); ++c) {
+			const array<string> bo = Facts::BuildOptions(comms[c]);
+			for (uint b = 0; b < bo.length(); ++b) {
+				CCircuitDef@ d = ai.GetCircuitDef(bo[b]);
+				if (d !is null && !d.IsMobile() && Facts::BuildOptions(bo[b]).length() > 0 && enemyFacs.find(bo[b]) < 0) enemyFacs.insertLast(bo[b]);
+			}
+		}
+		string l = ""; for (uint i = 0; i < enemyFacs.length(); ++i) l += " " + enemyFacs[i];
+		AiLog("[ANV-ENEMY] their commanders " + comms.length() + ", factories:" + l);
+	}
+	return enemyFacs.length() == 0 || enemyFacs.find(f) >= 0;
+}
 void FillMix(Mix@ m, const array<string>@ opts)
 {
 	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
@@ -3014,9 +3035,22 @@ void FillMix(Mix@ m, const array<string>@ opts)
 		m.w.insertLast(sqrt(d.GetSustainedDps() * AiMax(1.f, d.health)));
 		m.cnt.insertLast(1.f);
 	}
-	if (m.w.length() == 0 && opts !is null) {
-		for (uint i = 0; i < opts.length(); ++i) {
-			CCircuitDef@ d = ai.GetCircuitDef(opts[i]);
+	// none seen: what their T1 factories make (their side, from the setup); our own factory's units only when the
+	// setup names no side (as ours, a Rover "dodged" 81% of a mix of our own shell-firing vehicles while Cortex's
+	// raiders fire beams - six Rovers in a row, swe79)
+	array<string> theirs;
+	if (m.w.length() == 0) {
+		IsEnemyFactory("");
+		for (uint f = 0; f < enemyFacs.length(); ++f) {
+			if (int(Facts::FactoryTier(enemyFacs[f])) != 1) continue;
+			const array<string> bo = Facts::BuildOptions(enemyFacs[f]);
+			for (uint b = 0; b < bo.length(); ++b) theirs.insertLast(bo[b]);
+		}
+	}
+	const array<string>@ src = (theirs.length() > 0) ? theirs : opts;
+	if (m.w.length() == 0 && src !is null) {
+		for (uint i = 0; i < src.length(); ++i) {
+			CCircuitDef@ d = ai.GetCircuitDef(src[i]);
 			if (d is null || !d.IsMobile() || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f || d.IsRoleAny(Unit::Role::BUILDER.mask)) continue;
 			m.dps.insertLast(d.GetSustainedDps()); m.range.insertLast(d.GetMaxRange()); m.aoe.insertLast(d.GetAoe());
 			m.shot.insertLast(d.GetShotSpeed()); m.speed.insertLast(d.speed); m.rad.insertLast(d.GetRadius()); m.w.insertLast(1.f);
@@ -4140,7 +4174,7 @@ void Init()
 		path *= Production::mapInfo.basePath / Production::mapInfo.straight;
 	const array<string>@ facs = Facts::buildOptions.getKeys();
 	for (uint f = 0; f < facs.length(); ++f) {
-		if (int(Facts::FactoryTier(facs[f])) != 1) continue;
+		if (int(Facts::FactoryTier(facs[f])) != 1 || !Production::IsEnemyFactory(facs[f])) continue;  // their side's labs
 		CCircuitDef@ F = ai.GetCircuitDef(facs[f]);
 		if (F is null || F.IsMobile()) continue;
 		const array<string> prod = Facts::BuildOptions(facs[f]);

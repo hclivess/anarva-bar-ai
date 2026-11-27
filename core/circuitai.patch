@@ -4684,7 +4684,7 @@ index 2baf4ae9..641575f7 100644
  
  CEconomyScript::~CEconomyScript()
 diff --git a/src/circuit/script/InitScript.cpp b/src/circuit/script/InitScript.cpp
-index c3aaefe5..a1fca722 100644
+index c3aaefe5..9cd02064 100644
 --- a/src/circuit/script/InitScript.cpp
 +++ b/src/circuit/script/InitScript.cpp
 @@ -1,3 +1,4 @@
@@ -4799,7 +4799,7 @@ index c3aaefe5..a1fca722 100644
  	r = engine->RegisterObjectProperty("CCircuitDef", "int maxThisUnit", asOFFSET(CCircuitDef, maxThisUnit)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int sinceFrame", asOFFSET(CCircuitDef, sinceFrame)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty("CCircuitDef", "int cooldown", asOFFSET(CCircuitDef, cooldown)); ASSERT(r >= 0);
-@@ -735,9 +779,326 @@ void CInitScript::RegisterCore()
+@@ -735,9 +779,366 @@ void CInitScript::RegisterCore()
  	r = engine->RegisterObjectProperty("CCircuitUnit", "IUnitTask@ const task", asOFFSET(CCircuitUnit, task)); ASSERT(r >= 0);
  	// RulesParams accessor on Unit
  	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetRulesParam(const string& in, float) const", asFUNCTION(CCircuitUnit_GetRulesParamFloat), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -5016,6 +5016,46 @@ index c3aaefe5..a1fca722 100644
 +	return dflt;
 +}
 +
++// Anarva: the enemy's commanders, from the game setup (each [teamN]'s side for teams outside our ally team) - a player
++// sees the opponent's faction in the lobby; guessed from every faction, the raid model took Armada's Pawn and the
++// mix our own factory's units while the enemy was Cortex (swe79)
++static std::string AnarvaLower(std::string v) { for (auto& c : v) c = (char)std::tolower((unsigned char)c); return v; }
++static asUINT Bridge_EnemyCommanders(CScriptArray* names)
++{
++	names->Resize(0);
++	const std::string script = bridgeAI->GetGame()->GetSetupScript();
++	std::vector<std::string> enemySides;
++	size_t at = 0;
++	while ((at = script.find("[team", at)) != std::string::npos) {
++		const size_t open = script.find('{', at), close = (open == std::string::npos) ? std::string::npos : script.find('}', open);
++		if (close == std::string::npos) break;
++		const std::string body = script.substr(open, close - open);
++		auto value = [&body](const std::string& key) -> std::string {
++			size_t k = 0;
++			while ((k = body.find(key + "=", k)) != std::string::npos) {
++				if (k == 0 || !isalnum((unsigned char)body[k - 1])) {
++					const size_t b = k + key.size() + 1, e = body.find(';', b);
++					return body.substr(b, (e == std::string::npos) ? std::string::npos : e - b);
++				}
++				k += key.size();
++			}
++			return "";
++		};
++		const std::string ally = value("allyteam"), side = value("side");
++		if (!ally.empty() && !side.empty() && std::atoi(ally.c_str()) != bridgeAI->GetAllyTeamId())
++			enemySides.push_back(AnarvaLower(side));
++		at = close;
++	}
++	for (const auto& kv : bridgeAI->GetSetupManager()->GetSides()) {
++		if (std::find(enemySides.begin(), enemySides.end(), AnarvaLower(kv.second)) == enemySides.end()) continue;
++		CCircuitDef* cd = bridgeAI->GetCircuitDef(kv.first);
++		if (cd == nullptr) continue;
++		std::string n = cd->GetDef()->GetName();
++		names->InsertLast(&n);
++	}
++	return names->GetSize();
++}
++
 +// a unit's actual metal output now (engine), e.g. what an extractor really extracts
 +static float CCircuitUnit_GetMetalMake(CCircuitUnit* u)
 +{
@@ -5126,7 +5166,7 @@ index c3aaefe5..a1fca722 100644
  void CInitScript::RegisterMgr()
  {
  	asIScriptEngine* engine = script->GetEngine();
-@@ -767,6 +1128,59 @@ void CInitScript::RegisterMgr()
+@@ -767,6 +1168,60 @@ void CInitScript::RegisterMgr()
  	r = engine->RegisterObjectType("CThreatMap", 0, asOBJ_REF | asOBJ_NOHANDLE); ASSERT(r >= 0);
  	r = engine->RegisterGlobalProperty("CThreatMap aiThreat", thrMap); ASSERT(r >= 0);
  	r = engine->RegisterObjectMethod("CThreatMap", "void ApplyRange(CCircuitDef@)", asMETHOD(CThreatMap, ApplyRange), asCALL_THISCALL); ASSERT(r >= 0);
@@ -5162,6 +5202,7 @@ index c3aaefe5..a1fca722 100644
 +	r = engine->RegisterGlobalFunction("bool AiCanBeBuiltAt(CCircuitDef@, const AIFloat3& in)", asFUNCTION(Bridge_CanBeBuiltAt), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiPathLength(CCircuitDef@, const AIFloat3& in, const AIFloat3& in)", asFUNCTION(Bridge_PathLength), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("float AiSetupNumber(const string& in, float)", asFUNCTION(Bridge_SetupNumber), asCALL_CDECL); ASSERT(r >= 0);
++	r = engine->RegisterGlobalFunction("uint AiEnemyCommanders(array<string>@)", asFUNCTION(Bridge_EnemyCommanders), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("AIFloat3 AiEnemyBasePos()", asFUNCTION(Bridge_EnemyBasePos), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterGlobalFunction("void AiSay(const string& in)", asFUNCTION(Bridge_Say), asCALL_CDECL); ASSERT(r >= 0);
 +	r = engine->RegisterObjectMethod("CCircuitUnit", "float GetMetalMake()", asFUNCTION(CCircuitUnit_GetMetalMake), asCALL_CDECL_OBJFIRST); ASSERT(r >= 0);
@@ -5186,7 +5227,7 @@ index c3aaefe5..a1fca722 100644
  }
  
  bool CInitScript::Init()
-@@ -782,6 +1196,7 @@ bool CInitScript::Init()
+@@ -782,6 +1237,7 @@ bool CInitScript::Init()
  	mainInfo.receiveMessage = script->GetFunc(mod, "void AiMessage(const string& in, int)");
  	mainInfo.unitFinished = script->GetFunc(mod, "void AiUnitFinished(CCircuitUnit@)");
  	mainInfo.unitDestroyed = script->GetFunc(mod, "void AiUnitDestroyed(CCircuitUnit@)");
@@ -5194,7 +5235,7 @@ index c3aaefe5..a1fca722 100644
  	asIScriptFunction* main = script->GetFunc(mod, "void AiMain()");
  	if (main == nullptr) {
  		return false;
-@@ -793,6 +1208,19 @@ bool CInitScript::Init()
+@@ -793,6 +1249,19 @@ bool CInitScript::Init()
  	return true;
  }
  
@@ -5214,7 +5255,7 @@ index c3aaefe5..a1fca722 100644
  void CInitScript::Update()
  {
  	if (mainInfo.update == nullptr) {
-@@ -859,6 +1287,9 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
+@@ -859,6 +1328,9 @@ void CInitScript::RegisterIBuilderTask(asIScriptEngine* engine, const char* cls)
  	r = engine->RegisterObjectProperty(cls, "CCircuitDef@ const buildDef", asOFFSET(T, buildDef)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "CCircuitUnit@ const target", asOFFSET(T, target)); ASSERT(r >= 0);
  	r = engine->RegisterObjectProperty(cls, "bool canAutoAbort", asOFFSET(T, canAutoAbort)); ASSERT(r >= 0);
@@ -5224,7 +5265,7 @@ index c3aaefe5..a1fca722 100644
  }
  
  template <class T>
-@@ -920,22 +1351,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
+@@ -920,22 +1392,6 @@ void CInitScript::Pause(bool enable, const std::string& msg) const
  	circuit->GetGame()->SetPause(enable, msg.c_str());
  }
  
@@ -5555,7 +5596,7 @@ index d809caf8..aca21f77 100644
  	}
  
 diff --git a/src/circuit/setup/SetupManager.h b/src/circuit/setup/SetupManager.h
-index 9e1293b2..6ae74527 100644
+index 9e1293b2..076f5d05 100644
 --- a/src/circuit/setup/SetupManager.h
 +++ b/src/circuit/setup/SetupManager.h
 @@ -58,6 +58,7 @@ public:
@@ -5575,6 +5616,16 @@ index 9e1293b2..6ae74527 100644
  	float GetEmptyShield() const { return emptyShield; }
  	float GetFullShield() const { return fullShield; }
  	int GetAssistFac() const { return assistFac; }
+@@ -141,6 +142,9 @@ private:
+ 	bool isSideSelected;  // FIXME: Random-Side workaround
+ 
+ 	std::map<CCircuitDef::Id, std::string> sides;  // comm: side
++public:
++	const std::map<CCircuitDef::Id, std::string>& GetSides() const { return sides; }  // Anarva: commander -> side
++private:
+ 
+ 	bool isWaterHarmful;
+ };
 diff --git a/src/circuit/spring/SpringMap.h b/src/circuit/spring/SpringMap.h
 index b468c2e1..2a99e191 100644
 --- a/src/circuit/spring/SpringMap.h
