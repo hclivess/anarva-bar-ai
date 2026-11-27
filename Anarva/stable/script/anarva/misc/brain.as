@@ -934,7 +934,7 @@ void Update()
 			// x warning / horizon. Counted only on our own ground, one radar over the base looked like enough and the second
 			// (valued 158-428) was never taken; a winner put one 1396 out among the far extractors (replays.db d346036b).
 			{
-				const AIFloat3 eBase = AiEnemyBasePos();
+				const AIFloat3 eb = AiEnemyBasePos();
 				const float eSpeed = AiMax(1.f, Director::allSpeed);
 				const float Hw = AiMax(1.f, Economist::Horizon());
 				const float step = AiMax(1.f, R / 4.f);
@@ -1022,7 +1022,7 @@ void TrackFinds()
 // reached our extractors unseen from 3:17 (swe2, blind at 2:00 and 3:00; replays.db, 20 winners)
 float WarningValue(const CCircuitDef@ d)
 {
-	const AIFloat3 eBase = AiEnemyBasePos();
+	const AIFloat3 eb = AiEnemyBasePos();
 	if (!HasBase() || d is null) return 0.f;
 	const float R = AiMax(1.f, d.losRadius);
 	const float eSpeed = AiMax(1.f, Director::allSpeed);
