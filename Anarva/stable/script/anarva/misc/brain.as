@@ -4277,67 +4277,81 @@ void PrepareTail(const array<AIFloat3>@ sp, const array<float>@ si, const array<
 // one per (walk + extractor build); the k-th spot comes at labAt + sqrt(2 k conTime / rate). Each yields its kept
 // income to the end of the horizon, less the constructors' cost. (Income held constant after the hand-over made a
 // lab worth nothing until the commander had built everything: lab first 28.7k vs 204k, lab at 6478 s.)
+// One account of the lab's output (owner's process: the opening designed as one). The lab's metal goes to the
+// constructors the tail counts and the rest to army; the enemy earns as we do and splits alike, so its raiders get
+// the same metal per second as our army (the old model had our lab make constructors nonstop AND answer units
+// nonstop, and their lab raiders nonstop from all income - every claimed spot read lost, the commander's extractors
+// alone decided the start: the corner, lab at ~100 s, buildings 460 vs 690-750 at 2:00, swe84-88).
+float tailArmyMps = -1.f;  // the army metal/s of the tail's chosen plan (Value's raid window uses it); -1: none
+// The time in [raidArrive, end] the raid outnumbers what answers it: cStr (the commander, where it is) plus our army
+// at armyMps from the lab's first unit, against their raiders at the same metal per second.
+float RaidWindowM(const Sim@ s, float end, float cStr, float armyMps)
+{
+	if (raidArrive >= end || raidStrength <= 0.f || s.lab < 0) return 0.f;
+	const Lab@ L = labs[s.lab];
+	const float rate = AiMin(raidRate, armyMps / AiMax(1.f, raidCostM));
+	const float oursRate = L.strength * AiMin(1.f / AiMax(1e-3f, L.unitTime), armyMps / AiMax(1.f, L.answer.costM));
+	const float tU = s.labAt + L.unitTime;
+	float w = 0.f;
+	array<float> ts = {raidArrive, AiMax(raidArrive, AiMin(tU, end)), end};
+	for (uint seg = 0; seg + 1 < ts.length(); ++seg) {
+		const float t0 = ts[seg], t1 = ts[seg + 1];
+		if (t1 <= t0) continue;
+		const float f0 = cStr + oursRate * AiMax(0.f, t0 - tU) - raidStrength * (1.f + rate * (t0 - raidArrive));
+		const float f1 = cStr + oursRate * AiMax(0.f, t1 - tU) - raidStrength * (1.f + rate * (t1 - raidArrive));
+		if (f0 < 0.f && f1 < 0.f) w += t1 - t0;
+		else if (f0 < 0.f || f1 < 0.f) w += (t1 - t0) * ((f0 < 0.f) ? f0 : f1) / (f0 - f1) * ((f0 < 0.f) ? 1.f : -1.f);
+	}
+	return w;
+}
 string tailWhy = "";  // the first claims' inputs, for the start log
+// After the lab stands, constructors claim the nearest free spots (the k-th at t_k = labAt + sqrt(2 conEvery W_k), W_k
+// the walk + build of the k nearest). The tail counts the k claims that pay best: each yields from its claim to the
+// end except while the raid outnumbers what answers it there (the commander within its defence reach of home, the
+// army everywhere), and is rebuilt once if raided; the constructors are charged their working-life share; and the
+// more constructors, the less lab time and metal for the army that holds the spots.
 float TailGrowth(const Sim@ s, float end)
 {
-	tailWhy = "";
+	tailWhy = ""; tailArmyMps = -1.f;
 	if (s.lab < 0 || labs[s.lab].con is null || Economist::mexT1 is null) return 0.f;
 	const Lab@ L = labs[s.lab];
 	const float mexBuild = Economist::mexT1.buildTime / AiMax(1.f, L.con.buildSpeed);
-	float v = 0.f, best = 0.f; int k = 0;  // best: the most the claims are worth, stopping where they stop paying (0: none)
 	const float conCost = Economist::MetalValue(L.con), mexCost = Economist::MetalValue(Economist::mexT1);
-	// constructors come as fast as the lab builds them AND our metal pays for them: early income compounds (more
-	// income, more constructors, spots claimed sooner) - why players start at a spot cluster and take 3 extractors in
-	// the first 20 s
 	const float conEvery = AiMax(L.conTime, L.con.costM / AiMax(1e-3f, s.mInc));
-	// Constructors claim the nearest spots first: the k-th claim needs the work of the k nearest (walk from home +
-	// build), W_k; constructor-seconds available tau after the lab are tau^2 / (2 conEvery), so t_k = labAt +
-	// sqrt(2 conEvery W_k). (The map-average walk let far spots decide the start: a central forward start won.)
-	float W = 0.f;
+	const float span = AiMax(1.f, end - s.labAt);
+	const float life = AiMax(1.f, Economist::ProducerLife());
+	const float cStr = Strength(ComDef());
+	const float reachHome = DefenceReach(Economist::mexT1);
+	array<float> tks, ys; array<bool> nears;
+	float best = 0.f, bestArmy = AiMin(s.mInc, L.spend);  // no claims: the whole lab output is army
+	float W = 0.f; int k = 0;
 	for (uint j = 0; j < tailOrder.length(); ++j) {
 		if (s.usedSpot[tailOrder[j]]) continue;
 		++k;
 		W += tailDist[j] / AiMax(1.f, L.con.speed) + mexBuild;
-		// builder time available tau after the lab: the constructors' tau^2 / (2 conEvery) plus the commander's own tau
-		// (it keeps building - players' commanders take the near spots for the first minutes). Without it near spots
-		// came no sooner than far ones and a central start beat the cluster starts players use (Canis 2026-11-26).
 		const float tk = s.labAt + (-conEvery + sqrt(conEvery * conEvery + 2.f * conEvery * W));
 		if (tk >= end) break;
-		// Held only if our answer arrives before a raid kills it: a raider kills an extractor in its health / the
-		// raider's dps; our lab's answer unit arrives in the spot's distance from home / its speed. P(hold) = kill time /
-		// response time, at most 1 (unit facts). Counted as always held, far spots made a central start beat the
-		// players' cluster start - which held the map twice on Canis while the central start lost its extractors
-		// (forced-start games, 2026-11-26).
-		float hold = 1.f;
-		if (raidDps > 0.f && L.answer !is null) {
-			const float tKill = Economist::mexT1.health / raidDps;
-			const float tResp = tailDist[j] / AiMax(1.f, L.answer.speed);
-			hold = AiMin(1.f, tKill / AiMax(1e-3f, tResp));
+		tks.insertLast(tk); ys.insertLast(tailYield[j]); nears.insertLast(tailDist[j] <= reachHome);
+		// constructors made by then, their lab time and metal; the rest of the lab's output is army
+		const float conUsed = AiMin(float(k), (tk - s.labAt) / AiMax(1.f, conEvery) + 1.f);
+		const float labFree = AiMax(0.f, 1.f - conUsed * L.conTime / span);
+		const float armyMps = AiMax(0.f, AiMin(L.spend * labFree, s.mInc - conUsed * L.con.costM / span));
+		const float wNear = RaidWindowM(s, end, cStr, armyMps), wFar = RaidWindowM(s, end, 0.f, armyMps);
+		float v = 0.f;
+		for (uint q = 0; q < tks.length(); ++q) {
+			const float wAll = nears[q] ? wNear : wFar;
+			const float wq = (end > raidArrive) ? wAll * AiMax(0.f, end - AiMax(tks[q], raidArrive)) / (end - raidArrive) : 0.f;
+			v += ys[q] * AiMax(0.f, (end - tks[q]) - wq) - mexCost * ((wq > 0.f) ? 2.f : 1.f);
 		}
-		// ...and only once a raid can come: until then nothing kills it (the commander's own extractors in the plan are
-		// counted in full; at hold over the whole horizon a constructor's spot read ~0.4 of one and the tail 0 at almost
-		// every start - the corner start with three commander extractors and the lab at 109 s beat the two-spot
-		// clusters the winners use (lab 56-69 s, replays.db ea25036b), buildings 460 vs 750 at 2:00, swe84)
-		const float tSafe = AiMin(end, AiMax(tk, raidArrive));
-		v += tailYield[j] * ((tSafe - tk) + hold * (end - tSafe)) - mexCost;
-		// constructors needed to claim them by then: one per rate x elapsed time... their cost. The claims stop where the
-		// next spot no longer pays for its share of constructors - players don't expand at a loss: charged for every spot
-		// on the map, the tail read -1072 to -1497 at every start, the start with the most near spots lost most, and we
-		// started at (1306,3328) with one spot near while every player on our side stood at (1431,3555) or (936,2562)
-		// with two spots 104-167 out, built at 9 and 16 s (replays.db ea25036b, 18a2046b, 57d1df6a; swe38)
-		const float conUsed = AiMin(float(k), (tk - s.labAt) / AiMax(1.f, conEvery) + 1.f);  // made by then (the first at once)
-		// a constructor is a capital good: it goes on claiming after the horizon, so the horizon pays the share of its
-		// working life it uses (made at labAt + i conEvery, worn over the measured producer life). Charged whole against
-		// the claims inside a ~265 s horizon, the tail read 0 at every start (first claims +22..+211 against 162 each, swe86)
-		const float life = AiMax(1.f, Economist::ProducerLife());
 		float conCharge = 0.f;
 		for (int ci = 0; ci < int(ceil(conUsed)); ++ci) {
 			const float share = AiMin(1.f, AiMax(0.f, end - (s.labAt + float(ci) * conEvery)) / life);
 			conCharge += conCost * share * AiMin(1.f, conUsed - float(ci));
 		}
-		best = AiMax(best, v - conCharge);
-		if (k <= 3) tailWhy += " k" + k + "@" + int(tk) + " hold " + F2(hold) + " v " + int(v) + " cons " + int(conCharge) + " (life " + int(life) + ")";
+		if (v - conCharge > best) { best = v - conCharge; bestArmy = armyMps; }
+		if (k <= 3) tailWhy += " k" + k + "@" + int(tk) + " army " + F1(armyMps) + "/s win " + int(nears[tks.length() - 1] ? wNear : wFar) + " v " + int(v) + " cons " + int(conCharge);
 	}
+	tailArmyMps = bestArmy;
 	return best;
 }
 
@@ -4365,7 +4379,9 @@ float Value(const Sim@ s, float now, float H)
 		+ TailGrowth(s, end);
 	if (raidArrive < end && s.nProd > 0.f) {
 		// raid strength n(t) x one raider, n = 1 + rate x (t - arrival), the rate capped by an income like ours
-		const float rate = AiMin(raidRate, s.mInc / raidCostM);
+		// their raiders get the metal our army gets (one account of the lab's output, TailGrowth); before a lab, all income
+		const float armyMps = (s.lab >= 0 && tailArmyMps >= 0.f) ? tailArmyMps : s.mInc;
+		const float rate = AiMin(raidRate, armyMps / raidCostM);
 		// Ours: the commander - which stands by the first extractors (why players start at a spot cluster: early raids
 		// lose to it) - plus the lab's answer units from when the first is out. The raid strips producers while it is
 		// stronger: f(t) = commander + lab units(t) - raid(t) < 0. (Without the commander every exposed producer died
@@ -4374,7 +4390,7 @@ float Value(const Sim@ s, float now, float H)
 		float oursRate = 0.f, tU = end;
 		if (s.lab >= 0) {
 			const Lab@ L = labs[s.lab];
-			const float uRate = AiMin(1.f / AiMax(1e-3f, L.unitTime), s.mInc / AiMax(1.f, L.answer.costM));
+			const float uRate = AiMin(1.f / AiMax(1e-3f, L.unitTime), armyMps / AiMax(1.f, L.answer.costM));
 			oursRate = L.strength * uRate;
 			tU = s.labAt + L.unitTime;
 		}
