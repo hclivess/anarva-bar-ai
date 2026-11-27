@@ -838,7 +838,21 @@ void Update()
 			const float perSite = hp / AiMax(1.f, Opening::raidDps) + gap / AiMax(1.f, Opening::raidSpeed);
 			const float cleared = AiMax(1.f, answer / AiMax(1.f, perSite));
 			const float pHit = AiMin(1.f, cleared * val[i] / AiMax(1.f, total));
-			float expected = val[i] * pHit * raids;
+			// the raids the shared ledger expects at each producer in its reach (EcoPos::SpotRaids: the raid model and what
+			// has hit there), each a RaidLoss - a tower there answers at once, so it removes them as far as it beats a
+			// raider (square law). Its own model (share x round trips) read our far extractors like the rest; they fell to
+			// Incisors and Rovers 838-1074 out with no tower (swe119)
+			const float Hh = AiMax(1.f, Economist::Horizon());
+			const float sT = Opening::Strength(tur), Rr = AiMax(1e-3f, Opening::raidStrength);
+			const float oddsT = (sT >= Rr) ? 1.f : (sT / Rr) * (sT / Rr);
+			float ledger = 0.f;
+			for (uint k = 0; k < mine.length(); ++k) {
+				if (!Economist::IsProducer(mine[k].circuitDef)) continue;
+				const AIFloat3 qk = mine[k].GetPos(ai.frame);
+				if (qk.distance2D(q) > r) continue;
+				ledger += RaidLoss(mine[k], con) * EcoPos::SpotRaids(qk, Hh, qk, 0.f);
+			}
+			float expected = AiMax(val[i] * pHit * raids, ledger * oddsT);
 			// ...and it kills raiders: a raid that reaches it spends about 2 x its range / the raider's speed under its
 			// fire, taking its dps that long; the kills (a share of one raider at least) are worth the raider's cost each
 			// (unit facts). Counted as loss prevented alone, a second tower never beat an extractor (1 tower by minute 8
