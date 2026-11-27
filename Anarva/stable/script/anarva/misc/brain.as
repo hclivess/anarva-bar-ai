@@ -2939,14 +2939,16 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			// "arrived by now" the first fighter was valued 0 until the raid was due and came 5 s after it, army 141 vs 215
 			// at 3:00, swe76: the raid model put their first raid at 164 s, our first Blitz 169 s)
 			const float eReady = AiMax(eSurf * grow, RaidFloor(float(ai.frame) / SECOND + tReady));
-			float vSurf = (eReady > 0.f) ? stakeSurf * (SquareShare(sSurf + us, eReady) - SquareShare(sSurf, eReady)) : 0.f;
+			float vSurf = (eReady > 0.f) ? stakeSurf * FighterShare(sSurf, us, eReady) : 0.f;
 			if (kESum > 0.f) {
 				vSurf = 0.f;
 				for (uint k = 0; k < kE.length(); ++k) {
 					string tm;
 					const float uk = SurfPower(d, kMix[k], tm);
 					// with one unit more our force is split one way further (#101): Gran(n+1) on the new total
-					vSurf += stakeSurf * kE[k] / kESum * (SquareShare((kS[k] + uk) * Gran(nOurs + 1.f), kE[k] * grow) - SquareShare(kS[k] * Gran(nOurs), kE[k] * grow));
+					// (granularity on the total: the climb counts the new total's strength over the old's)
+					const float sNow = kS[k] * Gran(nOurs), sNew = (kS[k] + uk) * Gran(nOurs + 1.f);
+					vSurf += stakeSurf * kE[k] / kESum * FighterShare(sNow, sNew - sNow, kE[k] * grow);
 				}
 				terms += " per-type " + int(vSurf) + " grow " + F2(grow);
 			}
@@ -3237,6 +3239,17 @@ float RaidFloor(float t)
 // weaker: (S/E)^2 of E dies and nothing is kept. 0.5 at parity, like the share; but a weak unit alone is worth what
 // it kills, not its size share: as S/(S+E) a Rover (strength 61) read 0.30 against a Grunt (143) and six Rovers in a
 // row died one by one at our extractors, killing nothing (swe75); here 0.12, a Blitz (208) 0.72.
+// A fighter's share of the fight, as one of the stream the lab will make: below parity its own marginal is almost
+// nothing (the square law is convex there), but the units come one after another and fight together, so each is worth
+// at least its share of the climb to parity - (SquareShare(E, E) - SquareShare(S, E)) x u / (E - S). As the marginal
+// alone a Pawn read 0.54-0.94 per metal against an unseen 1123 and the lab made five constructors and one Pawn by 3:00
+// while BARb fielded 386 (swe102).
+float FighterShare(float S, float u, float E)
+{
+	const float marg = SquareShare(S + u, E) - SquareShare(S, E);
+	if (S + u >= E || E <= S || u <= 0.f) return marg;
+	return AiMax(marg, (SquareShare(E, E) - SquareShare(S, E)) * u / (E - S));
+}
 float SquareShare(float S, float E)
 {
 	if (S <= 0.f) return 0.f;
