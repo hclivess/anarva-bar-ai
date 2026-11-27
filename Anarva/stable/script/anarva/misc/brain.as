@@ -6581,7 +6581,20 @@ void Micro()
 		const bool still = v.x * v.x + v.z * v.z <= 0.f;
 		if (didFire) ++fired;
 		if (hit && !didFire) ++noReply;
-		if (hit && !inReach) ++outranged;
+		if (hit && !inReach) {
+			++outranged;
+			// hit by what outranges us: only closing brings it into our reach - standing it can't reply (Pawns 180 hit by
+			// Incisors 230, noReply/outranged with fired 0, swe117); toward the attacker, firing as it comes
+			if (Facts::FiresMoving(d.GetName()) > 0.f) {
+				int ak = -1; float ad = 1e30f;
+				for (uint k = 0; k < n; ++k) {
+					if (ed[k] is null || !ed[k].IsMobile() || ed[k].GetSustainedDps() <= 0.f || ed[k].IsAbleToFly()) continue;
+					const float dk = ep[k].distance2D(p);
+					if (dk <= ed[k].GetMaxRange() + d.GetRadius() && dk < ad) { ad = dk; ak = int(k); }
+				}
+				if (ak >= 0) u.CmdMoveTo(ep[ak]);
+			}
+		}
 		if (inReach && !didFire) {
 			++idleInRange;
 			// who, against what, on which order (why does a unit with an enemy in reach not fire?)
