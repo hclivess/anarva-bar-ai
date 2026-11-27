@@ -242,6 +242,28 @@ local function logSquads(n)
 			end
 		end
 	end
+	-- factories (owner's friend game, #121: production stopped at minute 13 with both banks full): per factory its current
+	-- command (5 = WAIT), queue length, what it is building and that unit's build progress
+	for _, team in ipairs(Spring.GetTeamList()) do
+		local parts = {}
+		for _, uid in ipairs(Spring.GetTeamUnits(team) or {}) do
+			local ud = UnitDefs[Spring.GetUnitDefID(uid)]
+			if ud and ud.isFactory then
+				local cmd = Spring.GetUnitCurrentCommand(uid)
+				local q = Spring.GetFactoryCommands(uid, 0) or 0
+				local b = Spring.GetUnitIsBuilding(uid)
+				local bn, bp = "-", -1
+				if b then
+					local bd = UnitDefs[Spring.GetUnitDefID(b)]
+					bn = bd and bd.name or "?"
+					local _, _, _, _, prog = Spring.GetUnitHealth(b)
+					bp = prog or -1
+				end
+				parts[#parts + 1] = string.format("%s:cmd%s:q%s:%s:%.2f", ud.name, tostring(cmd), tostring(q), bn, bp)
+			end
+		end
+		if #parts > 0 then Spring.Echo(string.format("[REPLAY] FACT f=%d team=%d %s", n, team, table.concat(parts, ","))) end
+	end
 	-- the alive army: per team, every armed mobile unit type alive now, its count, mean health share, how many are
 	-- moving, and their orders (the first command of each unit), plus where the army's centre is relative to its start
 	local army = {}

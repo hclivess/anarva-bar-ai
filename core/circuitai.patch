@@ -7981,7 +7981,7 @@ index c89d4a41..f65c8587 100644
  			auto [cand, isTeam] = circuit->GetTeamOrAllyUnit(u);
  			if ((cand == nullptr)  // no self-check
 diff --git a/src/circuit/task/static/RecruitTask.cpp b/src/circuit/task/static/RecruitTask.cpp
-index a4ef0f95..f3d75455 100644
+index a4ef0f95..77ceb846 100644
 --- a/src/circuit/task/static/RecruitTask.cpp
 +++ b/src/circuit/task/static/RecruitTask.cpp
 @@ -5,6 +5,7 @@
@@ -7992,8 +7992,30 @@ index a4ef0f95..f3d75455 100644
  #include "task/static/RecruitTask.h"
  #include "module/EconomyManager.h"
  #include "module/FactoryManager.h"
-@@ -71,17 +72,16 @@ void CRecruitTask::Update()
+@@ -69,19 +70,38 @@ void CRecruitTask::Update()
+ 	}
+ 
  	CCircuitAI* circuit = manager->GetCircuit();
++	// Anarva: an order given but not in the factory a full check later (no build queued, no unit of ours started) was lost
++	// on the way - re-issue it. Issued once and trusted, the factories sat with empty queues for ~70 s per unit from minute
++	// 13 to 25 with both banks full (owner's friend game, Supreme Isthmus 2026-11-27, replay FACT lines q0 while "executing";
++	// production 990 -> 0-305 metal/min against 31.9 M/s income)
++	if (buildIssued && (target == nullptr) && (circuit->GetLastFrame() - issuedFrame >= FRAMES_PER_SEC)) {
++		CUnitAPI* unitAPI = circuit->GetUnitAPI();
++		for (CCircuitUnit* unit : units) {
++			const int cmdSize = unitAPI->GetCMDQueueSize(unit->GetId());
++			bool queued = false;
++			for (int i = 0; i < cmdSize && !queued; ++i) queued = unitAPI->GetCMD(unit->GetId(), i) < 0;
++			if (!queued) {
++				circuit->LOG("[ANV-FAC] f=%i re-issue %s (order lost: queue %i, %i frames after)", circuit->GetLastFrame(),
++					buildDef->GetDef()->GetName(), cmdSize, circuit->GetLastFrame() - issuedFrame);
++				issuedFrame = circuit->GetLastFrame();
++				TRY_UNIT(circuit, unit,
++					unit->CmdBuild(buildDef, unit->GetPos(circuit->GetLastFrame()), UNIT_NO_FACING, 0, NO_EXPIRY);
++				)
++			}
++		}
++	}
  	CEconomyManager* economyMgr = circuit->GetEconomyManager();
  
 -	const bool isEnergyEmpty = economyMgr->IsEnergyEmpty();
@@ -8015,7 +8037,7 @@ index a4ef0f95..f3d75455 100644
  	if (State::DISENGAGE == state) {
  		if (hasMetal) {
  			state = State::ROAM;  // Not wait
-@@ -93,20 +93,16 @@ void CRecruitTask::Update()
+@@ -93,20 +113,16 @@ void CRecruitTask::Update()
  			}
  		}
  	} else {
@@ -8041,7 +8063,7 @@ index a4ef0f95..f3d75455 100644
  	Cancel();
  
  	CCircuitAI* circuit = manager->GetCircuit();
-@@ -140,6 +136,8 @@ void CRecruitTask::Cancel()
+@@ -140,6 +156,8 @@ void CRecruitTask::Cancel()
  				params.push_back(cmdId);
  			}
  		}
@@ -8050,7 +8072,7 @@ index a4ef0f95..f3d75455 100644
  		TRY_UNIT(circuit, unit,
  			unit->CmdRemove(std::move(params), UNIT_COMMAND_OPTION_ALT_KEY | UNIT_COMMAND_OPTION_CONTROL_KEY);
  		)
-@@ -183,8 +181,25 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -183,8 +201,26 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  	}
  
  	if (geom::is_valid(buildPos)) {
@@ -8071,13 +8093,14 @@ index a4ef0f95..f3d75455 100644
 +		}
 +		circuit->LOG("[ANV-FAC] f=%i execute %s task=%p queue=%i", frame, buildDef->GetDef()->GetName(), (void*)this, cmdSize);
 +		buildIssued = true;
++		issuedFrame = frame;
  		TRY_UNIT(circuit, unit,
 -			unit->CmdBuild(buildDef, buildPos, UNIT_NO_FACING, 0, frame + FRAMES_PER_SEC * 10);
 +			unit->CmdBuild(buildDef, buildPos, UNIT_NO_FACING, 0, NO_EXPIRY);
  		)
  	} else {
  		manager->AbortTask(this);
-@@ -195,6 +210,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
+@@ -195,6 +231,12 @@ bool CRecruitTask::Execute(CCircuitUnit* unit)
  
  void CRecruitTask::OnUnitIdle(CCircuitUnit* unit)
  {
@@ -8091,14 +8114,15 @@ index a4ef0f95..f3d75455 100644
  }
  
 diff --git a/src/circuit/task/static/RecruitTask.h b/src/circuit/task/static/RecruitTask.h
-index 6e43edf0..52f1fbbb 100644
+index 6e43edf0..8e0b7544 100644
 --- a/src/circuit/task/static/RecruitTask.h
 +++ b/src/circuit/task/static/RecruitTask.h
-@@ -47,6 +47,7 @@ public:
+@@ -47,6 +47,8 @@ public:
  private:
  	RecruitType recruitType;
  	float sqradius;
 +	bool buildIssued = false;  // Anarva: our build order is with the factory (until it goes idle)
++	int issuedFrame = -1;  // Anarva: when it was (re-)issued: lost orders are re-issued a check later
  };
  
  } // namespace circuit
