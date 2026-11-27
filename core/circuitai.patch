@@ -1932,7 +1932,7 @@ index 559a0abf..29f56c29 100644
  	CCircuitDef* terraDef = nullptr;
  	std::unordered_map<IBuilderTask::BT, std::unordered_map<CCircuitDef*, SBuildChain*>> buildChains;  // owner
 diff --git a/src/circuit/module/EconomyManager.cpp b/src/circuit/module/EconomyManager.cpp
-index 6e5da8b6..c46096d8 100644
+index 6e5da8b6..c97c90a2 100644
 --- a/src/circuit/module/EconomyManager.cpp
 +++ b/src/circuit/module/EconomyManager.cpp
 @@ -6,6 +6,8 @@
@@ -3209,7 +3209,7 @@ index 6e5da8b6..c46096d8 100644
  	}
  
  	/*
-@@ -1989,30 +2257,25 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+@@ -1989,35 +2257,39 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  	eiRequire += assistDef->GetUpkeepE();
  	// FIXME: Mex and other buildings have energy upkeep that's not counted.
  	//        It also doesn't count mobile buildpower
@@ -3250,7 +3250,21 @@ index 6e5da8b6..c46096d8 100644
  			break;
  	}
  	CTerrainManager::CorrectPosition(buildPos);
-@@ -2029,6 +2292,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
+ 	CCircuitDef* bdef = (unit == nullptr) ? facDef : unit->GetCircuitDef();
+ 	buildPos = terrainMgr->GetBuildPosition(bdef, buildPos);
++	// Anarva (#122, owner: "you placed the building out of reach" - 6 turrets, 1 in reach of the lab, the rest reclaimed
++	// again and again): the search moves the site outward once the spot behind the factory is taken; a turret is worth
++	// the factory work it assists, so a site beyond its build distance of the factory's edge is no turret site
++	{
++		const float facR = std::max(facDef->GetDef()->GetXSize(), facDef->GetDef()->GetZSize()) * SQUARE_SIZE / 2.f;
++		if (buildPos.distance2D(factory->GetPos(circuit->GetLastFrame())) > assistDef->GetBuildDistance() + facR) {
++			return false;
++		}
++	}
+ 
+ 	if (terrainMgr->CanBeBuiltAtSafe(assistDef, buildPos)
+ 		&& ((unit == nullptr) || terrainMgr->CanReachAtSafe(unit, buildPos, unit->GetCircuitDef()->GetBuildDistance())))
+@@ -2029,6 +2301,17 @@ bool CEconomyManager::CheckAssistRequired(const AIFloat3& position, CCircuitUnit
  	return false;
  }
  
@@ -3268,7 +3282,7 @@ index 6e5da8b6..c46096d8 100644
  float CEconomyManager::GetStorage(Resource* res)
  {
  	return economy->GetStorage(res) - HIDDEN_STORAGE;
-@@ -2096,15 +2370,6 @@ void CEconomyManager::UpdateEconomy()
+@@ -2096,15 +2379,6 @@ void CEconomyManager::UpdateEconomy()
  		buildDelay = int(bdInfo.fraction * (ecoFrame - bdInfo.startFrame)) + bdInfo.startDelay;
  	}
  
@@ -3284,7 +3298,7 @@ index 6e5da8b6..c46096d8 100644
  	pullMtoS *= circuit->GetMilitaryManager()->ClampMobileCostRatio();
  }
  
-@@ -2133,78 +2398,14 @@ bool CEconomyManager::HasNoPurpose(const CCircuitDef::Id defId) const
+@@ -2133,78 +2407,14 @@ bool CEconomyManager::HasNoPurpose(const CCircuitDef::Id defId) const
  
  void CEconomyManager::ReclaimOldConvert(const SConvertExt* convertExt)
  {
