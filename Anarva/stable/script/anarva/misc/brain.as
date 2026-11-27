@@ -3351,8 +3351,11 @@ float Horizon()
 	// (The old "as long as the game has run" was 0 s at start, so every future value read 0 and the AI reclaimed its
 	// own wind turbines.)
 	float V = Brain::Strategic::ownedMetal;
-	if (Brain::commander !is null)
-		V = AiMax(V, Brain::commander.circuitDef.costM);
+	// the commander we own, also before it exists: the start is chosen before it spawns, when V read 0 and the horizon
+	// was the crossing time alone (~265 s against 1476 s at frame 0) - the start's tail never paid and the corner start
+	// with the commander building everything won (swe80-90)
+	const CCircuitDef@ comV = (Brain::commander !is null) ? Brain::commander.circuitDef : aiSetupMgr.commChoice;
+	if (comV !is null) V = AiMax(V, comV.costM);
 	// at least what a commander makes (unit fact): before the first economy tick the income read 0 and the horizon
 	// came out at 2.7 million s, which made every opening plan and start candidate look alike
 	float ourInc = aiEconomyMgr.metal.income;
@@ -4720,7 +4723,7 @@ AIFloat3 PickStart(const AIFloat3& in lo, const AIFloat3& in hi, const AIFloat3&
 		// spot at the share kept from here (TailGrowth), and how soon the raid comes.)
 		const float terr = 0.f;
 		AiLog("[ANV-START] candidate (" + int(planHome.x) + "," + int(planHome.z) + ") value " + int(v) + " [" + Describe(os, 0.f, H) + " tail " + int(TailGrowth(os, H)) + " (" + tailWhy + ")"
-			+ " con " + ((os.lab >= 0 && labs[os.lab].con !is null) ? labs[os.lab].con.GetName() : "none") + " raid " + int(raidArrive) + "]");
+			+ " con " + ((os.lab >= 0 && labs[os.lab].con !is null) ? labs[os.lab].con.GetName() : "none") + " raid " + int(raidArrive) + " H " + int(H) + "]");
 		if (v > bestV) { bestV = v; bestP = planHome; }
 	}
 	planning = false; ready = false; raidArrive = 1e9f;
