@@ -7180,6 +7180,24 @@ bool CommWorth(const AIFloat3& in p, float gain, float tJob = 0.f)
 			Pu = AiMin(1.f, nR * Opening::raidDps * (EscapeTime(p) + tJob) / AiMax(1.f, commander.circuitDef.health));
 		lastRisk = AiMax(lastRisk, Pu * lastV);
 	}
+	// ...and what home loses while it is away: our producers' raid losses with the commander answering from the job
+	// instead of from home, over its time away (the job + the walk back; the ledger's raid model). Without it the
+	// commander built turrets 559-974 out while a raider killed the home extractor that two Pawns could not take
+	// (strength 1.4 vs 2.2) and it would have (swe118; 1v1 bot-lab winners' farthest by 4:00: median 322, replays.db)
+	float homeCost = 0.f;
+	if (commander !is null && HasBase()) {
+		const float cs = AiMax(1.f, commander.circuitDef.speed);
+		const float tAway = tJob + p.distance2D(basePos) / cs;
+		CCircuitDef@ con = EcoPos::CheapestConstructor();
+		const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+		for (uint i = 0; i < mine.length(); ++i) {
+			if (!Economist::IsProducer(mine[i].circuitDef)) continue;
+			const AIFloat3 q = mine[i].GetPos(ai.frame);
+			const float rAway = EcoPos::SpotRaids(q, tAway, p, cs), rHome = EcoPos::SpotRaids(q, tAway, basePos, cs);
+			homeCost += MexPorc::RaidLoss(mine[i], con) * AiMax(0.f, rAway - rHome);
+		}
+	}
+	lastRisk += homeCost;
 	lastGain = gain;
 	return gain >= lastRisk;  // a tie (e.g. idle, out of danger) stays and looks for its best job
 }
