@@ -317,18 +317,9 @@ float SpotLifeWith(const AIFloat3& in q, const AIFloat3& in extraAt, float extra
 	const float cycle = 2.f * AiEnemyBasePos().distance2D(q) / AiMax(1.f, Opening::raidSpeed);
 	const float tKill = Economist::mexT1.health / AiMax(1e-3f, Opening::raidDps);
 	float answer = 1e30f;
-	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
-	for (uint k = 0; k < mine.length(); ++k) {
-		const CCircuitDef@ kd = mine[k].circuitDef;
-		// the commander answers too: in 1v1 it stays home and kills lone raiders at the extractors near it (owner: "the
-		// commander at base in 1v1"; replays.db 1v1 winners median 276 from start at 3-6 min). Left out, the first
-		// extractors read undefended and fighters came before the first constructor (army 330, 1 constructor at 2:00, swe69)
-		// ...and only what beats a raider: a scout Flea (60 hp) parked near home read as the answer, a Pawn's defence value
-		// fell from 458 to 2 and the lab made no fighter until 3:05 while an Incisor killed our home extractor (swe94)
-		if (kd.IsMobile() && kd.surfThrDmg > 0.f && (kd.buildSpeed <= 0.f || mine[k] is commander)
-			&& !Scout::IsScout(mine[k]) && Opening::Strength(kd) >= Opening::raidStrength)
-			answer = AiMin(answer, mine[k].GetPos(ai.frame).distance2D(q) / AiMax(1.f, kd.speed));
-	}
+	// what answers a raid (the commander included; only what beats a raider, no scouts - swe69, swe94): the per-frame list
+	AnswerUnits();
+	for (uint k = 0; k < ansPos.length(); ++k) answer = AiMin(answer, ansPos[k].distance2D(q) / ansSpeed[k]);
 	if (extraSpeed > 0.f) answer = AiMin(answer, extraAt.distance2D(q) / extraSpeed);
 	const float hold = (answer < 1e29f) ? AiMin(1.f, tKill / AiMax(1e-3f, answer)) : 0.f;
 	// sites one raid clears before the answer, out of ours (the new one included); no army: it clears them all
@@ -362,6 +353,22 @@ float AnswerDelay(const AIFloat3& in q)
 	}
 	return tAns;
 }
+// The units that answer a raid - armed mobiles that beat one raider (no scouts; the commander too) - once per frame:
+// read in every SpotRaids/SpotLife call, Command::Update took 60 ms in one update at 4:00 (swe125, #121)
+int ansFrame = -1; array<AIFloat3> ansPos; array<float> ansSpeed;
+void AnswerUnits()
+{
+	if (ansFrame == ai.frame) return;
+	ansFrame = ai.frame; ansPos.resize(0); ansSpeed.resize(0);
+	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
+	for (uint k = 0; k < mine.length(); ++k) {
+		const CCircuitDef@ kd = mine[k].circuitDef;
+		if (kd.IsMobile() && kd.surfThrDmg > 0.f && (kd.buildSpeed <= 0.f || mine[k] is commander)
+			&& !Scout::IsScout(mine[k]) && Opening::Strength(kd) >= Opening::raidStrength) {
+			ansPos.insertLast(mine[k].GetPos(ai.frame)); ansSpeed.insertLast(AiMax(1.f, kd.speed));
+		}
+	}
+}
 // armed enemy ground units on our side now - once per frame (SpotRaids runs per producer per decision: read each call,
 // the worst update took 64.7 ms against a 33.3 ms frame, swe124 - the CPU of #121)
 int onOursFrame = -1; bool onOursNow = false;
@@ -383,18 +390,9 @@ float SpotRaids(const AIFloat3& in q, float Hr, const AIFloat3& in extraAt, floa
 	const float cycle = AiMax(1.f, 2.f * AiEnemyBasePos().distance2D(q) / AiMax(1.f, Opening::raidSpeed));
 	const float tKill = Economist::mexT1.health / AiMax(1e-3f, Opening::raidDps);
 	float answer = 1e30f;
-	const array<CCircuitUnit@>@ mine = AiGetTeamUnits();
-	for (uint k = 0; k < mine.length(); ++k) {
-		const CCircuitDef@ kd = mine[k].circuitDef;
-		// the commander answers too: in 1v1 it stays home and kills lone raiders at the extractors near it (owner: "the
-		// commander at base in 1v1"; replays.db 1v1 winners median 276 from start at 3-6 min). Left out, the first
-		// extractors read undefended and fighters came before the first constructor (army 330, 1 constructor at 2:00, swe69)
-		// ...and only what beats a raider: a scout Flea (60 hp) parked near home read as the answer, a Pawn's defence value
-		// fell from 458 to 2 and the lab made no fighter until 3:05 while an Incisor killed our home extractor (swe94)
-		if (kd.IsMobile() && kd.surfThrDmg > 0.f && (kd.buildSpeed <= 0.f || mine[k] is commander)
-			&& !Scout::IsScout(mine[k]) && Opening::Strength(kd) >= Opening::raidStrength)
-			answer = AiMin(answer, mine[k].GetPos(ai.frame).distance2D(q) / AiMax(1.f, kd.speed));
-	}
+	// what answers a raid (the commander included; only what beats a raider, no scouts - swe69, swe94): the per-frame list
+	AnswerUnits();
+	for (uint k = 0; k < ansPos.length(); ++k) answer = AiMin(answer, ansPos[k].distance2D(q) / ansSpeed[k]);
 	if (extraSpeed > 0.f) answer = AiMin(answer, extraAt.distance2D(q) / extraSpeed);
 	const float hold = (answer < 1e29f) ? AiMin(1.f, tKill / AiMax(1e-3f, answer)) : 0.f;
 	const float nSites = float(Economist::mexes.length() + 1);
