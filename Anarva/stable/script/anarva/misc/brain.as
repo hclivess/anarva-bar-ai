@@ -2807,7 +2807,9 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 		dictionary cnt; array<string> ours;
 		for (uint i = 0; i < mine.length(); ++i) {
 			const CCircuitDef@ d = mine[i].circuitDef;
-			if ((!IsArmy(d) && mine[i] !is commander) || Scout::IsScout(mine[i]) || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
+			// army only: the commander holds home (valued there, EcoPos::DefenceGain) and is not in the fights the plant's
+			// units go to - counted here, "ours 832" against a Grunt's 143 with no army at all (swe75)
+			if (!IsArmy(d) || mine[i] is commander || Scout::IsScout(mine[i]) || d.IsAbleToFly() || d.GetSustainedDps() <= 0.f) continue;
 			int c = 0; if (!cnt.get(d.GetName(), c)) c = 0; cnt.set(d.GetName(), c + 1);
 			if (c == 0) ours.insertLast(d.GetName());
 			nOurs += 1.f;
@@ -2891,14 +2893,14 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 			const float grow = (eSurf > 0.f) ? 1.f + growthE * tReady / eSurf : 1.f;  // the enemy when it is ready, as a factor
 			// no enemy army there to fight (none seen, none could have arrived): a fighter wins nothing yet - its worth is
 			// its defence and raid value (the share term read 1 for any fighter against nothing)
-			float vSurf = (eSurf > 0.f) ? stakeSurf * (WinShare(sSurf + us, eSurf * grow) - WinShare(sSurf, eSurf * grow)) : 0.f;
+			float vSurf = (eSurf > 0.f) ? stakeSurf * (SquareShare(sSurf + us, eSurf * grow) - SquareShare(sSurf, eSurf * grow)) : 0.f;
 			if (kESum > 0.f) {
 				vSurf = 0.f;
 				for (uint k = 0; k < kE.length(); ++k) {
 					string tm;
 					const float uk = SurfPower(d, kMix[k], tm);
 					// with one unit more our force is split one way further (#101): Gran(n+1) on the new total
-					vSurf += stakeSurf * kE[k] / kESum * (WinShare((kS[k] + uk) * Gran(nOurs + 1.f), kE[k] * grow) - WinShare(kS[k] * Gran(nOurs), kE[k] * grow));
+					vSurf += stakeSurf * kE[k] / kESum * (SquareShare((kS[k] + uk) * Gran(nOurs + 1.f), kE[k] * grow) - SquareShare(kS[k] * Gran(nOurs), kE[k] * grow));
 				}
 				terms += " per-type " + int(vSurf) + " grow " + F2(grow);
 			}
@@ -2910,12 +2912,12 @@ IUnitTask@ MakeTask(CCircuitUnit@ fac)
 				float vG = 0.f;
 				for (uint g = 0; g < gE.length(); ++g) {
 					const float stakeG = AiMin(stakeSurf, gD[g] * H * mPerHp);
-					vG += stakeG * (WinShare((sSurf + us) * Gran(nOurs + 1.f), gE[g] * grow) - WinShare(sSurf * Gran(nOurs), gE[g] * grow));
+					vG += stakeG * (SquareShare((sSurf + us) * Gran(nOurs + 1.f), gE[g] * grow) - SquareShare(sSurf * Gran(nOurs), gE[g] * grow));
 				}
 				terms += " groups " + gE.length() + ":" + int(vG);
 				vSurf = AiMax(vSurf, vG);  // the global fight and the group fights are the same army: the larger stands
 			}
-			vFight = stakeAir * (WinShare(sAir + ua, eAir) - WinShare(sAir, eAir)) + vSurf;
+			vFight = stakeAir * (SquareShare(sAir + ua, eAir) - SquareShare(sAir, eAir)) + vSurf;
 			// a raider is also worth what our raids actually kill per raider over its measured life (Command::RaiderWorth;
 			// 0 until a raid has killed) - winners' labs make mostly Ticks early (replays.db, 24 wins)
 			{
@@ -3133,6 +3135,19 @@ float HitChance(float shotSpeed, float range, float targetSpeed, float targetRad
 	return AiMin(1.f, AiMax(1.f, targetRadius) / AiMax(AiMax(1.f, targetRadius), drift));
 }
 float WinShare(float S, float E) { return (S + E > 0.f) ? S / (S + E) : 0.f; }
+// The fight's outcome under the square law as a share of what both sides bring (strength-weighted): the enemy share we
+// destroy weighted by E plus our share kept weighted by S, over S + E. Stronger: all of E dies and S keeps 1 - (E/S)^2;
+// weaker: (S/E)^2 of E dies and nothing is kept. 0.5 at parity, like the share; but a weak unit alone is worth what
+// it kills, not its size share: as S/(S+E) a Rover (strength 61) read 0.30 against a Grunt (143) and six Rovers in a
+// row died one by one at our extractors, killing nothing (swe75); here 0.12, a Blitz (208) 0.72.
+float SquareShare(float S, float E)
+{
+	if (S <= 0.f) return 0.f;
+	if (E <= 0.f) return 1.f;
+	const float kill = (S >= E) ? 1.f : (S / E) * (S / E);
+	const float keep = (S >= E) ? 1.f - (E / S) * (E / S) : 0.f;
+	return (E * kill + S * keep) / (S + E);
+}
 // Granularity (#101, owner: "2 units that each have 500 hp are worse than one unit with 1000 hp because the latter's
 // damage output doesn't drop"): under focus fire n equal units die one after another and deliver dps x time
 // (n+1)/(2n) of one undivided unit with their total dps and health; strength (sqrt of dps x health delivered) scales by
