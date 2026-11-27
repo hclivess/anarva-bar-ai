@@ -501,6 +501,10 @@ void Update()
 			unseen += AiMin(1.f, age / AiMax(1.f, cross));
 		}
 	}
+	// they can't hold more spots than their economy allows - as many extractors as we have, less those seen (as the raid
+	// spots count them): uncapped, every unseen spot on their side counted and the planning horizon (our metal / their
+	// income) swung 919 -> 1910 -> 386 s within 30 s, an extractor's value with it (V 1201 -> 2736 -> 388, swe120)
+	unseen = AiMin(unseen, AiMax(0.f, float(Economist::mexes.length()) - float(enemyMex)));
 	theirs = (float(enemyMex) + unseen) * perMex;
 	// Raid targets (#89, owner: "an early raid of a few blitz easily wins against barb"): every spot we don't hold,
 	// worth an extractor's metal times the chance the enemy holds it (seen enemy extractor: 1; unseen spot on their
