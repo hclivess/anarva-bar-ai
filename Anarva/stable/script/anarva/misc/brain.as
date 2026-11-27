@@ -4466,17 +4466,20 @@ float RaidWindowM(const Sim@ s, float end, float cStr, float armyMps)
 	const float rate = AiMin(raidRate, armyMps / AiMax(1.f, raidCostM));
 	const float oursRate = L.strength * AiMin(1.f / AiMax(1e-3f, L.unitTime), armyMps / AiMax(1.f, L.answer.costM));
 	const float tU = s.labAt + L.unitTime;
-	float w = 0.f;
-	array<float> ts = {raidArrive, AiMax(raidArrive, AiMin(tU, end)), end};
-	for (uint seg = 0; seg + 1 < ts.length(); ++seg) {
-		const float t0 = ts[seg], t1 = ts[seg + 1];
-		if (t1 <= t0) continue;
-		const float f0 = cStr + oursRate * AiMax(0.f, t0 - tU) - raidStrength * (1.f + rate * (t0 - raidArrive));
-		const float f1 = cStr + oursRate * AiMax(0.f, t1 - tU) - raidStrength * (1.f + rate * (t1 - raidArrive));
-		if (f0 < 0.f && f1 < 0.f) w += t1 - t0;
-		else if (f0 < 0.f || f1 < 0.f) w += (t1 - t0) * ((f0 < 0.f) ? f0 : f1) / (f0 - f1) * ((f0 < 0.f) ? 1.f : -1.f);
+	// The fights as they come, square law step by step (each of our units as it is made): while our side is weaker it
+	// dies but the raid keeps only sqrt(R^2 - O^2); once ours beats it the raid is broken and we keep sqrt(O^2 - R^2),
+	// their next raiders starting from none. As strengths that only grew, a raid ahead at the start stayed ahead forever
+	// with equal strength per metal (Pawn = Grunt): a lab seconds past the raid lost every far claim and the lab always
+	// came first, where 1v1 winners build 3 extractors and ~3 plants before it (diag5; replays.db, 106 winners)
+	const float dt = AiMax(1.f, L.unitTime);
+	float R = 0.f, O = cStr, w = 0.f;
+	for (float t = raidArrive; t < end; t += dt) {
+		R += raidStrength * ((t == raidArrive) ? 1.f : rate * dt);
+		if (t >= tU) O += oursRate * dt;
+		if (O < R) { R = sqrt(AiMax(0.f, R * R - O * O)); O = cStr; w += dt; }
+		else { O = sqrt(AiMax(0.f, O * O - R * R)); R = 0.f; }
 	}
-	return w;
+	return AiMin(w, AiMax(0.f, end - raidArrive));
 }
 string tailWhy = "";  // the first claims' inputs, for the start log
 // After the lab stands, constructors claim the nearest free spots (the k-th at t_k = labAt + sqrt(2 conEvery W_k), W_k
@@ -4606,6 +4609,8 @@ float Value(const Sim@ s, float now, float H)
 				else if (f0 < 0.f || f1 < 0.f) window += (t1 - t0) * ((f0 < 0.f) ? f0 : f1) / (f0 - f1) * ((f0 < 0.f) ? 1.f : -1.f);
 			}
 		}
+		// the same fights as the tail's claims (RaidWindowM, square law step by step) once a lab answers
+		if (s.lab >= 0) window = RaidWindowM(s, end, com, armyMps);
 		// producers it kills over the window: its damage (growing) over their mean health
 		const float dmg = raidDps * (window + rate * window * window / 2.f);
 		const float k = AiMin(s.nProd, dmg / AiMax(1.f, s.prodHp / s.nProd));
@@ -4624,6 +4629,7 @@ float Value(const Sim@ s, float now, float H)
 				if (f0 < 0.f && f1 < 0.f) wF += t1 - t0;
 				else if (f0 < 0.f || f1 < 0.f) wF += (t1 - t0) * ((f0 < 0.f) ? f0 : f1) / (f0 - f1) * ((f0 < 0.f) ? 1.f : -1.f);
 			}
+			if (s.lab >= 0) wF = RaidWindowM(s, end, 0.f, armyMps);
 			const float dF = raidDps * (wF + rate * wF * wF / 2.f);
 			const float kF = AiMin(s.nFar, dF / AiMax(1.f, s.farHp / s.nFar));
 			v -= kF * (s.farCost / s.nFar + s.farYield / s.nFar * wF / 2.f);
