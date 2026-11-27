@@ -4421,10 +4421,10 @@ float SpendRate(const Sim@ s)
 }
 
 // the free extractor spots, nearest home first: what constructors claim after the lab (set per planning call)
-array<int> tailOrder; array<float> tailYield, tailDist;
+array<int> tailOrder; array<float> tailYield, tailDist; array<AIFloat3> tailPos;
 void PrepareTail(const array<AIFloat3>@ sp, const array<float>@ si, const array<bool>@ so)
 {
-	tailOrder.resize(0); tailYield.resize(0); tailDist.resize(0);
+	tailOrder.resize(0); tailYield.resize(0); tailDist.resize(0); tailPos.resize(0);
 	if (Economist::mexT1 is null) return;
 	const float ext = Economist::Extract(Economist::mexT1.GetName());
 	const AIFloat3 h = Home(), t = Them();
@@ -4438,7 +4438,7 @@ void PrepareTail(const array<AIFloat3>@ sp, const array<float>@ si, const array<
 		for (uint k = 1; k < idx.length(); ++k) if (d[k] < d[m]) m = k;
 		const int i = idx[m];
 		const float dUs = d[m], dThem = t.distance2D(sp[i]);
-		tailOrder.insertLast(i); tailDist.insertLast(dUs);
+		tailOrder.insertLast(i); tailDist.insertLast(dUs); tailPos.insertLast(sp[i]);
 		tailYield.insertLast(si[i] * ext * ((dUs + dThem > 0.f) ? dThem / (dUs + dThem) : 1.f));
 		idx.removeAt(m); d.removeAt(m);
 	}
@@ -4493,7 +4493,7 @@ float TailGrowth(const Sim@ s, float end)
 	const float life = AiMax(1.f, Economist::ProducerLife());
 	const float cStr = Strength(ComDef());
 	const float reachHome = DefenceReach(Economist::mexT1);
-	array<float> tks, ys; array<bool> nears;
+	array<float> tks, ys; array<bool> nears; array<AIFloat3> cps;
 	// a claim is also the energy its metal needs (the lab's energy per metal): its share of a plant's build at the
 	// constructor's power, the cheapest in build time per energy (unit facts). Claims alone read the second claim at
 	// ~91 s; the constructors also built four solars and took the second at 148 s (swe98)
@@ -4512,7 +4512,7 @@ float TailGrowth(const Sim@ s, float end)
 		W += tailDist[j] / AiMax(1.f, L.con.speed) + mexBuild + tailYield[j] * L.eRatio * plantSecPerE;
 		const float tk = s.labAt + (-conEvery + sqrt(conEvery * conEvery + 2.f * conEvery * W));
 		if (tk >= end) break;
-		tks.insertLast(tk); ys.insertLast(tailYield[j]); nears.insertLast(tailDist[j] <= reachHome);
+		tks.insertLast(tk); ys.insertLast(tailYield[j]); nears.insertLast(tailDist[j] <= reachHome); cps.insertLast(tailPos[j]);
 		// constructors made by then, their lab time and metal; the rest of the lab's output is army
 		const float conUsed = AiMin(float(k), (tk - s.labAt) / AiMax(1.f, conEvery) + 1.f);
 		const float labFree = AiMax(0.f, 1.f - conUsed * L.conTime / span);
@@ -4521,17 +4521,19 @@ float TailGrowth(const Sim@ s, float end)
 		// the raid is in one place at a time: over its window it kills as many claimed spots as its damage allows (as
 		// Value counts the plan's own producers), each costing itself and its yield for half the window. As "every spot
 		// lost for the whole window" each claim netted -114 at every start (swe89)
-		float v = 0.f, nN = 0.f, nF = 0.f, yN = 0.f, yF = 0.f;
+		// each claim pays its yield to the end less the raids the shared ledger expects there (EcoPos::SpotRaids - the
+		// model the plant's ledger, the defence value and the towers use, with the commander answering from home), each a
+		// rebuild (the extractor and its yield while a constructor walks back and builds it). On the opener's own raid
+		// window the tail read ~79000 at the start - claims that never stood: 5-7 extractors at 4:00 (swe120-126)
+		float v = 0.f, kN = 0.f, kF = 0.f;
+		const float cSpeedHome = AiMax(1.f, ComDef().speed);
 		for (uint q = 0; q < tks.length(); ++q) {
-			v += ys[q] * (end - tks[q]) - mexCost;
-			if (nears[q]) { nN += 1.f; yN += ys[q]; } else { nF += 1.f; yF += ys[q]; }
+			const float rem = AiMax(0.f, end - tks[q]);
+			const float rq = EcoPos::SpotRaids(cps[q], rem, Home(), cSpeedHome);
+			const float rebuild = Economist::mexT1.buildTime / AiMax(1.f, L.con.buildSpeed) + cps[q].distance2D(Home()) / AiMax(1.f, L.con.speed);
+			v += ys[q] * rem - mexCost - rq * (mexCost + ys[q] * rebuild);
+			if (nears[q]) kN += rq; else kF += rq;
 		}
-		const float rateR = AiMin(raidRate, armyMps / AiMax(1.f, raidCostM));
-		const float hpM = AiMax(1.f, Economist::mexT1.health);
-		const float kN = AiMin(nN, raidDps * (wNear + rateR * wNear * wNear / 2.f) / hpM);
-		const float kF = AiMin(nF, raidDps * (wFar + rateR * wFar * wFar / 2.f) / hpM);
-		if (nN > 0.f) v -= kN * (mexCost + yN / nN * wNear / 2.f);
-		if (nF > 0.f) v -= kF * (mexCost + yF / nF * wFar / 2.f);
 		float conCharge = 0.f;
 		for (int ci = 0; ci < int(ceil(conUsed)); ++ci) {
 			const float share = AiMin(1.f, AiMax(0.f, end - (s.labAt + float(ci) * conEvery)) / life);
