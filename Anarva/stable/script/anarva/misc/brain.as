@@ -6452,7 +6452,9 @@ void CommForces(const AIFloat3& in p, float tHome)
 		}
 	}
 	commCover = riskUnit.circuitDef.power;
-	commOurDps = riskUnit.circuitDef.surfThrDmg;
+	// real dps, as commEnemyHp is real health: from the core's threat damage our side read ~0, the time to kill one Grunt
+	// ran to the army's whole travel time and a lone Grunt near the commander was worth ~6000 to a recall (swe48)
+	commOurDps = AiMax(0.f, riskUnit.circuitDef.GetSustainedDps());
 	commInFire = riskUnit.circuitDef.power;
 	const array<CCircuitUnit@>@ all = AiGetTeamUnits();
 	for (uint i = 0; i < all.length(); ++i) {
@@ -6462,7 +6464,7 @@ void CommForces(const AIFloat3& in p, float tHome)
 		const float dist = u.GetPos(ai.frame).distance2D(p);
 		if (d.IsMobile() ? (MoveTime(d, dist) <= tHome) : (dist <= d.GetMaxRange())) {
 			commCover += d.power;
-			commOurDps += AiMax(0.f, d.surfThrDmg);
+			commOurDps += AiMax(0.f, d.GetSustainedDps());
 		}
 		if (dist <= commERange) commInFire += d.power;  // standing in their fire with it now: shares it
 	}
