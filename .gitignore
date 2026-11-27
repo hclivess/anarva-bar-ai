@@ -13,3 +13,5 @@ runs/
 core-bin/
 ref/lib/**/*.sdfz
 runs/replay_work/
+# C++ test output
+core/anarva/test/build/
