@@ -362,6 +362,19 @@ float AnswerDelay(const AIFloat3& in q)
 	}
 	return tAns;
 }
+// armed enemy ground units on our side now - once per frame (SpotRaids runs per producer per decision: read each call,
+// the worst update took 64.7 ms against a 33.3 ms frame, swe124 - the CPU of #121)
+int onOursFrame = -1; bool onOursNow = false;
+bool RaidersOnOurSide()
+{
+	if (onOursFrame == ai.frame) return onOursNow;
+	onOursFrame = ai.frame; onOursNow = false;
+	array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
+	const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
+	for (uint i = 0; i < ne && !onOursNow; ++i)
+		if (ed[i] !is null && ed[i].IsMobile() && ed[i].GetSustainedDps() > 0.f && !ed[i].IsAbleToFly() && Assess::OnOurSide(ep[i])) onOursNow = true;
+	return onOursNow;
+}
 float SpotRaids(const AIFloat3& in q, float Hr, const AIFloat3& in extraAt, float extraSpeed)
 {
 	if (Opening::raidSpeed <= 0.f || Opening::raidDps <= 0.f || Economist::mexT1 is null) return 0.f;
@@ -398,14 +411,7 @@ float SpotRaids(const AIFloat3& in q, float Hr, const AIFloat3& in extraAt, floa
 	// by round trips the model read our far claims as raided once in ~2 minutes; Grunts on our side took them within
 	// a minute of their claim, swe110-123)
 	float cyc = cycle;
-	{
-		array<AIFloat3> ep, ev; array<CCircuitDef@> ed; array<float> ec, eh, eb; array<int> ef;
-		const uint ne = AiGetEnemies(ep, ev, ed, ec, ef, eh, eb);
-		bool onOurs = false;
-		for (uint i = 0; i < ne && !onOurs; ++i)
-			if (ed[i] !is null && ed[i].IsMobile() && ed[i].GetSustainedDps() > 0.f && !ed[i].IsAbleToFly() && Assess::OnOurSide(ep[i])) onOurs = true;
-		if (onOurs) cyc = AiMin(cycle, AiMax(1.f, nSites * perSite));
-	}
+	if (RaidersOnOurSide()) cyc = AiMin(cycle, AiMax(1.f, nSites * perSite));
 	const float model = AiMax(0.f, Hr - tFirst) / cyc * P;
 	// ...and at least what has happened here (feedback, owner: "ignores losses? is there no feedback loop?"): the producers
 	// we lost within one raid's reach between sites, at the rate since the first loss, over what is left. The model alone
